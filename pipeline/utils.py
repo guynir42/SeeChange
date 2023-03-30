@@ -3,8 +3,6 @@ from collections import defaultdict
 
 import sqlalchemy as sa
 
-from models.base import SmartSession
-from models.provenance import Provenance
 
 
 def get_image_cache(image_cache=None):
@@ -44,6 +42,10 @@ def get_latest_provenance(process_name, session=None):
     Provenance
         The most recent provenance object that matches the process_name.
     """
+    # importing the models here to avoid circular imports
+    from models.base import SmartSession
+    from models.provenance import Provenance
+
     with SmartSession(session) as session:
         prov = session.scalars(
             sa.select(Provenance).where(

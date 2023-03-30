@@ -1,5 +1,4 @@
 import json
-import git
 import hashlib
 import sqlalchemy as sa
 from sqlalchemy import event
