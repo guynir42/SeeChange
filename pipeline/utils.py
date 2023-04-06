@@ -1,14 +1,8 @@
 import git
 from collections import defaultdict
+import numpy as np
 
 import sqlalchemy as sa
-
-
-
-def get_image_cache(image_cache=None):
-    if image_cache is None:
-        image_cache = defaultdict(dict)
-    return image_cache
 
 
 def get_git_hash():
@@ -41,6 +35,7 @@ def get_latest_provenance(process_name, session=None):
     -------
     Provenance
         The most recent provenance object that matches the process_name.
+        If not found, returns None.
     """
     # importing the models here to avoid circular imports
     from models.base import SmartSession
@@ -54,3 +49,4 @@ def get_latest_provenance(process_name, session=None):
         ).first()
 
     return prov
+

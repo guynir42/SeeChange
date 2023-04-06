@@ -1,6 +1,7 @@
 
 
 from pipeline.parameters import Parameters
+from pipeline.data_store import DataStore
 from pipeline.preprocessor import Preprocessor
 from pipeline.astrometry import Astrometry
 from pipeline.calibrator import Calibrator
@@ -68,89 +69,38 @@ class Pipeline:
         self.pars.add_defaults_to_dict(extractor_config)
         self.extractor = Extractor(**extractor_config)
 
-    def run(self, exposure_id, ccd_id, image_cache=None, prov_cache=None, session=None):
+    def run(self, *args, **kwargs):
         """
         Run the entire pipeline on a specific CCD in a specific exposure.
         Will open a database session and grab any existing data,
         and calculate and commit any new data that did not exist.
-
-        Parameters
-        ----------
-        exposure_id: int
-            The exposure id.
-        ccd_id: int
-            The CCD id.
-        image_cache: dict
-            A cache of image objects that have already been loaded from disk.
-        prov_cache: dict
-            A cache of provenance objects that were used upstream in the analysis.
-            Each provenance is keyed based on the process name (e.g., "preprocessing").
-        session: sqlalchemy.orm.session.Session or SmartSession
-            The database session to use. If None, a new session will be created.
-
-        Returns
-        -------
-        image_cache : dict
-            The updated image cache.
-        prov_ids: list
-            A list with the provenance ID that was used to make this image.
-            This is used downstream to make new provenances with upstream_ids.
         """
-        # run dark/flat and sky subtraction tools, save the results as Image objects to DB and disk
-        image_cache, prov_cache = self.preprocessor.run(
-            exposure_id,
-            ccd_id,
-            image_cache=image_cache,
-            prov_cache=prov_cache,
-            session=session
-        )
+
+        ds = DataStore.from_args(*args, **kwargs)
+
+        if ds.coadd_id is None:
+            # run dark/flat and sky subtraction tools, save the results as Image objects to DB and disk
+            ds = self.preprocessor.run(ds)
+        else:
+            # start by getting a coadd image but run the rest of the pipeline as usual
+            pass  # do something else!
 
         # extract sources and fit astrometric solution, save WCS into Image object and FITS headers
-        image_cache, prov_cache = self.astrometry.run(
-            exposure_id,
-            ccd_id,
-            image_cache=image_cache,
-            prov_cache=prov_cache,
-            session=session
-        )
+        ds = self.astrometry.run(ds)
 
         # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
-        image_cache, prov_cache = self.calibrator.run(
-            exposure_id,
-            ccd_id,
-            image_cache=image_cache,
-            prov_cache=prov_cache,
-            session=session
-        )
+        ds = self.calibrator.run(ds)
 
         # fetch reference images and subtract them, save SubtractedImage objects to DB and disk
-        image_cache, prov_cache = self.subtractor.run(
-            exposure_id,
-            ccd_id,
-            image_cache=image_cache,
-            prov_cache=prov_cache,
-            session=session
-        )
+        ds = self.subtractor.run(ds)
 
         # find sources, generate Sightings and Cutouts, make new Object if missing, append to existing Objects
-        image_cache, prov_cache = self.detector.run(
-            exposure_id,
-            ccd_id,
-            image_cache=image_cache,
-            prov_cache=prov_cache,
-            session=session
-        )
+        ds = self.detector.run(ds)
 
         # extract photometry, analytical cuts, and deep learning models on the Cutouts:
-        image_cache, prov_cache = self.extractor(
-            exposure_id,
-            ccd_id,
-            image_cache=image_cache,
-            prov_cache=prov_cache,
-            session=session
-        )
+        ds = self.extractor(ds)
 
-        return image_cache, prov_cache
+        return ds
 
     def run_with_session(self):
         """

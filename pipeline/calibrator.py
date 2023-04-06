@@ -2,11 +2,10 @@
 import sqlalchemy as sa
 
 from pipeline.parameters import Parameters
+from pipeline.data_store import DataStore
 
-from pipeline.utils import get_image_cache
-
-from models.image import Image
 from models.base import SmartSession
+from models.image import Image
 
 
 class ParsCalibrator(Parameters):
@@ -24,11 +23,8 @@ class ParsCalibrator(Parameters):
 
         self.override(kwargs)
 
-    def _get_process_name(self):
+    def get_process_name(self):
         return 'calibration'
-
-    def _get_upstream_process_names(self):
-        return ['preprocess', 'astrometry']
 
 
 class Calibrator:
@@ -36,38 +32,12 @@ class Calibrator:
         self.pars = ParsCalibrator()
         self.pars.update(kwargs)
 
-    def run(self, exposure_id, ccd_id, image_cache=None, prov_cache=None, session=None):
+    def run(self, *args, **kwargs):
         """
         Extract sources and use their magnitudes to calculate the photometric solution.
+        Arguments are parsed by the DataStore.parse_args() method.
 
-        Parameters
-        ----------
-        exposure_id : int
-            The exposure ID in the database.
-        ccd_id : int
-            The CCD number in the camera's numbering scheme.
-        image_cache : dict
-            A dictionary of images that have already been loaded.
-            Includes a dictionary of 'exposures' keyed by exposure_id.
-            Also includes dictionaries for 'images', 'subtractions',
-            'references' and 'cutouts'.
-            Each one is keyed on a tuple of (exposure_id, ccd_id).
-            If the required image is not found in the cache, it will be loaded
-            from the database and then from disk.
-        prov_cache: dict
-            A cache of provenance objects that were used upstream in the analysis.
-            Each provenance is keyed based on the process name (e.g., "preprocessing").
-        session : sqlalchemy.orm.session.Session or SmartSession
-            The database session to use.  If None, a new session will be created,
-            that is closed at the end of each `with` statement.
-
-        Returns
-        -------
-        image_cache : dict
-            The updated image cache.
-        prov_ids: list
-            A list with the provenance ID that was used to make this image.
-            This is used downstream to make new provenances with upstream_ids.
+        Returns a DataStore object with the products of the processing.
         """
         # TODO: implement the actual code to do this.
         #  Check if the chosen catalog is loaded into this object.
@@ -81,35 +51,25 @@ class Calibrator:
         #  Save the Image object to the cache and database.
         #  Update the FITS header with the ZP.
         #  This is also the place where we calculate the PSF?
+        ds = DataStore.from_args(*args, **kwargs)
 
-        # should have the upstream Provenance for preprocess and astrometry
-        if prov_cache is None:
-            prov_cache = {}
+        # get the provenance for this step:
+        prov = ds.get_provenance('calibration', self.pars.get_critical_pars(), session=ds.session)
 
-        # get the provenance:
-        prov = self.pars.get_provenance(prov_cache=prov_cache, session=session)
+        # try to find the world coordinates in memory or in the database:
+        zp = ds.get_zp(prov, session=ds.session)
 
-        # get the image cache:
-        image_cache = get_image_cache(image_cache)
-        image = image_cache['images'].get((exposure_id, ccd_id))
+        if zp is None:  # must create a new WorldCoordinate object
 
-        # check provenance in the cached image is consistent with the image provenance
-        if image is not None:
-            im_prov = prov_cache['preprocess']
-            if image.provenance.unique_hash != im_prov.unique_hash:
-                image = None
+            # use the latest image in the data store,
+            # or load using the provenance given in the
+            # data store's upstream_provs, or just use
+            # the most recent provenance for "preprocessing"
+            image = ds.get_image(session=ds.session)
+            wcs = ds.get_wcs(session=ds.session)
 
-        if image is None:
-            with SmartSession(session) as session:
-                image = session.scalars(
-                    sa.select(Image).where(
-                        Image.exposure_id == exposure_id, Image.ccd_id == ccd_id, Image.provenance_id == im_prov.id
-                    )
-                ).first()
-
-        if image is None:
-            raise ValueError(f'Image with exposure id: {exposure_id}, CCD id: {ccd_id} '
-                             f'and provenance id: {im_prov.id} not found in the cache or database!')
+            if image is None:
+                raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
         # TODO: extract sources from the image
         # TODO: get the catalog and save it in "self"
@@ -117,7 +77,5 @@ class Calibrator:
         # TODO: save a ZeroPoint object to database
         # TODO: update the image's FITS header with the zp
 
-        prov_cache['calibration'] = prov
-
         # make sure this is returned to be used in the next step
-        return image_cache, prov_cache
+        return ds

@@ -624,18 +624,10 @@ class Parameters:
 
         return s
 
-    def _get_process_name(self):
+    def get_process_name(self):
         """
         Get the name of the process (pipeline phase) that
         is relevant for this Parameter object.
-        Should be implemented in each subclass.
-        """
-        raise NotImplementedError("Must be implemented in subclass.")
-
-    def _get_upstream_process_names(self):
-        """
-        Get the names of the upstream processes (pipeline phases)
-        that are relevant for this Parameter object.
         Should be implemented in each subclass.
         """
         raise NotImplementedError("Must be implemented in subclass.")
@@ -649,7 +641,7 @@ class Parameters:
         ----------
         prov_cache: dict
             A dictionary of Provenance objects, from which the relevant
-            upstream ids can be retrieved. If not given, will be
+            upstream ids can be retrieved. If not given, will be filled
             automatically using the most up-to-date provenances.
         session: sqlalchemy.orm.session.Session or SmartSession
             The database session to use to retrieve the provenances.
@@ -662,7 +654,7 @@ class Parameters:
         with SmartSession(session) as session:
             # first check if we can find the upstream provenances
             upstreams = []
-            for name in self._get_upstream_process_names():  # only works in subclasses!
+            for name in self.get_upstream_process_names():  # only works in subclasses!
                 if name not in prov_cache:
                     # this will also modify the prov_cache that was passed in!
                     prov_cache[name] = get_latest_provenance(name, session=session)
@@ -674,7 +666,7 @@ class Parameters:
 
                 upstreams.append(upstream_prov)
 
-            process = self._get_process_name()  # only works in subclasses!
+            process = self.get_process_name()  # only works in subclasses!
             cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.name == self.code_version)).first()
             if cv is not None:
                 cv.update()  # update the current commit hash
