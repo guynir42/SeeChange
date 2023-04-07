@@ -7,8 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from pipeline.utils import get_git_hash
 
-from models.base import engine, Base, SmartSession
-
+from models.base import Base, SmartSession
 
 class CodeHash(Base):
     __tablename__ = "code_hashes"
@@ -196,12 +195,6 @@ class Provenance(Base):
         json_string = json.dumps(superdict, sort_keys=True)
         self.unique_hash = hashlib.sha256(json_string.encode("utf-8")).hexdigest()
 
-
-
-
-CodeHash.metadata.create_all(engine)
-CodeVersion.metadata.create_all(engine)
-Provenance.metadata.create_all(engine)
 
 
 @event.listens_for(Provenance, "before_insert")
