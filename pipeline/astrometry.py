@@ -1,12 +1,8 @@
-import sqlalchemy as sa
 
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 
-from models.base import SmartSession
-from models.image import Image
-
-from pipeline.utils import get_image_cache
+from models.world_coordinates import WorldCoordinates
 
 
 class ParsAstrometry(Parameters):
@@ -40,40 +36,32 @@ class Astrometry:
 
         Returns a DataStore object with the products of the processing.
         """
-        # TODO: implement the actual code to do this.
-        #  Check if the chosen catalog is loaded into this object.
-        #  If not, load it and save it on "self".
-        #  Extract sources from the Image.
-        #  Cross match the sources with the catalog.
-        #  Calculate the astrometric solution.
-        #  Save the astrometric solution to the Image object.
-        #  Save the Image object to the cache and database.
-        #  Update the FITS header with the WCS.
         ds = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step:
-        prov = ds.get_provenance('astrometry', self.pars.get_critical_pars(), session=ds.session)
+        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=ds.session)
 
         # try to find the world coordinates in memory or in the database:
         wcs = ds.get_wcs(prov, session=ds.session)
 
         if wcs is None:  # must create a new WorldCoordinate object
 
-            # use the latest image in the data store,
+            # use the latest source list in the data store,
             # or load using the provenance given in the
             # data store's upstream_provs, or just use
-            # the most recent provenance for "preprocessing"
-            image = ds.get_image(session=ds.session)
+            # the most recent provenance for "extraction"
+            sources = ds.get_sources(session=ds.session)
 
-            if image is None:
-                raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
+            if sources is None:
+                raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
 
-        # TODO: extract sources from the image
-        # TODO: get the catalog and save it in "self"
-        # TODO: cross-match the sources with the catalog
-        # TODO: save a WorldCoordinateSystem object to database
-        # TODO: update the image's FITS header with the wcs
-        # TODO: add the resulting object to the data store
+            # TODO: get the reference catalog and save it in "self"
+            # TODO: cross-match the sources with the catalog
+            # TODO: save a WorldCoordinates object to database
+            # TODO: update the image's FITS header with the wcs
+
+            # add the resulting object to the data store
+            ds.wcs = wcs
 
         # make sure this is returned to be used in the next step
         return ds

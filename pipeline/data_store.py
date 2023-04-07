@@ -5,7 +5,8 @@ from pipeline.utils import get_git_hash, get_latest_provenance
 from models.base import SmartSession
 from models.provenance import CodeHash, CodeVersion, Provenance
 from models.exposure import Exposure
-from models.image import Image, SubtractionImage
+from models.image import Image
+from models.source_list import SourceList
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
 from models.cutouts import Cutouts
@@ -14,22 +15,25 @@ from models.measurements import Measurements
 
 UPSTREAM_NAMES = {
     'preprocessing': [],
-    ''
-    'astrometry': ['preprocessing'],
-    'calibration': ['preprocessing', 'astrometry'],
-    'subtraction': ['preprocessing', 'astrometry', 'calibration'],
+    'extraction': ['preprocessing'],
+    'astrometry': ['extraction'],
+    'calibration': ['extraction', 'astrometry'],
+    'subtraction': ['preprocessing', 'extraction', 'astrometry', 'calibration'],
     'detection': ['subtraction'],
-    'extraction': ['detection'],
+    'cutting': ['detection'],
+    'measurement': ['detection', 'calibration'],
 }
 
 UPSTREAM_OBJECTS = {
     'preprocessing': 'image',
     'coaddition': 'image',
+    'extraction': 'sources',
     'astrometry': 'wcs',
     'calibration': 'zp',
     'subtraction': 'sub_image',
-    'detection': 'cutouts',
-    'extraction': 'measurements',
+    'detection': 'detections',
+    'cutting': 'cutouts',
+    'measurement': 'measurements',
 }
 
 
@@ -58,10 +62,12 @@ class DataStore:
         # these are data products that can be cached in the store
         self.exposure = None  # single image, entire focal plane
         self.image = None  # single image from one CCD
+        self.sources = None  # extracted sources (a SourceList object, basically a catalog)
         self.wcs = None  # astrometric solution
         self.zp = None  # photometric calibration
         self.ref_image = None  # to be used to make subtractions
         self.sub_image = None  # subtracted image
+        self.detections = None  # a SourceList object for sources detected in the subtraction image
         self.cutouts = None  # cutouts around sources
         self.measurements = None  # photometry and other measurements for each source
 
@@ -167,7 +173,10 @@ class DataStore:
             raise ValueError(f'{key} must be an integer, got {type(value)}')
 
         if key == 'image' and not isinstance(value, Image):
-            raise ValueError(f'Image must be an Image object, got {type(value)}')
+            raise ValueError(f'image must be an Image object, got {type(value)}')
+
+        if key == 'sources' and not isinstance(value, SourceList):
+            raise ValueError(f'sources must be a SourceList object, got {type(value)}')
 
         if key == 'wcs' and not isinstance(value, WorldCoordinates):
             raise ValueError(f'WCS must be a WorldCoordinates object, got {type(value)}')
@@ -176,10 +185,13 @@ class DataStore:
             raise ValueError(f'ZP must be a ZeroPoint object, got {type(value)}')
 
         if key == 'ref_image' and not isinstance(value, Image):
-            raise ValueError(f'Reference image must be an Image object, got {type(value)}')
+            raise ValueError(f'ref_image must be an Image object, got {type(value)}')
 
-        if key == 'sub_image' and not isinstance(value, SubtractionImage):
-            raise ValueError(f'Subtraction image must be a SubtractionImage object, got {type(value)}')
+        if key == 'sub_image' and not isinstance(value, Image):
+            raise ValueError(f'sub_image must be a Image object, got {type(value)}')
+
+        if key == 'detections' and not isinstance(value, SourceList):
+            raise ValueError(f'detections must be a SourceList object, got {type(value)}')
 
         if key == 'cutouts' and not isinstance(value, list):
             raise ValueError(f'cutouts must be a list of Cutout objects, got {type(value)}')
@@ -425,6 +437,56 @@ class DataStore:
 
         return self.image  # could return none if no image was found
 
+    def get_sources(self, provenance=None, session=None):
+        """
+        Get a SourceList, either from memory or from database.
+
+        Parameters
+        ----------
+        provenance: Provenance object
+            The provenance to use for the source list.
+            This provenance should be consistent with
+            the current code version and critical parameters.
+            If none is given, will use the latest provenance
+            for the "extraction" process.
+        session: sqlalchemy.orm.session.Session or SmartSession
+            An optional session to use for the database query.
+            If not given, will open a new session and close it at
+            the end of the function.
+
+        Returns
+        -------
+        sl: SourceList object
+            The list of sources for this image (the catalog),
+            or None if no matching source list is found.
+
+        """
+        # not in memory, look for it on the DB
+        if self.sources is not None:
+
+            if provenance is None:  # check if in upstream_provs/database
+                provenance = self._get_provenance_fallback('extraction', session=session)
+
+            # make sure the wcs has the correct provenance
+            if self.sources.provenance is None:
+                raise ValueError('SourceList has no provenance!')
+
+            # a mismatch of provenance and cached image:
+            if self.sources.provenance.unique_hash != provenance.unique_hash:
+                self.sources = None
+
+        if self.sources is None:
+            with SmartSession(session) as session:
+                image = self.get_image(session=session)
+                self.sources = session.scalars(
+                    sa.select(SourceList).where(
+                        SourceList.image_id == image.id,
+                        SourceList.provenance.has(unique_hash=provenance.unique_hash),
+                    )
+                ).first()
+
+        return self.sources
+
     def get_wcs(self, provenance=None, session=None):
         """
         Get an astrometric solution (in the form of a WorldCoordinates),
@@ -449,36 +511,263 @@ class DataStore:
             The WCS object, or None if no matching WCS is found.
 
         """
-        # not in memory, look for it on the DB
-        if self.wcs is None:
-            image = self.get_image(session=session)
-
+        # make sure the wcs has the correct provenance
+        if self.wcs is not None:
             if provenance is None:  # check if in upstream_provs/database
                 provenance = self._get_provenance_fallback('astrometry', session=session)
 
-                # make sure the wcs has the correct provenance
-                if self.wcs is not None:
-                    if self.wcs.provenance is None:
-                        raise ValueError('WorldCoordinates has no provenance!')
+            if self.wcs.provenance is None:
+                raise ValueError('WorldCoordinates has no provenance!')
 
-                    # a mismatch of provenance and cached image:
-                    if self.wcs.provenance.unique_hash != provenance.unique_hash:
-                        self.wcs = None
+            # a mismatch of provenance and cached image:
+            if self.wcs.provenance.unique_hash != provenance.unique_hash:
+                self.wcs = None
 
-                if self.wcs is None:
-                    with SmartSession(session) as session:
-                        self.wcs = session.scalars(
-                            sa.select(WorldCoordinates).where(
-                                WorldCoordinates.image_id == image.id,
-                                WorldCoordinates.provenance.has(unique_hash=provenance.unique_hash),
-                            )
-                        ).first()
+        # not in memory, look for it on the DB
+        if self.wcs is None:
+            with SmartSession(session) as session:
+                sources = self.get_sources(session=session)
+                self.wcs = session.scalars(
+                    sa.select(WorldCoordinates).where(
+                        WorldCoordinates.source_list_id == sources.id,
+                        WorldCoordinates.provenance.has(unique_hash=provenance.unique_hash),
+                    )
+                ).first()
 
         return self.wcs
 
+    def get_zp(self, provenance=None, session=None):
+        """
+        Get a photometric calibration (in the form of a ZeroPoint object),
+        either from memory or from database.
+
+        Parameters
+        ----------
+        provenance: Provenance object
+            The provenance to use for the wcs.
+            This provenance should be consistent with
+            the current code version and critical parameters.
+            If none is given, will use the latest provenance
+            for the "calibration" process.
+        session: sqlalchemy.orm.session.Session or SmartSession
+            An optional session to use for the database query.
+            If not given, will open a new session and close it at
+            the end of the function.
+
+        Returns
+        -------
+        wcs: ZeroPoint object
+            The photometric calibration object, or None if no matching ZP is found.
+
+        """
+        # make sure the zp has the correct provenance
+        if self.zp is not None:
+            if provenance is None:  # check if in upstream_provs/database
+                provenance = self._get_provenance_fallback('calibration', session=session)
+
+            if self.zp.provenance is None:
+                raise ValueError('ZeroPoint has no provenance!')
+
+            # a mismatch of provenance and cached image:
+            if self.zp.provenance.unique_hash != provenance.unique_hash:
+                self.zp = None
+
+        # not in memory, look for it on the DB
+        if self.zp is None:
+            with SmartSession(session) as session:
+                sources = self.get_sources(session=session)
+                # TODO: do we also need the astrometric solution (to query for the ZP)?
+
+                self.zp = session.scalars(
+                    sa.select(ZeroPoint).where(
+                        ZeroPoint.source_list_id == sources.id,
+                        ZeroPoint.provenance.has(unique_hash=provenance.unique_hash),
+                    )
+                ).first()
+
+        return self.zp
+
+    def get_reference_image(self, provenance=None, session=None):
+        """
+        Get the reference image for this image.
+
+        Parameters
+        ----------
+        provenance: Provenance object
+            The provenance to use for the subtraction.
+            This provenance should be consistent with
+            the current code version and critical parameters.
+            If none is given, will use the latest provenance
+            for the "coaddition" process.
+        session: sqlalchemy.orm.session.Session or SmartSession
+            An optional session to use for the database query.
+            If not given, will open a new session and close it at
+            the end of the function.
+
+        Returns
+        -------
+        ref: Image object
+            The reference image for this image, or None if no reference is found.
+
+        """
+        if self.ref_image is None:
 
 
+            with SmartSession(session) as session:
+                image = self.get_image(session=session)
+                self.ref_image = session.scalars(
+                    sa.select(Image).where(
+                        # TODO: we need to figure out exactly how to match reference to image
+                    )
+                ).first()
 
+        return self.ref_image
 
+    def get_subtraction(self, provenance=None, session=None):
+        """
+        Get a subtraction Image, either from memory or from database.
 
+        Parameters
+        ----------
+        provenance: Provenance object
+            The provenance to use for the subtraction.
+            This provenance should be consistent with
+            the current code version and critical parameters.
+            If none is given, will use the latest provenance
+            for the "subtraction" process.
+        session: sqlalchemy.orm.session.Session or SmartSession
+            An optional session to use for the database query.
+            If not given, will open a new session and close it at
+            the end of the function.
 
+        Returns
+        -------
+        sub: Image
+            The subtraction Image,
+            or None if no matching subtraction image is found.
+
+        """
+        # make sure the subtraction has the correct provenance
+        if self.sub_image is not None:
+            if provenance is None:  # check if in upstream_provs/database
+                provenance = self._get_provenance_fallback('subtraction', session=session)
+
+            if self.sub_image.provenance is None:
+                raise ValueError('Subtraction image has no provenance!')
+
+            # a mismatch of provenance and cached image:
+            if self.sub_image.provenance.unique_hash != provenance.unique_hash:
+                self.sub_image = None
+
+        # not in memory, look for it on the DB
+        if self.sub_image is None:
+            with SmartSession(session) as session:
+                image = self.get_image(session=session)
+                ref = self.get_reference_image(session=session)
+                self.sub_image = session.scalars(
+                    sa.select(Image).where(
+                        Image.ref_id == ref.id,
+                        Image.new_id == image.id,
+                        Image.provenance.has(unique_hash=provenance.unique_hash),
+                    )
+                ).first()
+
+        return self.sub_image
+
+    def get_cutouts(self, provenance=None, session=None):
+        """
+        Get a list of Cutouts, either from memory or from database.
+
+        Parameters
+        ----------
+        provenance: Provenance object
+            The provenance to use for the measurements.
+            This provenance should be consistent with
+            the current code version and critical parameters.
+            If none is given, will use the latest provenance
+            for the "cutting" process.
+        session: sqlalchemy.orm.session.Session or SmartSession
+            An optional session to use for the database query.
+            If not given, will open a new session and close it at
+            the end of the function.
+
+        Returns
+        -------
+        measurements: list of Measurement objects
+            The list of measurements, or None if no matching measurements are found.
+
+        """
+        # make sure the cutouts have the correct provenance
+        if self.cutouts is not None:
+            if provenance is None:
+                provenance = self._get_provenance_fallback('measurement', session=session)
+
+            if any([c.provenance is None for c in self.cutouts]):
+                raise ValueError('One of the Cutouts has no provenance!')
+
+            # a mismatch of provenance and cached image:
+            if any([c.provenance.unique_hash != provenance.unique_hash for c in self.cutouts]):
+                self.cutouts = None
+
+        # not in memory, look for it on the DB
+        if self.cutouts is None:
+            with SmartSession(session) as session:
+                image = self.get_subtraction(session=session)
+
+                self.cutouts = session.scalars(
+                    sa.select(Measurements).where(
+                        Cutouts.sub_image_id == image.id,
+                        Cutouts.provenance.has(unique_hash=provenance.unique_hash),
+                    )
+                ).all()
+
+        return self.measurements
+
+    def get_measurements(self, provenance=None, session=None):
+        """
+        Get a list of Measurements, either from memory or from database.
+
+        Parameters
+        ----------
+        provenance: Provenance object
+            The provenance to use for the measurements.
+            This provenance should be consistent with
+            the current code version and critical parameters.
+            If none is given, will use the latest provenance
+            for the "measurement" process.
+        session: sqlalchemy.orm.session.Session or SmartSession
+            An optional session to use for the database query.
+            If not given, will open a new session and close it at
+            the end of the function.
+
+        Returns
+        -------
+        measurements: list of Measurement objects
+            The list of measurements, or None if no matching measurements are found.
+
+        """
+        # make sure the measurements have the correct provenance
+        if self.measurements is not None:
+            if provenance is None:
+                provenance = self._get_provenance_fallback('measurement', session=session)
+
+            if any([m.provenance is None for m in self.measurements]):
+                raise ValueError('One of the Measurements has no provenance!')
+
+            # a mismatch of provenance and cached image:
+            if any([m.provenance.unique_hash != provenance.unique_hash for m in self.measurements]):
+                self.measurements = None
+
+        # not in memory, look for it on the DB
+        if self.measurements is None:
+            with SmartSession(session) as session:
+                cutouts = self.get_cutouts(session=session)
+                cutout_ids = [c.id for c in cutouts]
+                self.measurements = session.scalars(
+                    sa.select(Measurements).where(
+                        Measurements.cutouts_id.in_(cutout_ids),
+                        Measurements.provenance.has(unique_hash=provenance.unique_hash),
+                    )
+                ).all()
+
+        return self.measurements
