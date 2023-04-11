@@ -40,23 +40,23 @@ class Subtractor:
 
         Returns a DataStore object with the products of the processing.
         """
-        ds = DataStore.from_args(*args, **kwargs)
+        ds, session = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step:
-        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=ds.session)
-        sub_image = ds.get_subtraction(prov, session=ds.session)
+        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
+        sub_image = ds.get_subtraction(prov, session=session)
 
         if sub_image is None:
             # use the latest image in the data store,
             # or load using the provenance given in the
             # data store's upstream_provs, or just use
             # the most recent provenance for "preprocessing"
-            image = ds.get_image(session=ds.session)
+            image = ds.get_image(session=session)
             if image is None:
                 raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
             # look for a reference that has to do with the current image
-            ref = ds.get_reference_image(session=ds.session)
+            ref = ds.get_reference_image(session=session)
             if ref is None:
                 raise ValueError(
                     f'Cannot find a reference image corresponding to the datastore inputs: {ds.get_inputs()}'

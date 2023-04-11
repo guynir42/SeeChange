@@ -38,16 +38,16 @@ class Preprocessor:
         #  Save the dark/flat to attributes on "self"
         #  Apply the dark/flat/sky subtraction
         #  If not, create an Image for the specific CCD and add it to the cache and database.
-        ds = DataStore.from_args(*args, **kwargs)
+        ds, session = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step, using the current parameters:
-        prov = ds.get_provenance('preprocessing', self.pars.get_critical_pars(), session=ds.session)
+        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
 
         # check if the image already exists in memory or in the database:
-        image = ds.get_image(prov, session=ds.session)
+        image = ds.get_image(prov, session=session)
 
         if image is None:  # need to make new image
-            exposure = ds.get_raw_exposure(session=ds.session)
+            exposure = ds.get_raw_exposure(session=session)
 
             # TODO: get the CCD image from the exposure
             image = Image(exposure_id=exposure.id, ccd_id=ds.ccd_id, provenance=ds.provenances['preprocessing'])

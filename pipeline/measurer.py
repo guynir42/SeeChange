@@ -48,18 +48,18 @@ class Measurer:
 
     def run(self, *args, **kwargs):
         """
-        Search a subtraction image for new sources, create cutouts, and append them to an Object.
-        Arguments are parsed by the DataStore.parse_args() method.
+        Go over the cutouts from an image and measure all sorts of things
+        for each cutout: photemetry (flux, centroids), real/bogus, etc.
 
         Returns a DataStore object with the products of the processing.
         """
-        ds = DataStore.from_args(*args, **kwargs)
+        ds, session = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step:
-        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=ds.session)
+        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
 
         # try to find some measurements in memory or in the database:
-        ments = ds.get_measurements(prov, session=ds.session)
+        ments = ds.get_measurements(prov, session=session)
 
         if ments is None:  # must create a new list of Measurements
 
@@ -67,7 +67,7 @@ class Measurer:
             # or load using the provenance given in the
             # data store's upstream_provs, or just use
             # the most recent provenance for "detection"
-            detections = ds.get_detections(session=ds.session)
+            detections = ds.get_detections(session=session)
 
             if detections is None:
                 raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')

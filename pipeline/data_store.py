@@ -47,13 +47,27 @@ class DataStore:
     def from_args(*args, **kwargs):
         """
         Create a DataStore object from the given arguments.
+        See the parse_args method for details on the different input parameters.
+
+        Returns
+        -------
+        ds: DataStore
+            The DataStore object.
+        session: sqlalchemy.orm.session.Session or SmartSession or None
         """
         if len(args) == 0:
             raise ValueError('No arguments given to DataStore constructor!')
         if len(args) == 1 and isinstance(args[0], DataStore):
-            return args[0]
+            return args[0], None
+        if (
+                len(args) == 2 and isinstance(args[0], DataStore)
+                and isinstance(args[1], (sa.orm.session.Session, SmartSession))
+        ):
+            return args[0], args[1]
         else:
-            return DataStore(*args, **kwargs)
+            ds = DataStore()
+            session = ds.parse_args(*args, **kwargs)
+            return ds, session
 
     def __init__(self, *args, **kwargs):
         """
@@ -72,8 +86,6 @@ class DataStore:
         self.measurements = None  # photometry and other measurements for each source
 
         self.upstream_provs = None  # provenances to override the upstreams if no upstream objects exist
-
-        self.session = None  # optional database session
 
         # these are identifiers used to find the data products in the database
         self.exp_id = None  # use this and ccd_id to find the raw image
@@ -103,7 +115,16 @@ class DataStore:
             attributes. These are parsed after the args
             list and can override it!
 
+        Returns
+        -------
+        output_session: sqlalchemy.orm.session.Session or SmartSession
+            If the user provided a session, return it to the scope
+            that called "parse_args" so it can be used locally by
+            the function that received the session as one of the arguments.
+            If no session is given, will return None.
         """
+        output_session = None
+
         if len(args) == 0:
             raise ValueError('Must provide at least one argument to DataStore constructor.')
 
@@ -115,7 +136,7 @@ class DataStore:
         # catch any sessions given to the args list
         sessions = [arg for arg in args if isinstance(arg, (sa.orm.session.Session, SmartSession))]
         if len(sessions) > 0:
-            self.session = sessions[-1]
+            output_session = sessions[-1]
         args = [arg for arg in args if not isinstance(arg, (sa.orm.session.Session, SmartSession))]
 
         # remove any provenances from the args list
@@ -162,7 +183,9 @@ class DataStore:
             if key in ['session']:
                 if not isinstance(val, (sa.orm.session.Session, SmartSession)):
                     raise ValueError(f'Session must be a SQLAlchemy session or SmartSession, got {type(val)}')
-                self.session = val
+                output_session = val
+
+        return output_session
 
     def __setattr__(self, key, value):
         """
@@ -439,7 +462,8 @@ class DataStore:
 
     def get_sources(self, provenance=None, session=None):
         """
-        Get a SourceList, either from memory or from database.
+        Get a SourceList from the original image,
+        either from memory or from database.
 
         Parameters
         ----------
@@ -481,6 +505,7 @@ class DataStore:
                 self.sources = session.scalars(
                     sa.select(SourceList).where(
                         SourceList.image_id == image.id,
+                        SourceList.is_sub.is_(False),
                         SourceList.provenance.has(unique_hash=provenance.unique_hash),
                     )
                 ).first()
@@ -674,6 +699,58 @@ class DataStore:
 
         return self.sub_image
 
+    def get_detections(self, provenance=None, session=None):
+        """
+        Get a SourceList for sources from the subtraction image,
+        either from memory or from database.
+
+        Parameters
+        ----------
+        provenance: Provenance object
+            The provenance to use for the source list.
+            This provenance should be consistent with
+            the current code version and critical parameters.
+            If none is given, will use the latest provenance
+            for the "extraction" process.
+        session: sqlalchemy.orm.session.Session or SmartSession
+            An optional session to use for the database query.
+            If not given, will open a new session and close it at
+            the end of the function.
+
+        Returns
+        -------
+        sl: SourceList object
+            The list of sources for this image (the catalog),
+            or None if no matching source list is found.
+
+        """
+        # not in memory, look for it on the DB
+        if self.detections is not None:
+
+            if provenance is None:  # check if in upstream_provs/database
+                provenance = self._get_provenance_fallback('detection', session=session)
+
+            # make sure the wcs has the correct provenance
+            if self.detections.provenance is None:
+                raise ValueError('SourceList has no provenance!')
+
+            # a mismatch of provenance and cached image:
+            if self.detections.provenance.unique_hash != provenance.unique_hash:
+                self.detections = None
+
+        if self.detections is None:
+            with SmartSession(session) as session:
+                image = self.get_image(session=session)
+                self.detections = session.scalars(
+                    sa.select(SourceList).where(
+                        SourceList.image_id == image.id,
+                        SourceList.is_sub.is_(True),
+                        SourceList.provenance.has(unique_hash=provenance.unique_hash),
+                    )
+                ).first()
+
+        return self.detections
+
     def get_cutouts(self, provenance=None, session=None):
         """
         Get a list of Cutouts, either from memory or from database.
@@ -715,13 +792,13 @@ class DataStore:
                 image = self.get_subtraction(session=session)
 
                 self.cutouts = session.scalars(
-                    sa.select(Measurements).where(
+                    sa.select(Cutouts).where(
                         Cutouts.sub_image_id == image.id,
                         Cutouts.provenance.has(unique_hash=provenance.unique_hash),
                     )
                 ).all()
 
-        return self.measurements
+        return self.cutouts
 
     def get_measurements(self, provenance=None, session=None):
         """

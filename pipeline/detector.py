@@ -51,21 +51,21 @@ class Detector:
 
         Returns a DataStore object with the products of the processing.
         """
-        ds = DataStore.from_args(*args, **kwargs)
+        ds, session = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step:
-        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=ds.session)
+        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
 
         # try to find the sources/detections in memory or in the database:
         if self.pars.subtraction:
-            detections = ds.get_detections(prov, session=ds.session)
+            detections = ds.get_detections(prov, session=session)
 
             if detections is None:
                 # load the subtraction image from memory
                 # or load using the provenance given in the
                 # data store's upstream_provs, or just use
                 # the most recent provenance for "subtraction"
-                image = ds.get_subtraction_image(session=ds.session)
+                image = ds.get_subtraction_image(session=session)
 
                 if image is None:
                     raise ValueError(
@@ -77,14 +77,14 @@ class Detector:
             ds.detections = detections
 
         else:  # regular image
-            sources = ds.get_sources(prov, session=ds.session)
+            sources = ds.get_sources(prov, session=session)
 
             if sources is None:
                 # use the latest image in the data store,
                 # or load using the provenance given in the
                 # data store's upstream_provs, or just use
                 # the most recent provenance for "preprocessing"
-                image = ds.get_image(session=ds.session)
+                image = ds.get_image(session=session)
 
                 if image is None:
                     raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')

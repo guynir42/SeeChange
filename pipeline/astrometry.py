@@ -36,13 +36,13 @@ class Astrometry:
 
         Returns a DataStore object with the products of the processing.
         """
-        ds = DataStore.from_args(*args, **kwargs)
+        ds, session = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step:
-        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=ds.session)
+        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
 
         # try to find the world coordinates in memory or in the database:
-        wcs = ds.get_wcs(prov, session=ds.session)
+        wcs = ds.get_wcs(prov, session=session)
 
         if wcs is None:  # must create a new WorldCoordinate object
 
@@ -50,7 +50,7 @@ class Astrometry:
             # or load using the provenance given in the
             # data store's upstream_provs, or just use
             # the most recent provenance for "extraction"
-            sources = ds.get_sources(session=ds.session)
+            sources = ds.get_sources(session=session)
 
             if sources is None:
                 raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
