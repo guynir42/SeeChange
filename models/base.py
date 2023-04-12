@@ -3,9 +3,10 @@ import os
 from contextlib import contextmanager
 
 import sqlalchemy as sa
-from sqlalchemy import func
+from sqlalchemy import func, orm
 
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy_utils import database_exists, create_database
 
 import util.config as config
@@ -124,8 +125,32 @@ class SeeChangeBase:
         doc="UTC time the object's row was last modified in the database.",
     )
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.from_db = False  # let users know this object was newly created
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    @orm.reconstructor
+    def init_on_load(self):
+        self.from_db = True  # let users know this object was loaded from the database
+
 
 Base = declarative_base(cls=SeeChangeBase)
+
+
+class SpatiallyIndexed(object):
+    """A mixin for tables that have ra and dec fields indexed via q3c."""
+
+    ra = sa.Column(sa.Double)
+    dec = sa.Column(sa.Double)
+
+    @declared_attr
+    def __table_args__(cls):
+        tn = cls.__tablename__
+        return (
+            sa.Index(f"{tn}_q3c_ang2ipix_idx", sa.func.q3c_ang2ipix(cls.ra, cls.dec)),
+        )
 
 
 if __name__ == "__main__":
