@@ -102,7 +102,7 @@ class SeeChangeBase:
     """Base class for all SeeChange classes."""
 
     id = sa.Column(
-        sa.Integer,
+        sa.BigInteger,
         primary_key=True,
         index=True,
         autoincrement=True,
@@ -139,7 +139,7 @@ class SeeChangeBase:
 Base = declarative_base(cls=SeeChangeBase)
 
 
-class SpatiallyIndexed(object):
+class SpatiallyIndexed:
     """A mixin for tables that have ra and dec fields indexed via q3c."""
 
     ra = sa.Column(sa.Double)

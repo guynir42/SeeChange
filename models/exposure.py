@@ -1,3 +1,4 @@
+import inspect
 from collections import defaultdict
 
 import numpy as np
@@ -6,8 +7,10 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 
-from models.base import SeeChangeBase, SpatiallyIndexed
+from astropy.coordinates import SkyCoord
 
+from models.base import Base, SpatiallyIndexed
+import models.instruments
 
 class CCD_Data:
     """
@@ -18,12 +21,12 @@ class CCD_Data:
     """
     def __init__(self, filename, inst):
         self.filename = filename
-        self.instrument = inst
+        self.instrument_object = inst
         self._data = defaultdict(lambda: None)
 
     def __getitem__(self, ccd_id):
         if self._data[ccd_id] is None:
-            self._data[ccd_id] = self.instrument.load(self.filename, ccd_id)
+            self._data[ccd_id] = self.instrument_object.load(self.filename, ccd_id)
         return self._data[ccd_id]
 
     def __setitem__(self, ccd_id, value):
@@ -33,10 +36,13 @@ class CCD_Data:
         self._data = defaultdict(lambda: None)
 
 
-class Exposure(SeeChangeBase, SpatiallyIndexed):
+class Exposure(Base, SpatiallyIndexed):
+
     __tablename__ = "exposures"
 
     header = sa.Column(JSONB, nullable=False, doc="Header of the raw exposure. ")
+
+    filename = sa.Column(sa.Text, nullable=False, index=True, unique=True, doc="Filename for raw exposure. ")
 
     mjd = sa.Column(
         sa.Double,
@@ -53,9 +59,11 @@ class Exposure(SeeChangeBase, SpatiallyIndexed):
 
     telescope = sa.Column(sa.Text, nullable=False, index=True, doc="Telescope name")
 
-    num_ccds = sa.Column(sa.Integer, nullable=False, index=True, doc="Number of CCDs / sections in the full field. ")
+    num_ccds = sa.Column(sa.Integer, nullable=False, index=False, doc="Number of CCDs / sections in the full field. ")
 
-    filename = sa.Column(sa.Text, nullable=False, index=True, unique=True, doc="Filename for raw exposure. ")
+    width = sa.Column(sa.Integer, nullable=False, index=False, doc="Width of each CCD in pixels. ")
+
+    height = sa.Column(sa.Integer, nullable=False, index=False, doc="Height of each CCD in pixels. ")
 
     project = sa.Column(sa.Text, index=True, nullable=False, doc='Name of the project, (could also be a proposal ID). ')
 
@@ -69,22 +77,66 @@ class Exposure(SeeChangeBase, SpatiallyIndexed):
 
     ecllon = sa.Column(sa.Double, index=False, doc="Ecliptic longitude of the target. ")
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the exposure object.
+        Can give the filename of the exposure
+        as the single positional argument.
+
+        Otherwise, give any arguments that are
+        columns of the Exposure table.
+
+        If the filename is given, it will parse
+        the instrument name from the filename.
+        The header will be read out from the FITS file.
+        """
+        super().__init__(**kwargs)  # put keywords into columns
+
         self._data = None
+        self.instrument_object = None
+
+        if len(args) == 1 and isinstance(args[0], str):
+            self.filename = args[0]
+
+        if self.instrument is None:
+            self.parse_instrument_name()
+
+        # find additional column values from the header
+        inst = self.get_instrument_object()
+        if inst is not None:
+            inst.read_header(self.filename)
+
+        # override the header values with any given keyword arguments?
+        for key, value in kwargs.items():
+            if key in self.__dict__:
+                setattr(self, key, value)
+
+        if self.ra is not None and self.dec is not None:
+            self.calculate_coordinates()
 
     @orm.reconstructor
     def init_on_load(self):
         self._data = None
+        self.instrument_object = None
+
+    def parse_instrument_name(self):
+        if self.filename is None:
+            return
+
+        for name, class_ in inspect.getmembers(models.instruments, inspect.isclass):
+            if name.lower() in self.filename.lower():
+                self.instrument = name
+                self.instrument_object = class_()
+                break
 
     def __repr__(self):
-        return f"Exposure({self.id}, {self.exp_time}s, {self.filter}, {self.instrument}, {self.telescope})"
+        return f"Exposure(id: {self.id}, exp: {self.exp_time}s, filt: {self.filter}, from: {self.instrument}/{self.telescope})"
 
     def __str__(self):
         return self.__repr__()
 
     def save(self):
-        pass  # TODO: implement this!
+        pass  # TODO: implement this! do we need this?
 
     def load(self, ccd_ids=None):
         if ccd_ids is None:
@@ -97,19 +149,21 @@ class Exposure(SeeChangeBase, SpatiallyIndexed):
             raise ValueError("ccd_ids must be a list of integers. ")
 
         if self.filename is not None:
-            pass  # TODO: implement this!
-        else:
-            # TODO: get this back to the original ValueError
-            # raise ValueError("Cannot load data from database without a filename! ")
-
-            # I've added this fake image generation for testing purposes.
             for i in ccd_ids:
-                self._data[i] = np.random.normrnd(0, 1, (512, 1024))
+                self.data[i]  # use the CCD_Data __getitem__ method to load the data
+        else:
+            raise ValueError("Cannot load data from database without a filename! ")
 
     @property
     def data(self):
         if self._data is None:
-            self._data = CCD_Data(self.filename, self.get_instrument_object())
+            inst = self.get_instrument_object()
+            if inst is None:
+                if self.instrument is None:
+                    raise ValueError("Cannot have an instrument with no name! ")
+                else:
+                    raise ValueError(f"Could not find instrument with name: {self.instrument}! ")
+            self._data = CCD_Data(self.filename, inst)
         return self._data
 
     @data.setter
@@ -119,6 +173,35 @@ class Exposure(SeeChangeBase, SpatiallyIndexed):
         self._data = value
 
     def get_instrument_object(self):
-        import models.instruments
+        if self.instrument_object is not None:
+            if self.instrument is None:
+                self.instrument_object = None
 
-        return getattr(models.instruments, self.instrument)()
+            else:
+                self.instrument_object = getattr(models.instruments, self.instrument)()
+
+        return self.instrument_object
+
+    def calculate_coordinates(self):
+        if self.ra is None or self.dec is None:
+            raise ValueError("Exposure must have RA and Dec set before calculating coordinates! ")
+
+        coords = SkyCoord(self.ra, self.dec, unit="deg", frame="icrs")
+        self.gallat = coords.galactic.b.deg
+        self.gallon = coords.galactic.l.deg
+        self.ecllat = coords.barycentrictrueecliptic.lat.deg
+        self.ecllon = coords.barycentrictrueecliptic.lon.deg
+
+    def load_header(self):
+        inst = self.get_instrument_object()
+
+        # read header info, put it in the header JOSNB column,
+        # and the other relevant columns: mjd, project, target,
+        # num_ccds, width, height, exp_time, filter, telescope
+        inst.load_header(self, self.filename)
+
+
+if __name__ == '__main__':
+    e = Exposure("Demo_test.fits")
+    print(e)
+    # print(e.data[0])
