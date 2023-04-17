@@ -30,15 +30,23 @@ It is useful to get familiar with the naming convention for different pieces of 
 
 ## Development notes
 
+### Installing Docker
+
+At the moment, some of the things below will not work if you install Docker Desktop.  It has to do with permissions and bind-mounting system volumes; because of how Docker Desktop works, the files inside the container all end up owned as root, not as you, even if they are owned by you on your own filesystem.  Hopefully there's a way to fix this, but in the mean time, install Docker Engine instead of Docker Desktop; instructions are here:
+
+- Installing Docker Engine : https://docs.docker.com/engine/install/
+- Setting up rootless mode (so you don't have to sudo everything) : https://docs.docker.com/engine/security/rootless/
+
 ### Tests
 
-To run the tests on your local system in an environment that approximates how they'll be run on github, cd into `tests` and run
+To run the tests on your local system in an environment that approximates how they'll be run on github, cd into `tests` and run the following command (which requires the "docker compose CLI plugin" installed to work):
 ```
    export GITHUB_REPOSITORY_OWNER=<yourname>
    docker compose build
-   docker compose run runtests
+   USERID=<uid> GROUIP=<gid> docker compose run runtests
 ```
-(You must have the "docker compose CLI plugin" installed for this to work.)  
+where you replace `<uid>` and `<gid>` with your own userid and groupid; if you don't do this, the tests will run, 
+but various pycache files will get created in your checkout owned by root, which is annoying. 
 At the end, `echo $?`; if 0, that's a pass, if 1 (or anything else not 0), that's a fail.  
 (The output you see to the screen should tell you the same information.)  
 This will take a long time the first time you do it, as it has to build the docker images, 
@@ -88,9 +96,9 @@ This means there's no need to rebuild the container every time you change any bi
 
 When you're done, exit the container, and run
 ```
-  docker compose down
+  USERID=<UID> GROUPID=<GID> docker compose down
 ```
-to stop and delete the container images.
+to stop and delete the container images.  (If you created the `.env` file mentioned above, you don't need the USERID and GROUPID definitions, and can just type `docker compose down`.)
 
 The `docker-compose.yaml` file in this directory defines a volume where postgres stores its data.  
 This means that every time you restart the environment, 
@@ -130,3 +138,4 @@ Look out for any warnings, and review the created migration file before applying
 If you add any columns or tables that need to use a q3c index, 
 you will need either to edit the migration by hand, 
 or create a new migration (by running `alembic revision` without `--autogenerate`) and edit it by hand.
+
