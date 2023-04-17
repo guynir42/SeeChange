@@ -30,7 +30,6 @@ class ParsCutter(Parameters):
 class Cutter:
     def __init__(self, **kwargs):
         self.pars = ParsCutter()
-        self.pars.update(kwargs)
 
     def run(self, *args, **kwargs):
         """

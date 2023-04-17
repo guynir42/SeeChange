@@ -35,7 +35,7 @@ class CodeVersion(Base):
 
     code_hashes = sa.orm.relationship(
         CodeHash,
-        backref='code_versions',
+        back_populates='code_version',
         cascade='all, delete-orphan',
         passive_deletes=True,
         doc='List of commit hashes for this version of the code',

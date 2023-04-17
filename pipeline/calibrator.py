@@ -27,7 +27,6 @@ class ParsCalibrator(Parameters):
 class Calibrator:
     def __init__(self, **kwargs):
         self.pars = ParsCalibrator()
-        self.pars.update(kwargs)
 
     def run(self, *args, **kwargs):
         """

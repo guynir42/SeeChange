@@ -43,6 +43,17 @@ class Instrument:
         """
         raise NotImplementedError("This method must be implemented by the subclass.")
 
+    def get_num_ccds(self):
+        """
+        Get the number of CCDs in the instrument.
+
+        Returns
+        -------
+        num_ccds: int
+            The number of CCDs in the instrument.
+        """
+        raise NotImplementedError("This method must be implemented by the subclass.")
+
 
 class Demo(Instrument):
     def load(self, filename, ccd_id):
@@ -50,6 +61,9 @@ class Demo(Instrument):
 
     def read_header(self, filename):
         return {}
+
+    def get_num_ccds(self):
+        return 7
 
 
 class DECam(Instrument):

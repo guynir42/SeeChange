@@ -59,14 +59,16 @@ To create a database on your local machine and get a development shell in which 
 ```
    USERID=<UID> GROUPID=<GID> docker compose up -d
 ```
-replacing `<UID>` with your uid, and `<GID>` with your GID.  You can avoid typing this all the time by creating a file `.env` in the `devshell` directory with contents
+replacing `<UID>` with your uid, and `<GID>` with your GID.  
+You can avoid typing this all the time by creating a file `.env` in the `devshell` directory with contents
 ```
   USERID=<UID>
   GROUPID=<GID>
 ```
 again replacing `<UID>` and `<GID>` with the right things (you can find your uid and gid with `id -u` and `id -g`). 
 
-Once things are started, there will be two containers running, one for your database, one to which you can attach with a shell.  Do
+Once things are started, there will be two containers running, 
+one for your database, one to which you can attach with a shell.  Do
 ```
    docker ps
 ```

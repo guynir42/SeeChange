@@ -41,8 +41,7 @@ class ParsDetector(Parameters):
 
 class Detector:
     def __init__(self, **kwargs):
-        self.pars = ParsDetector()
-        self.pars.update(kwargs)
+        self.pars = ParsDetector(**kwargs)
 
     def run(self, *args, **kwargs):
         """

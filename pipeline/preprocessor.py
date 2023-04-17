@@ -24,8 +24,7 @@ class ParsPreprocessor(Parameters):
 
 class Preprocessor:
     def __init__(self, **kwargs):
-        self.pars = ParsPreprocessor()
-        self.pars.update(kwargs)
+        self.pars = ParsPreprocessor(**kwargs)
 
     def run(self, *args, **kwargs):
         """

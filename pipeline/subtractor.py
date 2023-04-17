@@ -29,7 +29,6 @@ class ParsSubtractor(Parameters):
 class Subtractor:
     def __init__(self, **kwargs):
         self.pars = ParsSubtractor()
-        self.pars.update(kwargs)
 
         # TODO: add a reference cache here.
 

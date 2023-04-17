@@ -50,3 +50,10 @@ def get_latest_provenance(process_name, session=None):
 
     return prov
 
+
+def normalize_header_key(key):
+    """
+    Normalize the header key to be all uppercase and
+    remove spaces and underscores.
+    """
+    return key.upper().replace(' ', '').replace('_', '')

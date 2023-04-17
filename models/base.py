@@ -5,8 +5,8 @@ from contextlib import contextmanager
 import sqlalchemy as sa
 from sqlalchemy import func, orm
 
-from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declared_attr, declarative_base
 from sqlalchemy_utils import database_exists, create_database
 
 import util.config as config
@@ -84,20 +84,6 @@ def safe_mkdir(path):
     os.makedirs(path, exist_ok=True)
 
 
-def clear_tables():
-    from models.provenance import CodeVersion, Provenance
-
-    try:
-        Provenance.metadata.drop_all(engine)
-    except:
-        pass
-
-    try:
-        CodeVersion.metadata.drop_all(engine)
-    except:
-        pass
-
-
 class SeeChangeBase:
     """Base class for all SeeChange classes."""
 
@@ -142,8 +128,8 @@ Base = declarative_base(cls=SeeChangeBase)
 class SpatiallyIndexed:
     """A mixin for tables that have ra and dec fields indexed via q3c."""
 
-    ra = sa.Column(sa.Double)
-    dec = sa.Column(sa.Double)
+    ra = sa.Column(sa.Double, nullable=False, doc='Right ascension in degrees')
+    dec = sa.Column(sa.Double, nullable=False, doc='Declination in degrees')
 
     @declared_attr
     def __table_args__(cls):

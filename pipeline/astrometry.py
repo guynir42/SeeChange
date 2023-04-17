@@ -27,7 +27,7 @@ class ParsAstrometry(Parameters):
 class Astrometry:
     def __init__(self, **kwargs):
         self.pars = ParsAstrometry()
-        self.pars.update(kwargs)
+
 
     def run(self, *args, **kwargs):
         """

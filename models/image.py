@@ -3,7 +3,8 @@ from models.base import Base
 
 
 class Image(Base):
-    pass
+
+    __tablename__ = 'images'
 
 
 if __name__ == '__main__':

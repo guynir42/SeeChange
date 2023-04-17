@@ -20,19 +20,21 @@ config = {}  # TODO: replace this with Rob's config loader
 # put all the top-level pipeline parameters in the init of this class:
 class ParsPipeline(Parameters):
 
-    def __init__(self):
+    def __init__(self, **kwargs):
             super().__init__()
 
             self.add_par('example_pipeline_parameter', 1, int, 'an example pipeline parameter')
 
             self._enforce_no_new_attrs = True  # lock against new parameters
 
+            self.override(kwargs)
+
 
 class Pipeline:
     def __init__(self, **kwargs):
         # top level parameters
-        self.pars = ParsPipeline(config.get('pipeline', {}))
-        self.pars.update(kwargs.get('pipeline', {}))
+        self.pars = ParsPipeline(**config.get('pipeline', {}))
+        self.pars.augment(kwargs.get('pipeline', {}))
 
         # dark/flat and sky subtraction tools
         preprocessor_config = config.get('preprocessor', {})

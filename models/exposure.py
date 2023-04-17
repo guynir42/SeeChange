@@ -12,6 +12,8 @@ from astropy.coordinates import SkyCoord
 from models.base import Base, SpatiallyIndexed
 import models.instruments
 
+from pipeline.utils import normalize_header_key
+
 class CCD_Data:
     """
     A helper class that lazy loads the CCD data from the database.
@@ -102,9 +104,9 @@ class Exposure(Base, SpatiallyIndexed):
             self.parse_instrument_name()
 
         # find additional column values from the header
-        inst = self.get_instrument_object()
-        if inst is not None:
-            inst.read_header(self.filename)
+        self.read_header()
+
+        self.num_ccds = self.get_instrument_object().get_num_ccds()
 
         # override the header values with any given keyword arguments?
         for key, value in kwargs.items():
@@ -192,13 +194,41 @@ class Exposure(Base, SpatiallyIndexed):
         self.ecllat = coords.barycentrictrueecliptic.lat.deg
         self.ecllon = coords.barycentrictrueecliptic.lon.deg
 
-    def load_header(self):
+    def read_header(self):
         inst = self.get_instrument_object()
 
-        # read header info, put it in the header JOSNB column,
-        # and the other relevant columns: mjd, project, target,
-        # num_ccds, width, height, exp_time, filter, telescope
-        inst.load_header(self, self.filename)
+        # read header info, put it in the header JOSNB column
+        if inst is not None:
+            self.header = inst.read_header(self.filename)
+
+    def parse_header_keys(self):
+        """
+        Parse the relevant columns: mjd, project, target,
+        num_ccds, width, height, exp_time, filter, telescope
+        from self.header and into the column attributes.
+        """
+
+        for k, v in self.header:
+            norm_k = normalize_header_key(k)
+            if norm_k.upper() in ['MJD-OBS', 'MJD']:
+                self.mjd = v
+            elif norm_k.upper() in ['PROPOSID', 'PROPOSAL', 'PROJECT']:
+                self.project = v
+            elif norm_k.upper() in ['OBJECT', 'TARGET', 'FIELD', 'FIELDID']:
+                self.target = v
+            elif norm_k.upper() in ['EXPTIME', 'EXPOSURE']:
+                self.exp_time = v
+            elif norm_k.upper() in ['FILTER', 'FILT']:
+                self.filter = v
+            elif norm_k.upper() in ['TELESCOP', 'TELESCOPE']:
+                self.telescope = v
+            elif norm_k.upper() in ['INSTRUME', 'INSTRUMENT']:
+                self.instrument = v
+            elif norm_k.upper() in ['NAXIS1']:
+                self.width = v
+            elif norm_k.upper() in ['NAXIS2']:
+                self.height = v
+            # TODO: how to parse the number of CCDs?
 
 
 if __name__ == '__main__':
