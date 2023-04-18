@@ -65,7 +65,7 @@ def provenance_extra(code_version, provenance_base):
 @pytest.fixture
 def exposure():
 
-    e = Exposure('Demo_eposure.fits', )
+    e = Exposure('Demo_exposure.fits')
 
     yield e
 
