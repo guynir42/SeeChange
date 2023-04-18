@@ -20,7 +20,32 @@ CODE_ROOT = os.path.abspath(os.path.join(__file__, os.pardir, os.pardir))
 _engine = None
 _Session = None
     
-        
+
+def Session():
+    """
+    Make a session if it doesn't already exist.
+    Use this in interactive sessions where you don't
+    want to open the session as a context manager.
+    If you want to use it in a context manager
+    (the "with" statement where it closes at the
+    end of the context) use SmartSession() instead.
+
+    Returns
+    -------
+    sqlalchemy.orm.session.Session
+        A session object that doesn't automatically close.
+    """
+    global _Session, _engine
+    if _Session is None:
+        cfg = config.Config.get()
+        url = (f'{cfg.value("db.engine")}://{cfg.value("db.user")}:{cfg.value("db.password")}'
+               f'@{cfg.value("db.host")}:{cfg.value("db.port")}/{cfg.value("db.database")}')
+        engine = sa.create_engine(url, future=True, poolclass=sa.pool.NullPool)
+
+        _Session = sessionmaker(bind=engine, expire_on_commit=True)
+    return _Session()
+
+
 @contextmanager
 def SmartSession(input_session=None):
     """
@@ -35,14 +60,8 @@ def SmartSession(input_session=None):
 
     # open a new session and close it when outer scope is done
     if input_session is None:
-        if _Session is None:
-            cfg = config.Config.get()
-            url = ( f'{cfg.value("db.engine")}://{cfg.value("db.user")}:{cfg.value("db.password")}'
-                    f'@{cfg.value("db.host")}:{cfg.value("db.port")}/{cfg.value("db.database")}' )
-            engine = sa.create_engine( url, future=True, poolclass=sa.pool.NullPool )
-            
-            _Session = sessionmaker(bind=engine, expire_on_commit=True)
-        with _Session() as session:
+
+        with Session() as session:
             yield session
 
     # return the input session with the same scope as given
