@@ -1,5 +1,6 @@
 
 from models.base import Base
 
+
 class Exposure(Base):
-    pass
+    __tablename__ = "exposures"
