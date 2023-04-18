@@ -9,7 +9,7 @@ Each table is mapped to a python-side object, that can be added or deleted using
 
 It is useful to get familiar with the naming convention for different pieces of data: 
 
-- `Exposure`: a single exposure of a single CCD, linked to raw data on disk. 
+- `Exposure`: a single exposure of all CCDs on the focal plane, linked to raw data on disk. 
 - `Image`: a simple image, that has been processed to remove bias, dark, and flat fields.
   An `Image` can be linked to one `Exposure`, or it can be linked to a list of other 'Image' objects
   (if it is a coadded image) and it can be linked to a reference and new image (if it is a difference image).
@@ -39,7 +39,8 @@ At the moment, some of the things below will not work if you install Docker Desk
 
 ### Tests
 
-To run the tests on your local system in an environment that approximates how they'll be run on github, cd into `tests` and run the following command (which requires the "docker compose CLI plugin" installed to work):
+To run the tests on your local system in an environment that approximates how they'll be run on github, 
+cd into `tests` and run the following command (which requires the "docker compose CLI plugin" installed to work):
 ```
    export GITHUB_REPOSITORY_OWNER=<yourname>
    docker compose build
@@ -98,7 +99,8 @@ When you're done, exit the container, and run
 ```
   USERID=<UID> GROUPID=<GID> docker compose down
 ```
-to stop and delete the container images.  (If you created the `.env` file mentioned above, you don't need the USERID and GROUPID definitions, and can just type `docker compose down`.)
+to stop and delete the container images.  (If you created the `.env` file mentioned above, 
+you don't need the USERID and GROUPID definitions, and can just type `docker compose down`.)
 
 The `docker-compose.yaml` file in this directory defines a volume where postgres stores its data.  
 This means that every time you restart the environment, 
@@ -133,9 +135,4 @@ After editing any schema, you have to create new database migrations to apply th
 ```
 The comment will go in the filename, so it should really be short.  
 Look out for any warnings, and review the created migration file before applying it (with `alembic upgrade head`).
-
-*NOTE:* Alembic doesn't properly handle q3c indices when autogenerating migrations. 
-If you add any columns or tables that need to use a q3c index, 
-you will need either to edit the migration by hand, 
-or create a new migration (by running `alembic revision` without `--autogenerate`) and edit it by hand.
 
