@@ -1,6 +1,6 @@
 
-from models.base import SeeChangeBase
+from models.base import Base
 
 
-class WorldCoordinates(SeeChangeBase):
-    pass
+class WorldCoordinates(Base):
+    __tablename__ = 'world_coordinates'

@@ -1,6 +1,6 @@
 
-from models.base import SeeChangeBase
+from models.base import Base
 
 
-class Measurements(SeeChangeBase):
-    pass
+class Measurements(Base):
+    __tablename__ = 'measurements'

@@ -1,6 +1,6 @@
 
-from models.base import SeeChangeBase
+from models.base import Base
 
 
-class ZeroPoint(SeeChangeBase):
-    pass
+class ZeroPoint(Base):
+    __tablename__ = 'zero_points'

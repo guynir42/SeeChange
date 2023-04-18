@@ -1,6 +1,6 @@
 
-from models.base import SeeChangeBase
+from models.base import Base
 
 
-class SourceList(SeeChangeBase):
-    pass
+class SourceList(Base):
+    __tablename__ = 'source_lists'
