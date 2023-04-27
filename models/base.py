@@ -1,4 +1,5 @@
 import os
+import inspect
 
 from contextlib import contextmanager
 
@@ -21,6 +22,22 @@ _engine = None
 _Session = None
     
 
+def do_this_at_first_connection_to_db(session):
+    """
+    A bunch of things that need to be run whenever a new python instance connects to DB.
+    """
+
+    # make sure all the instruments are up-to-date on the database:
+    if sa.inspect(_engine).has_table('instruments'):
+        import models.instrument
+        for name, class_ in inspect.getmembers(models.instrument, inspect.isclass):
+            if name != 'Instrument':
+                if hasattr(class_, 'verify_instrument_on_db'):
+                    class_.verify_instrument_on_db(session)
+
+    # add more things!
+
+
 def Session():
     """
     Make a session if it doesn't already exist.
@@ -40,9 +57,12 @@ def Session():
         cfg = config.Config.get()
         url = (f'{cfg.value("db.engine")}://{cfg.value("db.user")}:{cfg.value("db.password")}'
                f'@{cfg.value("db.host")}:{cfg.value("db.port")}/{cfg.value("db.database")}')
-        engine = sa.create_engine(url, future=True, poolclass=sa.pool.NullPool)
+        _engine = sa.create_engine(url, future=True, poolclass=sa.pool.NullPool)
 
-        _Session = sessionmaker(bind=engine, expire_on_commit=True)
+        _Session = sessionmaker(bind=_engine, expire_on_commit=True)
+
+        do_this_at_first_connection_to_db(_Session())
+
     return _Session()
 
 

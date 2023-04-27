@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from astropy.coordinates import SkyCoord
 
 from models.base import Base, SpatiallyIndexed
-import models.instruments
+import models.instrument
 
 from pipeline.utils import normalize_header_key
 
@@ -126,7 +126,7 @@ class Exposure(Base, SpatiallyIndexed):
         if self.filename is None:
             return
 
-        for name, class_ in inspect.getmembers(models.instruments, inspect.isclass):
+        for name, class_ in inspect.getmembers(models.instrument, inspect.isclass):
             if name.lower() in self.filename.lower():
                 self.instrument = name
                 self.instrument_object = class_()
