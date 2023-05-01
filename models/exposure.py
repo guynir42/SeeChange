@@ -1,39 +1,41 @@
-
+import re
 import inspect
 from collections import defaultdict
 
 import numpy as np
 
 import sqlalchemy as sa
-from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.schema import CheckConstraint
+from sqlalchemy.ext.associationproxy import association_proxy
 
 from astropy.coordinates import SkyCoord
 
 from models.base import Base, SpatiallyIndexed
-import models.instrument
+from models.instrument import Instrument, INSTRUMENT_FILENAME_REGEX
 
 from pipeline.utils import normalize_header_key
 
-class CCD_Data:
+
+class SectionData:
     """
-    A helper class that lazy loads the CCD data from the database.
-    When requesting one of the CCD IDs it will fetch that data from
+    A helper class that lazy loads the section data from the database.
+    When requesting one of the section IDs it will fetch that data from
     disk and store it in memory.
     To clear the memory cache, call the clear_cache() method.
     """
     def __init__(self, filename, inst):
         self.filename = filename
-        self.instrument_object = inst
+        self.instrument = inst
         self._data = defaultdict(lambda: None)
 
-    def __getitem__(self, ccd_id):
-        if self._data[ccd_id] is None:
-            self._data[ccd_id] = self.instrument_object.load(self.filename, ccd_id)
-        return self._data[ccd_id]
+    def __getitem__(self, section_id):
+        if self._data[section_id] is None:
+            self._data[section_id] = self.instrument.load_section(self.filename, section_id)
+        return self._data[section_id]
 
-    def __setitem__(self, ccd_id, value):
-        self._data[ccd_id] = value
+    def __setitem__(self, section_id, value):
+        self._data[section_id] = value
 
     def clear_cache(self):
         self._data = defaultdict(lambda: None)
@@ -56,17 +58,25 @@ class Exposure(Base, SpatiallyIndexed):
 
     exp_time = sa.Column(sa.Float, nullable=False, index=True, doc="Exposure time in seconds")
 
-    filter = sa.Column(sa.Text, nullable=False, index=True, doc="Filter name")
+    filter = sa.Column(sa.Text, nullable=True, index=True, doc="Filter name")
 
-    instrument = sa.Column(sa.Text, nullable=False, index=True, doc="Instrument name")
+    filter_array = sa.Column(sa.ARRAY(sa.Text), nullable=True, index=True, )
 
-    telescope = sa.Column(sa.Text, nullable=False, index=True, doc="Telescope name")
+    __table_args__ = (
+        CheckConstraint('NOT(filter IS NULL AND filter_array IS NULL)'),
+    )
 
-    num_ccds = sa.Column(sa.Integer, nullable=False, index=False, doc="Number of CCDs / sections in the full field. ")
+    instrument_id = sa.Column(sa.Integer, sa.ForeignKey("instruments.id", ondelete="CASCADE"), nullable=False)
 
-    width = sa.Column(sa.Integer, nullable=False, index=False, doc="Width of each CCD in pixels. ")
+    instrument = sa.orm.relationship(
+        Instrument,
+        back_populates='exposures',
+        doc='Instrument used to take the exposure'
+    )
 
-    height = sa.Column(sa.Integer, nullable=False, index=False, doc="Height of each CCD in pixels. ")
+    instrument_name = association_proxy('instrument', 'name')
+
+    telescope_name = association_proxy('instrument', 'telescope')
 
     project = sa.Column(sa.Text, index=True, nullable=False, doc='Name of the project, (could also be a proposal ID). ')
 
@@ -93,47 +103,54 @@ class Exposure(Base, SpatiallyIndexed):
         the instrument name from the filename.
         The header will be read out from the FITS file.
         """
-        super().__init__(**kwargs)  # put keywords into columns
+        super(Base, self).__init__(**kwargs)  # put keywords into columns
 
         self._data = None
-        self.instrument_object = None
 
         if len(args) == 1 and isinstance(args[0], str):
             self.filename = args[0]
 
-        if self.instrument is None:
-            self.parse_instrument_name()
+        if self.filename is None:
+            # TODO: is there any use case where we dump the data into an exposure and then make a file?
+            raise ValueError("Must give a filename to initialize an Exposure object. ")
 
-        # find additional column values from the header
+        if self.instrument_id is None:
+            self.guess_instrument()
+
         self.read_header()
-
-        self.num_ccds = self.get_instrument_object().get_num_ccds()
-
-        # override the header values with any given keyword arguments?
-        for key, value in kwargs.items():
-            if key in self.__dict__:
-                setattr(self, key, value)
 
         if self.ra is not None and self.dec is not None:
             self.calculate_coordinates()
 
-    @orm.reconstructor
+    @sa.orm.reconstructor
     def init_on_load(self):
+        super(Base, self).init_on_load()
         self._data = None
-        self.instrument_object = None
 
-    def parse_instrument_name(self):
+    def guess_instrument(self):
         if self.filename is None:
-            return
+            raise ValueError("Cannot guess instrument without a filename! ")
 
-        for name, class_ in inspect.getmembers(models.instrument, inspect.isclass):
-            if name.lower() in self.filename.lower():
-                self.instrument = name
-                self.instrument_object = class_()
-                break
+        instrument_list = []
+        for k, v in INSTRUMENT_FILENAME_REGEX.items():
+            if re.search(k, self.filename):
+                instrument_list.append(v)
+
+        if len(instrument_list) == 0:
+            # TODO: maybe add a fallback of looking into the file header?
+            raise ValueError(f"Could not guess instrument from filename: {self.filename}. ")
+        elif len(instrument_list) == 1:
+            self.instrument_id = instrument_list[0]
+        else:
+            raise ValueError(f"Found multiple instruments in filename: {self.filename}. ")
 
     def __repr__(self):
-        return f"Exposure(id: {self.id}, exp: {self.exp_time}s, filt: {self.filter}, from: {self.instrument}/{self.telescope})"
+        return (
+            f"Exposure(id: {self.id}, "
+            f"exp: {self.exp_time}s, "
+            f"filt: {self.filter}, "
+            f"from: {self.instrument_name}/{self.telescope_name})"
+        )
 
     def __str__(self):
         return self.__repr__()
@@ -153,7 +170,7 @@ class Exposure(Base, SpatiallyIndexed):
 
         if self.filename is not None:
             for i in ccd_ids:
-                self.data[i]  # use the CCD_Data __getitem__ method to load the data
+                self.data[i]  # use the SectionData __getitem__ method to load the data
         else:
             raise ValueError("Cannot load data from database without a filename! ")
 
@@ -166,13 +183,13 @@ class Exposure(Base, SpatiallyIndexed):
                     raise ValueError("Cannot have an instrument with no name! ")
                 else:
                     raise ValueError(f"Could not find instrument with name: {self.instrument}! ")
-            self._data = CCD_Data(self.filename, inst)
+            self._data = SectionData(self.filename, inst)
         return self._data
 
     @data.setter
     def data(self, value):
-        if not isinstance(value, CCD_Data):
-            raise ValueError(f"data must be a CCD_Data object. Got {type(value)} instead. ")
+        if not isinstance(value, SectionData):
+            raise ValueError(f"data must be a SectionData object. Got {type(value)} instead. ")
         self._data = value
 
     def get_instrument_object(self):
@@ -233,6 +250,19 @@ class Exposure(Base, SpatiallyIndexed):
 
 
 if __name__ == '__main__':
-    e = Exposure("Demo_test.fits")
+    e = Exposure("Demo_test.fits", exp_time=30, mjd=58392.0, filter="F160W", ra=123, dec=-23, project='foo', target='bar')
     print(e)
-    # print(e.data[0])
+
+    from models.base import Session
+    import models.instrument
+
+    session = Session()
+
+    inst = session.scalars(sa.select(Instrument)).all()
+    print(models.instrument.INSTRUMENT_FILENAME_REGEX)
+
+    e.guess_instrument()
+
+    session.add(e)
+
+    session.commit()

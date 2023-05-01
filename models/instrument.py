@@ -17,6 +17,9 @@ from sqlalchemy.schema import UniqueConstraint
 from models.base import Base, SmartSession
 
 
+INSTRUMENT_FILENAME_REGEX = {}
+
+
 class SensorSection(Base):
     """
     A class to represent a section of a sensor.
@@ -75,7 +78,7 @@ class SensorSection(Base):
     )
 
     @staticmethod
-    def get_attribute_list():
+    def _get_attribute_list():
         """
         Get a list of all attributes of this object,
         not including internal SQLAlchemy attributes,
@@ -124,7 +127,7 @@ class SensorSection(Base):
         not including database level attributes like id, created_at, etc.
         """
 
-        for att in self.get_attribute_list():
+        for att in self._get_attribute_list():
             if getattr(self, att) != getattr(other, att):
                 return False
 
@@ -134,7 +137,7 @@ class SensorSection(Base):
         """
         Update the attributes of this object to match the other object.
         """
-        for att in self.get_attribute_list():
+        for att in self._get_attribute_list():
             setattr(self, att, getattr(other, att))
 
 
@@ -239,6 +242,13 @@ class Instrument(Base):
         doc='A list of allowed string names of filters this instrument can use. '
     )
 
+    filename_regex = sa.Column(
+        sa.ARRAY(sa.Text),
+        nullable=True,
+        doc='A list of regular expression strings that can be used '
+            'to match filenames that were taken using this instrument. '
+    )
+
     sections = sa.orm.relationship(
         SensorSection,
         back_populates='instrument',
@@ -246,6 +256,14 @@ class Instrument(Base):
         lazy='selectin',  # load these by default
         order_by=SensorSection.identifier,
         doc='A list of sections of the instrument. '
+    )
+
+    exposures = sa.orm.relationship(
+        'Exposure',
+        back_populates='instrument',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+        doc='A list of Exposure objects made using this instrument. '
     )
 
     __table_args__ = (UniqueConstraint("name", "telescope", name="_instrument_name_telescope_uc"),)
@@ -256,7 +274,7 @@ class Instrument(Base):
     }
 
     @staticmethod
-    def get_attribute_list():
+    def _get_attribute_list():
         """
         Get a list of all attributes of this object,
         not including internal SQLAlchemy attributes,
@@ -294,10 +312,10 @@ class Instrument(Base):
 
         self.allowed_filters = []  # list of allowed filter names (e.g., ['g', 'r', 'i', 'z', 'Y'])
 
-        self.sections = self.make_sections()  # list of SensorSection objects (ordered by identifier)
+        self.sections = self._make_sections()  # list of SensorSection objects (ordered by identifier)
 
     @staticmethod
-    def make_sections():
+    def _make_sections():
         raise NotImplementedError("Subclass this base class to add methods that are unique to each instrument.")
 
     def __repr__(self):
@@ -316,7 +334,7 @@ class Instrument(Base):
         """
 
         # will also check the section list is the same, using SensorSection.__eq__
-        for att in self.get_attribute_list():
+        for att in self._get_attribute_list():
             if getattr(self, att) != getattr(other, att):
                 return False
 
@@ -327,7 +345,7 @@ class Instrument(Base):
         by calling SensorSection.update() on any sections that
         are not the same.
         """
-        for att in self.get_attribute_list():
+        for att in self._get_attribute_list():
             if att == 'sections':
                 # allow a new list with new section objects to update existing database section rows:
                 other_sections = {s.identifier: s for s in other.sections}
@@ -459,7 +477,7 @@ class Instrument(Base):
 
     # TODO: when should this be called? Ideally on the first time we connect to the DB...
     @classmethod
-    def verify_instrument_on_db(cls, session=None):
+    def _verify_instrument_on_db(cls, session=None):
         """
         Add this instrument to the database.
         This will add the instrument to the database, along with all the sections.
@@ -512,9 +530,10 @@ class DemoInstrument(Instrument):
         self.non_linearity_limit = 10000.0
         self.saturation_limit = 50000.0
         self.allowed_filters = ["g", "r", "i", "z", "Y"]
+        self.filename_regex = ["Demo"]
 
     @staticmethod
-    def make_sections():
+    def _make_sections():
         """
         Make a single section for the DEMO instrument.
 
@@ -574,9 +593,10 @@ class DECam(Instrument):
         self.saturation_limit = 100000
         self.non_linearity_limit = 200000
         self.allowed_filters = ["g", "r", "i", "z", "Y"]
+        self.filename_regex = None
 
     @staticmethod
-    def make_sections():
+    def _make_sections():
         """
         Make the sections for the DECam instrument,
         including the sizes and offsets for each section.

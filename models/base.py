@@ -8,7 +8,6 @@ from sqlalchemy import func, orm
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declared_attr, declarative_base
-from sqlalchemy_utils import database_exists, create_database
 
 import util.config as config
 
@@ -20,22 +19,7 @@ CODE_ROOT = os.path.abspath(os.path.join(__file__, os.pardir, os.pardir))
 
 _engine = None
 _Session = None
-    
-
-def do_this_at_first_connection_to_db(session):
-    """
-    A bunch of things that need to be run whenever a new python instance connects to DB.
-    """
-
-    # make sure all the instruments are up-to-date on the database:
-    if sa.inspect(_engine).has_table('instruments'):
-        import models.instrument
-        for name, class_ in inspect.getmembers(models.instrument, inspect.isclass):
-            if name != 'Instrument':
-                if hasattr(class_, 'verify_instrument_on_db'):
-                    class_.verify_instrument_on_db(session)
-
-    # add more things!
+_instruments_loaded = False
 
 
 def Session():
@@ -52,18 +36,35 @@ def Session():
     sqlalchemy.orm.session.Session
         A session object that doesn't automatically close.
     """
-    global _Session, _engine
+    global _Session, _engine, _instruments_loaded
+
     if _Session is None:
         cfg = config.Config.get()
         url = (f'{cfg.value("db.engine")}://{cfg.value("db.user")}:{cfg.value("db.password")}'
                f'@{cfg.value("db.host")}:{cfg.value("db.port")}/{cfg.value("db.database")}')
         _engine = sa.create_engine(url, future=True, poolclass=sa.pool.NullPool)
 
-        _Session = sessionmaker(bind=_engine, expire_on_commit=True)
+        _Session = sessionmaker(bind=_engine, expire_on_commit=False)
 
-        do_this_at_first_connection_to_db(_Session())
+    session = _Session()
 
-    return _Session()
+    if not _instruments_loaded and sa.inspect(_engine).has_table('instruments'):
+        import models.instrument
+        for name, class_ in inspect.getmembers(models.instrument, inspect.isclass):
+            if name != 'Instrument':
+                if hasattr(class_, '_verify_instrument_on_db'):
+                    class_._verify_instrument_on_db(session)
+
+        # make sure all the filename regex values are registered to local dictionary
+        inst_list = session.scalars(sa.select(models.instrument.Instrument)).all()
+        for inst in inst_list:
+            if inst.filename_regex is not None:
+                for regex in inst.filename_regex:
+                    models.instrument.INSTRUMENT_FILENAME_REGEX[regex] = inst.id
+
+        _instruments_loaded = True
+
+    return session
 
 
 @contextmanager
@@ -151,7 +152,6 @@ class SeeChangeBase:
     )
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
         self.from_db = False  # let users know this object was newly created
         for k, v in kwargs.items():
             setattr(self, k, v)
