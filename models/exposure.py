@@ -138,11 +138,15 @@ class Exposure(Base, SpatiallyIndexed):
 
         if len(instrument_list) == 0:
             # TODO: maybe add a fallback of looking into the file header?
-            raise ValueError(f"Could not guess instrument from filename: {self.filename}. ")
+            # raise ValueError(f"Could not guess instrument from filename: {self.filename}. ")
+            pass  # leave empty is the right thing? should probably go to a fallback method
         elif len(instrument_list) == 1:
             self.instrument_id = instrument_list[0]
         else:
             raise ValueError(f"Found multiple instruments in filename: {self.filename}. ")
+
+        # TODO: add fallback method that runs all instruments
+        #  (or only those on the short list) and checks if they can load the file
 
     def __repr__(self):
         return (
@@ -192,16 +196,6 @@ class Exposure(Base, SpatiallyIndexed):
             raise ValueError(f"data must be a SectionData object. Got {type(value)} instead. ")
         self._data = value
 
-    def get_instrument_object(self):
-        if self.instrument_object is not None:
-            if self.instrument is None:
-                self.instrument_object = None
-
-            else:
-                self.instrument_object = getattr(models.instruments, self.instrument)()
-
-        return self.instrument_object
-
     def calculate_coordinates(self):
         if self.ra is None or self.dec is None:
             raise ValueError("Exposure must have RA and Dec set before calculating coordinates! ")
@@ -213,11 +207,9 @@ class Exposure(Base, SpatiallyIndexed):
         self.ecllon = coords.barycentrictrueecliptic.lon.deg
 
     def read_header(self):
-        inst = self.get_instrument_object()
-
         # read header info, put it in the header JOSNB column
-        if inst is not None:
-            self.header = inst.read_header(self.filename)
+        if self.instrument is not None:
+            self.header = self.instrument.read_header(self.filename)
 
     def parse_header_keys(self):
         """
@@ -242,27 +234,23 @@ class Exposure(Base, SpatiallyIndexed):
                 self.telescope = v
             elif norm_k.upper() in ['INSTRUME', 'INSTRUMENT']:
                 self.instrument = v
-            elif norm_k.upper() in ['NAXIS1']:
-                self.width = v
-            elif norm_k.upper() in ['NAXIS2']:
-                self.height = v
-            # TODO: how to parse the number of CCDs?
 
 
 if __name__ == '__main__':
-    e = Exposure("Demo_test.fits", exp_time=30, mjd=58392.0, filter="F160W", ra=123, dec=-23, project='foo', target='bar')
-    print(e)
 
     from models.base import Session
     import models.instrument
 
+    import numpy as np
+    rnd_str = lambda n: ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
+
+    e = Exposure(f"Demo_test_{rnd_str(5)}.fits", exp_time=30, mjd=58392.0, filter="F160W", ra=123, dec=-23, project='foo', target='bar')
+
     session = Session()
 
     inst = session.scalars(sa.select(Instrument)).all()
-    print(models.instrument.INSTRUMENT_FILENAME_REGEX)
 
     e.guess_instrument()
 
     session.add(e)
-
     session.commit()

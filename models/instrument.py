@@ -77,15 +77,6 @@ class SensorSection(Base):
         doc='The instrument this section belongs to. '
     )
 
-    @staticmethod
-    def _get_attribute_list():
-        """
-        Get a list of all attributes of this object,
-        not including internal SQLAlchemy attributes,
-        and database level attributes like id, created_at, etc.
-        """
-        return ['identifier', 'size_x', 'size_y', 'offset_x', 'offset_y']
-
     def __init__(self, identifier, size_x, size_y, offset_x=0, offset_y=0):
         """
         Create a new SensorSection object.
@@ -127,7 +118,7 @@ class SensorSection(Base):
         not including database level attributes like id, created_at, etc.
         """
 
-        for att in self._get_attribute_list():
+        for att in self.get_attribute_list():
             if getattr(self, att) != getattr(other, att):
                 return False
 
@@ -137,7 +128,7 @@ class SensorSection(Base):
         """
         Update the attributes of this object to match the other object.
         """
-        for att in self._get_attribute_list():
+        for att in self.get_attribute_list():
             setattr(self, att, getattr(other, att))
 
 
@@ -225,13 +216,13 @@ class Instrument(Base):
     )
 
     saturation_limit = sa.Column(
-        sa.Integer,
+        sa.Float,
         nullable=False,
         doc='Saturation level of the instrument (in electrons). '
     )
 
     non_linearity_limit = sa.Column(
-        sa.Integer,
+        sa.Float,
         nullable=False,
         doc='Non-linearity of the instrument (in electrons). '
     )
@@ -273,31 +264,7 @@ class Instrument(Base):
         "polymorphic_identity": "instrument",
     }
 
-    @staticmethod
-    def _get_attribute_list():
-        """
-        Get a list of all attributes of this object,
-        not including internal SQLAlchemy attributes,
-        and database level attributes like id, created_at, etc.
-        """
-        return [
-            'name',
-            'telescope',
-            'aperture',
-            'focal_ratio',
-            'pixel_scale',
-            'square_degree_fov',
-            'read_noise',
-            'read_time',
-            'dark_current',
-            'gain',
-            'saturation_limit',
-            'non_linearity_limit',
-            'allowed_filters',
-            'sections'
-        ]
-
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.name = None  # name of the instrument (e.g., DECam)
         self.telescope = None  # name of the telescope it is mounted on (e.g., Blanco)
         self.focal_ratio = None  # focal ratio of the telescope (e.g., 2.7)
@@ -310,9 +277,11 @@ class Instrument(Base):
         self.saturation_limit = None  # saturation limit in electrons (e.g., 100000)
         self.non_linearity_limit = None  # non-linearity limit in electrons (e.g., 100000)
 
-        self.allowed_filters = []  # list of allowed filter names (e.g., ['g', 'r', 'i', 'z', 'Y'])
+        self.allowed_filters = None  # list of allowed filter names (e.g., ['g', 'r', 'i', 'z', 'Y'])
 
         self.sections = self._make_sections()  # list of SensorSection objects (ordered by identifier)
+
+        super(Base, self).__init__(**kwargs)
 
     @staticmethod
     def _make_sections():
@@ -334,9 +303,12 @@ class Instrument(Base):
         """
 
         # will also check the section list is the same, using SensorSection.__eq__
-        for att in self._get_attribute_list():
+        for att in self.get_attribute_list():
             if getattr(self, att) != getattr(other, att):
+                # print(f'Instrument attribute {att} is different: {getattr(self, att)} != {getattr(other, att)}')
                 return False
+
+        return True
 
     def update(self, other):
         """
@@ -345,7 +317,8 @@ class Instrument(Base):
         by calling SensorSection.update() on any sections that
         are not the same.
         """
-        for att in self._get_attribute_list():
+
+        for att in self.get_attribute_list():
             if att == 'sections':
                 # allow a new list with new section objects to update existing database section rows:
                 other_sections = {s.identifier: s for s in other.sections}
@@ -365,6 +338,8 @@ class Instrument(Base):
 
                 # this assignment should also cause SQLA to update the array column
                 self.sections = self_sections
+                if self.sections is not None and self.id is not None:
+                    [setattr(s, 'instrument_id', self.id) for s in self.sections]
 
             else:
                 setattr(self, att, getattr(other, att))
@@ -505,6 +480,7 @@ class Instrument(Base):
                 session.commit()
             else:
                 if db_inst != inst:
+                    print(f'Updating instrument {inst.name} on DB!')
                     db_inst.update(inst)  # also make sure sections are updated
                     session.commit()
 
@@ -515,8 +491,8 @@ class DemoInstrument(Instrument):
         "polymorphic_identity": "DemoInstrument",
     }
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.name = 'DemoInstrument'
         self.telescope = 'DemoTelescope'
         self.aperture = 2.0
@@ -531,6 +507,9 @@ class DemoInstrument(Instrument):
         self.saturation_limit = 50000.0
         self.allowed_filters = ["g", "r", "i", "z", "Y"]
         self.filename_regex = ["Demo"]
+
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
     @staticmethod
     def _make_sections():
@@ -578,8 +557,8 @@ class DECam(Instrument):
         "polymorphic_identity": "DECam",
     }
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.name = 'DECam'
         self.telescope = 'Blanco'
         self.aperture = 4.0
@@ -594,6 +573,9 @@ class DECam(Instrument):
         self.non_linearity_limit = 200000
         self.allowed_filters = ["g", "r", "i", "z", "Y"]
         self.filename_regex = None
+
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
     @staticmethod
     def _make_sections():

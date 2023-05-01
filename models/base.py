@@ -160,6 +160,25 @@ class SeeChangeBase:
     def init_on_load(self):
         self.from_db = True  # let users know this object was loaded from the database
 
+    def get_attribute_list(self):
+        """
+        Get a list of all attributes of this object,
+        not including internal SQLAlchemy attributes,
+        and database level attributes like id, created_at, etc.
+        """
+        attrs = [
+            a for a in self.__dict__.keys()
+            if (
+                a not in ['_sa_instance_state', 'id', 'created_at', 'modified', 'from_db']
+                and not callable(getattr(self, a))
+                and not isinstance(getattr(self, a), (
+                    orm.collections.InstrumentedList, orm.collections.InstrumentedDict
+                ))
+            )
+        ]
+
+        return attrs
+
 
 Base = declarative_base(cls=SeeChangeBase)
 
