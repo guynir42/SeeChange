@@ -1,3 +1,4 @@
+import os
 import git
 from collections import defaultdict
 import numpy as np
@@ -14,8 +15,10 @@ def get_git_hash():
     #  an environmental variable that is automatically updated
     #  with the current git hash.
 
-    repo = git.Repo(search_parent_directories=True)
-    git_hash = repo.head.object.hexsha
+    git_hash = os.getenv('GITHUB_SHA')
+    if git_hash is None:
+        repo = git.Repo(search_parent_directories=True)
+        git_hash = repo.head.object.hexsha
 
     return git_hash
 
