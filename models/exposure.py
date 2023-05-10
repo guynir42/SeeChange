@@ -11,7 +11,7 @@ from sqlalchemy.ext.associationproxy import association_proxy
 
 from astropy.coordinates import SkyCoord
 
-from models.base import Base, SpatiallyIndexed
+from models.base import Base, SpatiallyIndexed, SmartSession
 from models.instrument import Instrument, INSTRUMENT_FILENAME_REGEX
 
 from pipeline.utils import normalize_header_key
@@ -63,7 +63,10 @@ class Exposure(Base, SpatiallyIndexed):
     filter_array = sa.Column(sa.ARRAY(sa.Text), nullable=True, index=True, )
 
     __table_args__ = (
-        CheckConstraint('NOT(filter IS NULL AND filter_array IS NULL)'),
+        CheckConstraint(
+            sqltext='NOT(filter IS NULL AND filter_array IS NULL)',
+            name='exposures_filter_or_array_check'
+        ),
     )
 
     instrument_id = sa.Column(sa.Integer, sa.ForeignKey("instruments.id", ondelete="CASCADE"), nullable=False)
@@ -159,21 +162,41 @@ class Exposure(Base, SpatiallyIndexed):
     def __str__(self):
         return self.__repr__()
 
+    def fetch_instrument(self, session=None):
+        """
+        Fetch the instrument object from the database.
+
+        Parameters
+        ----------
+        session: sqlalchemy.orm.session.Session
+            Session to use to query the database.
+            If not given (or None), will open a session
+            and close it at the end of the call.
+
+        Returns
+        -------
+        Instrument
+            Instrument object from the database.
+        """
+        with SmartSession(session) as session:
+            self.instrument = session.scalars(sa.select(Instrument).where(Instrument.id == self.instrument_id)).first()
+            return self.instrument  # careful, this instrument is attached to session that could close right away
+
     def save(self):
         pass  # TODO: implement this! do we need this?
 
-    def load(self, ccd_ids=None):
-        if ccd_ids is None:
-            ccd_ids = list(range(self.num_ccds))
+    def load(self, section_ids=None):
+        if section_ids is None:
+            section_ids = self.instrument.get_section_ids()
 
-        if not isinstance(ccd_ids, list):
-            ccd_ids = [ccd_ids]
+        if not isinstance(section_ids, list):
+            section_ids = [section_ids]
 
-        if not all([isinstance(ccd_id, int) for ccd_id in ccd_ids]):
-            raise ValueError("ccd_ids must be a list of integers. ")
+        if not all([isinstance(sec_id, int) for sec_id in section_ids]):
+            raise ValueError("section_ids must be a list of integers. ")
 
         if self.filename is not None:
-            for i in ccd_ids:
+            for i in section_ids:
                 self.data[i]  # use the SectionData __getitem__ method to load the data
         else:
             raise ValueError("Cannot load data from database without a filename! ")
@@ -181,13 +204,9 @@ class Exposure(Base, SpatiallyIndexed):
     @property
     def data(self):
         if self._data is None:
-            inst = self.get_instrument_object()
-            if inst is None:
-                if self.instrument is None:
-                    raise ValueError("Cannot have an instrument with no name! ")
-                else:
-                    raise ValueError(f"Could not find instrument with name: {self.instrument}! ")
-            self._data = SectionData(self.filename, inst)
+            if self.instrument is None:
+                raise ValueError("Cannot load data without an instrument! ")
+            self._data = SectionData(self.filename, self.instrument)
         return self._data
 
     @data.setter
@@ -220,19 +239,19 @@ class Exposure(Base, SpatiallyIndexed):
 
         for k, v in self.header:
             norm_k = normalize_header_key(k)
-            if norm_k.upper() in ['MJD-OBS', 'MJD']:
+            if norm_k in ['MJD-OBS', 'MJD']:
                 self.mjd = v
-            elif norm_k.upper() in ['PROPOSID', 'PROPOSAL', 'PROJECT']:
+            elif norm_k in ['PROPOSID', 'PROPOSAL', 'PROJECT']:
                 self.project = v
-            elif norm_k.upper() in ['OBJECT', 'TARGET', 'FIELD', 'FIELDID']:
+            elif norm_k in ['OBJECT', 'TARGET', 'FIELD', 'FIELDID']:
                 self.target = v
-            elif norm_k.upper() in ['EXPTIME', 'EXPOSURE']:
+            elif norm_k in ['EXPTIME', 'EXPOSURE']:
                 self.exp_time = v
-            elif norm_k.upper() in ['FILTER', 'FILT']:
+            elif norm_k in ['FILTER', 'FILT']:
                 self.filter = v
-            elif norm_k.upper() in ['TELESCOP', 'TELESCOPE']:
+            elif norm_k in ['TELESCOP', 'TELESCOPE']:
                 self.telescope = v
-            elif norm_k.upper() in ['INSTRUME', 'INSTRUMENT']:
+            elif norm_k in ['INSTRUME', 'INSTRUMENT']:
                 self.instrument = v
 
 

@@ -110,6 +110,23 @@ def test_name_telescope_uniqueness():
         assert 'duplicate key value violates unique constraint' in str(e.value)
 
 
+def test_delete_instrument():
+    with SmartSession() as session:
+        instruments = session.scalars(sa.select(Instrument)).all()
+        assert 'DemoInstrument' in [inst.name for inst in instruments]
+        assert 'DECam' in [inst.name for inst in instruments]
+        inst = [i for i in instruments if i.name == 'DemoInstrument'][0]
+        section_id = inst.sections[0].id  # should be only one section
+
+        assert section_id is not None
+
+        session.delete(inst)
+        session.commit()
+
+        section = session.scalars(sa.select(SensorSection).where(SensorSection.id == section_id)).first()
+        assert section is None
+
+
 def test_non_null_constraints():
     class TestInstrument(Instrument):
         def _make_sections(self):
@@ -169,8 +186,5 @@ def test_non_null_constraints():
         # get rid of this instrument
 
         with SmartSession() as session:
-            inst = session.merge(inst)
-            if inst.id is not None:
-                session.execute(sa.delete(Instrument).where(Instrument.id == inst.id))
-                session.commit()
-
+            session.execute(sa.delete(Instrument).where(Instrument.name == 'DemoInstrument'))
+            session.commit()

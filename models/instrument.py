@@ -397,6 +397,7 @@ class Instrument(Base):
         section = next((section for section in self.sections if section.identifier == section_id), None)
         if section is None:
             raise ValueError(f"Could not find section with identifier {section_id}")
+        return section
 
     def load_section(self, filename, section_id):
         """
