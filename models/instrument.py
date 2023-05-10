@@ -66,9 +66,9 @@ class SensorSection(Base):
 
     instrument_id = sa.Column(
         sa.Integer,
-        sa.ForeignKey('instruments.id'),
+        sa.ForeignKey('instruments.id', ondelete='CASCADE'),
         nullable=False,
-        doc='The ID of the instrument this section belongs to. '
+        doc='The ID of the instrument this section belongs to. ',
     )
 
     instrument = sa.orm.relationship(
@@ -233,17 +233,11 @@ class Instrument(Base):
         doc='A list of allowed string names of filters this instrument can use. '
     )
 
-    filename_regex = sa.Column(
-        sa.ARRAY(sa.Text),
-        nullable=True,
-        doc='A list of regular expression strings that can be used '
-            'to match filenames that were taken using this instrument. '
-    )
-
     sections = sa.orm.relationship(
         SensorSection,
         back_populates='instrument',
         cascade='all, delete-orphan',
+        passive_deletes=True,
         lazy='selectin',  # load these by default
         order_by=SensorSection.identifier,
         doc='A list of sections of the instrument. '
@@ -433,6 +427,17 @@ class Instrument(Base):
         """
         return [section.identifier for section in self.sections]
 
+    def get_filename_regex(self):
+        """
+        Get the regular expression used to match filenames for this instrument.
+
+        Returns
+        -------
+        regex: str
+            The regular expression string.
+        """
+        raise NotImplementedError("This method must be implemented by the subclass.")
+
     # TODO: should we read headers independently for each section?
     def read_header(self, filename):
         """
@@ -506,7 +511,6 @@ class DemoInstrument(Instrument):
         self.non_linearity_limit = 10000.0
         self.saturation_limit = 50000.0
         self.allowed_filters = ["g", "r", "i", "z", "Y"]
-        self.filename_regex = ["Demo"]
 
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -551,6 +555,9 @@ class DemoInstrument(Instrument):
     def read_header(self, filename):
         return {}
 
+    def get_filename_regex(self):
+        return [r'Demo']
+
 
 class DECam(Instrument):
     __mapper_args__ = {
@@ -572,7 +579,6 @@ class DECam(Instrument):
         self.saturation_limit = 100000
         self.non_linearity_limit = 200000
         self.allowed_filters = ["g", "r", "i", "z", "Y"]
-        self.filename_regex = None
 
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -594,6 +600,9 @@ class DECam(Instrument):
             sections.append(SensorSection(i, 2048, 4096, 0, i * 4096))
 
         return sections
+
+    def get_filename_regex(self):
+        return [r'c4d.*ori\.fits']
 
 
 if __name__ == "__main__":

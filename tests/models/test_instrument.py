@@ -126,7 +126,10 @@ def test_non_null_constraints():
                     session.commit()
                 assert re.search('null value in column ".*" violates not-null constraint', str(e.value))
                 session.rollback()
-                setattr(inst, att, uuid.uuid4().hex)
+                if att == 'name':
+                    setattr(inst, att, 'DemoInstrument')
+                else:
+                    setattr(inst, att, uuid.uuid4().hex)
 
             # float attributes
             for att in [
@@ -164,8 +167,10 @@ def test_non_null_constraints():
 
     finally:
         # get rid of this instrument
-        if inst.id is not None:
-            with SmartSession() as session:
+
+        with SmartSession() as session:
+            inst = session.merge(inst)
+            if inst.id is not None:
                 session.execute(sa.delete(Instrument).where(Instrument.id == inst.id))
                 session.commit()
 

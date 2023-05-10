@@ -4,6 +4,8 @@ import numpy as np
 
 import sqlalchemy as sa
 
+from models.base import SmartSession
+
 
 def get_git_hash():
     """Get the commit hash of the current git repo. """
@@ -57,3 +59,44 @@ def normalize_header_key(key):
     remove spaces and underscores.
     """
     return key.upper().replace(' ', '').replace('_', '')
+
+
+def parse_session(*args, **kwargs):
+    """
+    Parse the arguments and keyword arguments to find a SmartSession or SQLAlchemy session.
+    If one of the kwargs is called "session" that value will be returned.
+    Otherwise, if any of the unnamed arguments is a session, the last one will be returned.
+    If neither of those are found, None will be returned.
+    Will also return the args and kwargs with any sessions removed.
+
+    Parameters
+    ----------
+    args: list
+        List of unnamed arguments
+    kwargs: dict
+        Dictionary of named arguments
+
+    Returns
+    -------
+    args: list
+        List of unnamed arguments with any sessions removed.
+    kwargs: dict
+        Dictionary of named arguments with any sessions removed.
+    session: SmartSession or SQLAlchemy session or None
+        The session found in the arguments or kwargs.
+    """
+    session = None
+    sessions = [arg for arg in args if isinstance(arg, sa.orm.session.Session)]
+    if len(sessions) > 0:
+        session = sessions[-1]
+    args = [arg for arg in args if not isinstance(arg, sa.orm.session.Session)]
+
+    for key in kwargs.keys():
+        if key in ['session']:
+            if not isinstance(kwargs[key], sa.orm.session.Session):
+                raise ValueError(f'Session must be a sqlalchemy.orm.session.Session, got {type(kwargs[key])}')
+            session = kwargs.pop(key)
+
+    return args, kwargs, session
+
+

@@ -208,7 +208,7 @@ def test_upstream_relationship(code_version, provenance_base, provenance_extra):
 
             p2 = Provenance(
                 process="test_downstream_process",
-                code_version=provenance_base.code_version,
+                code_version=code_version,
                 parameters={"test_key": "test_value1"},
                 upstreams=[provenance_base, provenance_extra],
             )
@@ -226,7 +226,7 @@ def test_upstream_relationship(code_version, provenance_base, provenance_extra):
 
             # check that new provenances get added via relationship cascade
             p3 = Provenance(
-                code_version=provenance_base.code_version,
+                code_version=code_version,
                 parameters={"test_key": "test_value1"},
                 process="test_downstream_process",
                 upstreams=[],

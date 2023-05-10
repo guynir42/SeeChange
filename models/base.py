@@ -6,8 +6,8 @@ from contextlib import contextmanager
 import sqlalchemy as sa
 from sqlalchemy import func, orm
 
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declared_attr, declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.declarative import declared_attr
 
 import util.config as config
 
@@ -44,7 +44,7 @@ def Session():
                f'@{cfg.value("db.host")}:{cfg.value("db.port")}/{cfg.value("db.database")}')
         _engine = sa.create_engine(url, future=True, poolclass=sa.pool.NullPool)
 
-        _Session = sessionmaker(bind=_engine, expire_on_commit=False)
+        _Session = sessionmaker(bind=_engine, expire_on_commit=True)
 
     session = _Session()
 
@@ -58,9 +58,8 @@ def Session():
         # make sure all the filename regex values are registered to local dictionary
         inst_list = session.scalars(sa.select(models.instrument.Instrument)).all()
         for inst in inst_list:
-            if inst.filename_regex is not None:
-                for regex in inst.filename_regex:
-                    models.instrument.INSTRUMENT_FILENAME_REGEX[regex] = inst.id
+            for regex in inst.get_filename_regex():
+                models.instrument.INSTRUMENT_FILENAME_REGEX[regex] = inst.id
 
         _instruments_loaded = True
 
