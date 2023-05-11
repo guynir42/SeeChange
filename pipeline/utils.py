@@ -9,16 +9,22 @@ from models.base import SmartSession
 
 
 def get_git_hash():
-    """Get the commit hash of the current git repo. """
-    # TODO: what if we are running on a production server
-    #  that doesn't have git? Consider replacing this with
-    #  an environmental variable that is automatically updated
-    #  with the current git hash.
+    """
+    Get the commit hash of the current git repo.
+
+    If the environmental variable GITHUB_SHA is set,
+    use that as the git commit hash.
+    If not, try to find the git commit hash of the current repo.
+    If all these methods fail, quietly return None.
+    """
 
     git_hash = os.getenv('GITHUB_SHA')
     if git_hash is None:
-        repo = git.Repo(search_parent_directories=True)
-        git_hash = repo.head.object.hexsha
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            git_hash = repo.head.object.hexsha
+        except Exception:
+            git_hash = None
 
     return git_hash
 
