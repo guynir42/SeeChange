@@ -11,13 +11,20 @@
 #  and fall back to the regular filter column if filter_array is None.
 
 import numpy as np
+
+from collections import defaultdict
+
 import sqlalchemy as sa
 from sqlalchemy.schema import UniqueConstraint
 
 from models.base import Base, SmartSession
 
+from pipeline.utils import normalize_header_key
 
 INSTRUMENT_FILENAME_REGEX = {}
+
+HEADER_KEYS_WITH_DEFAULT = ['mjd', 'exp_time', 'filter', ]
+HEADER_KEYS_WITHOUT_DEFAULT = []
 
 
 class SensorSection(Base):
@@ -455,6 +462,89 @@ class Instrument(Base):
             The header from the exposure file, as a dictionary.
         """
         raise NotImplementedError("This method must be implemented by the subclass.")
+
+    def normalize_header_key(key):
+        """
+        Normalize the header key to be all uppercase and
+        remove spaces and underscores.
+        """
+        return key.upper().replace(' ', '').replace('_', '')
+
+    def get_keys_without_default(self):
+        """
+        Get the keys that must be present in the header,
+        and do not have a default value.
+
+        Subclasses can override this method to add or remove keys.
+        As the value returned is a copy of the global value,
+        the subclass can modify the list without affecting the global value.
+        """
+        return list(HEADER_KEYS_WITHOUT_DEFAULT)
+
+    def get_keys_with_default(self):
+        """
+        Get the keys that don't have to be present in the header,
+        and do have a default value from the instrument class.
+
+        Subclasses can override this method to add or remove keys.
+        As the value returned is a copy of the global value,
+        the subclass can modify the list without affecting the global value.
+        """
+        return list(HEADER_KEYS_WITH_DEFAULT)
+
+    def parse_header_keys(self, header):
+        """
+        Parse the relevant columns: mjd, project, target,
+        width, height, exp_time, filter, telescope, etc
+        from self.header and into the column attributes.
+
+        NOTE: this default method will parse the "normal"
+        header keys, but subclasses for new instruments can
+        augment or replace this method to parse other keys
+        or keys that have different meaning for that instrument.
+
+        Parameters
+        ----------
+        header: dict
+            The header from the exposure file, as a dictionary.
+
+        Returns
+        -------
+        header_values: dict
+            The parsed header values.
+            Some values will use the instrument's default,
+            while others (like mjd or filter) will have None
+            as the default (which could raise exceptions later
+            on if they are missing from the header).
+        """
+
+        header_values = {}
+        for k in self.get_keys_without_default():
+            header_values[k] = None
+
+        # use the instrument defaults for some values
+        for k in self.get_keys_with_default():
+            header_values[k] = getattr(self, k)
+
+        # check if any values exist in the header.
+        for k, v in header:
+            norm_k = normalize_header_key(k)
+            if norm_k in ['MJD-OBS', 'MJD']:
+                header_values['mjd'] = v
+            elif norm_k in ['PROPOSID', 'PROPOSAL', 'PROJECT']:
+                header_values['project'] = v
+            elif norm_k in ['OBJECT', 'TARGET', 'FIELD', 'FIELDID']:
+                header_values['target'] = v
+            elif norm_k in ['EXPTIME', 'EXPOSURE']:
+                header_values['exp_time'] = v
+            elif norm_k in ['FILTER', 'FILT']:
+                header_values['filter'] = v
+            elif norm_k in ['TELESCOP', 'TELESCOPE']:
+                header_values['telescope'] = v
+            elif norm_k in ['INSTRUME', 'INSTRUMENT']:
+                header_values['instrument'] = v
+
+        return header_values
 
     # TODO: when should this be called? Ideally on the first time we connect to the DB...
     @classmethod

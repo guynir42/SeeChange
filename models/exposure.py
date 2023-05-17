@@ -14,8 +14,6 @@ from astropy.coordinates import SkyCoord
 from models.base import Base, SpatiallyIndexed, SmartSession
 from models.instrument import Instrument, INSTRUMENT_FILENAME_REGEX
 
-from pipeline.utils import normalize_header_key
-
 
 class SectionData:
     """
@@ -229,30 +227,46 @@ class Exposure(Base, SpatiallyIndexed):
         # read header info, put it in the header JOSNB column
         if self.instrument is not None:
             self.header = self.instrument.read_header(self.filename)
+            self.parse_header_keys()
 
     def parse_header_keys(self):
         """
         Parse the relevant columns: mjd, project, target,
         num_ccds, width, height, exp_time, filter, telescope
         from self.header and into the column attributes.
-        """
 
-        for k, v in self.header:
-            norm_k = normalize_header_key(k)
-            if norm_k in ['MJD-OBS', 'MJD']:
-                self.mjd = v
-            elif norm_k in ['PROPOSID', 'PROPOSAL', 'PROJECT']:
-                self.project = v
-            elif norm_k in ['OBJECT', 'TARGET', 'FIELD', 'FIELDID']:
-                self.target = v
-            elif norm_k in ['EXPTIME', 'EXPOSURE']:
-                self.exp_time = v
-            elif norm_k in ['FILTER', 'FILT']:
-                self.filter = v
-            elif norm_k in ['TELESCOP', 'TELESCOPE']:
-                self.telescope = v
-            elif norm_k in ['INSTRUME', 'INSTRUMENT']:
-                self.instrument = v
+        Also checks if the header's "instrument" key
+        matches the name of the Exposure's instrument.
+        """
+        if self.instrument is None:
+            raise ValueError("Cannot parse header keys without an instrument! ")
+
+        if self.header is None:
+            return
+
+        header_values = self.instrument.parse_header_keys(self.header)
+
+        for key in ['mjd', 'project', 'target', 'width', 'height', 'exp_time', 'filter', 'telescope']:
+            setattr(self, key, header_values[key])
+
+        for key in [
+            'aperture',
+            'focal_ratio',
+            'pixel_scale',
+            'read_time',
+            'read_noise',
+            'dark_current',
+            'gain',
+            'saturation_limit',
+            'non_linearity_limit',
+        ]:
+            self.header[key] = header_values[key]
+
+        if header_values['instrument'] is not None and header_values['instrument'] != self.instrument.name:
+            raise ValueError(
+                f"Header's instrument ({header_values['instrument']}) "
+                f"does not match Exposure's instrument ({self.instrument.name})! "
+            )
 
 
 if __name__ == '__main__':

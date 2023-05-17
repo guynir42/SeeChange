@@ -62,14 +62,6 @@ def get_latest_provenance(process_name, session=None):
     return prov
 
 
-def normalize_header_key(key):
-    """
-    Normalize the header key to be all uppercase and
-    remove spaces and underscores.
-    """
-    return key.upper().replace(' ', '').replace('_', '')
-
-
 def parse_session(*args, **kwargs):
     """
     Parse the arguments and keyword arguments to find a SmartSession or SQLAlchemy session.
