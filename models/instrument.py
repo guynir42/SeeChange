@@ -11,7 +11,7 @@
 #  and fall back to the regular filter column if filter_array is None.
 
 import numpy as np
-
+from datetime import datetime, timedelta
 from collections import defaultdict
 
 import sqlalchemy as sa
@@ -19,7 +19,7 @@ from sqlalchemy.schema import UniqueConstraint
 
 from models.base import Base, SmartSession
 
-from pipeline.utils import normalize_header_key
+from pipeline.utils import parse_dateobs
 
 INSTRUMENT_FILENAME_REGEX = {}
 
@@ -32,11 +32,28 @@ class SensorSection(Base):
     A class to represent a section of a sensor.
     This is most often associated with a CCD chip, but could be any
     section of a sensor. For example, a section of a CCD chip that
-    is read out independently, or different channels in a dichroic
-    imager.
+    is read out independently, or different channels in a dichroic imager.
+
+    Any properties that are not set (e.g., set to None) on the sensor section
+    will be replaced by the global value of the parent Instrument object.
+    E.g., if the DemoInstrument has gain=2.0, and it's sensor section has
+    gain=None, then the sensor section will have gain=2.0.
+    If at any time the instrument changes, add a new SensorSection object
+    (with appropriate validity range) to the database to capture the new
+    instrument properties.
+    Thus, a SensorSection can override global instrument values either for
+    specific parts of the sensor (spatial variability) or for specific times
+    (temporal variability).
     """
 
     __tablename__ = "sensor_sections"
+
+    instrument = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        doc='The name of the instrument this section belongs to. '
+    )
 
     identifier = sa.Column(
         sa.Text,
@@ -45,46 +62,99 @@ class SensorSection(Base):
         doc='A unique identifier for this section. Can be, e.g., the CCD ID. '
     )
 
+    validity_start = sa.Column(
+        sa.DateTime,
+        nullable=True,
+        index=True,
+        doc=(
+            'The time when this section object becomes valid. '
+            'If None, this section is valid from the beginning of time. '
+            'Use the validity range to get updated versions of sections, '
+            'e.g., after a change of CCD. '
+        )
+    )
+
+    validity_end = sa.Column(
+        sa.DateTime,
+        nullable=True,
+        index=True,
+        doc=(
+            'The time when this section object becomes invalid. '
+            'If None, this section is valid until the end of time. '
+            'Use the validity range to get updated versions of sections, '
+            'e.g., after a change of CCD. '
+        )
+    )
+
     size_x = sa.Column(
         sa.Integer,
-        nullable=False,
+        nullable=True,
         doc='Number of pixels in the x direction. '
     )
 
     size_y = sa.Column(
         sa.Integer,
-        nullable=False,
+        nullable=True,
         doc='Number of pixels in the y direction. '
     )
 
     offset_x = sa.Column(
         sa.Integer,
-        nullable=False,
-        default=0,
+        nullable=True,
         doc='Offset of the section in the x direction (in pixels). '
     )
 
     offset_y = sa.Column(
         sa.Integer,
-        nullable=False,
-        default=0,
+        nullable=True,
         doc='Offset of the section in the y direction (in pixels). '
     )
 
-    instrument_id = sa.Column(
+    filter_array_index = sa.Column(
         sa.Integer,
-        sa.ForeignKey('instruments.id', ondelete='CASCADE'),
+        nullable=True,
+        doc='Index in the filter array that specifies which filter this section is located under in the array. '
+    )
+
+    read_noise = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc='Read noise of the sensor section (in electrons). '
+    )
+
+    dark_current = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc='Dark current of the sensor section (in electrons/pixel/second). '
+    )
+
+    gain = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc='Gain of the sensor section (in electrons/ADU). '
+    )
+
+    saturation_limit = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc='Saturation level of the sensor section (in electrons). '
+    )
+
+    non_linearity_limit = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc='Non-linearity of the sensor section (in electrons). '
+    )
+
+    defective = sa.Column(
+        sa.Boolean,
         nullable=False,
-        doc='The ID of the instrument this section belongs to. ',
+        default=False,
+        index=True,
+        doc='Whether this section is defective (i.e., if True, do not use it!). '
     )
 
-    instrument = sa.orm.relationship(
-        'Instrument',
-        back_populates='sections',
-        doc='The instrument this section belongs to. '
-    )
-
-    def __init__(self, identifier, size_x, size_y, offset_x=0, offset_y=0):
+    def __init__(self, identifier, **kwargs):
         """
         Create a new SensorSection object.
         Some parameters must be filled out for this object.
@@ -95,25 +165,16 @@ class SensorSection(Base):
         identifier: str or int
             A unique identifier for this section. Can be, e.g., the CCD ID.
             Integers will be converted to strings.
-        size_x: int
-            Number of pixels in the x direction.
-        size_y: int
-            Number of pixels in the y direction.
-        offset_x: int (optional)
-            Offset of the section in the x direction (in pixels).
-            Default is 0.
-        offset_y: int (optional)
-            Offset of the section in the y direction (in pixels).
-            Default is 0.
+        kwargs: dict
+            Additional values like gain, saturation_limit, etc.
         """
         if not isinstance(identifier, (str, int)):
             raise ValueError(f"identifier must be a string or an integer. Got {type(identifier)}.")
 
         self.identifier = str(identifier)
-        self.size_x = size_x
-        self.size_y = size_y
-        self.offset_x = offset_x
-        self.offset_y = offset_y
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
     def __repr__(self):
         return f"<SensorSection {self.identifier} ({self.size_x}x{self.size_y})>"
@@ -131,146 +192,45 @@ class SensorSection(Base):
 
         return True
 
-    def update(self, other):
-        """
-        Update the attributes of this object to match the other object.
-        """
-        for att in self.get_attribute_list():
-            setattr(self, att, getattr(other, att))
-
 
 class Instrument(Base):
     """
     Base class for an instrument.
-    This class corresponds to rows in the database where we keep track
-    of details of each instrument. For example, the pixel scale, aperture,
-    etc. are all stored here. For the time being, this will also include
-    the telescope information (where you'd have multiple rows of the same
-    instrument for different telescopes if the instrument is mobile).
+    Instruments contain all the information about the instrument and telescope,
+    that were used to produce an exposure.
 
     Subclass this base class to add methods that are unique to each instrument,
     e.g., loading files, reading headers, etc.
-    The subclass objects will still be stored on the same table,
-    but would have other methods that are instrument-specific.
 
     Each instrument can have one or more SensorSection objects,
     each corresponding to a part of the focal plane (e.g., a CCD chip).
     These include additional info like the chip offset, size, etc.
+    The sections can be generated dynamically (using hard-coded values),
+    or loaded from the database using get_sections().
+
+    If a sensor section has a non-null value for a given parameter
+    (e.g., gain) then that value is used instead of the Instrument
+    object's global value. Thus, a sensor section can be used to
+    override the global parameter values.
+    Sections can also be defined with a validity range,
+    to reflect changes in the instrument (e.g., replacement of a CCD).
+    This
     """
-
-    __tablename__ = "instruments"
-
-    name = sa.Column(
-        sa.Text,
-        nullable=False,
-        index=True,
-        doc='Name of the instrument. '
-    )
-
-    telescope = sa.Column(
-        sa.Text,
-        nullable=False,
-        index=True,
-        doc='Name of the telescope this instrument is attached to. '
-    )
-
-    aperture = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Aperture of the instrument (in meters). '
-    )
-
-    focal_ratio = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Focal ratio of the instrument. '
-    )
-
-    pixel_scale = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Pixel scale of the instrument (in arc-second/pixel). '
-    )
-
-    square_degree_fov = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Field of view of the instrument (in square degrees). '
-    )
-
-    read_time = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Read time of the instrument (in seconds). '
-    )
-
-    read_noise = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Read noise of the instrument (in electrons). '
-    )
-
-    dark_current = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Dark current of the instrument (in electrons/pixel/second). '
-    )
-
-    gain = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Gain of the instrument (in electrons/ADU). '
-    )
-
-    saturation_limit = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Saturation level of the instrument (in electrons). '
-    )
-
-    non_linearity_limit = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc='Non-linearity of the instrument (in electrons). '
-    )
-
-    allowed_filters = sa.Column(
-        sa.ARRAY(sa.String),
-        nullable=False,
-        doc='A list of allowed string names of filters this instrument can use. '
-    )
-
-    sections = sa.orm.relationship(
-        SensorSection,
-        back_populates='instrument',
-        cascade='all, delete-orphan',
-        passive_deletes=True,
-        lazy='selectin',  # load these by default
-        order_by=SensorSection.identifier,
-        doc='A list of sections of the instrument. '
-    )
-
-    exposures = sa.orm.relationship(
-        'Exposure',
-        back_populates='instrument',
-        cascade='all, delete-orphan',
-        passive_deletes=True,
-        doc='A list of Exposure objects made using this instrument. '
-    )
-
-    __table_args__ = (UniqueConstraint("name", "telescope", name="_instrument_name_telescope_uc"),)
-
-    __mapper_args__ = {
-        "polymorphic_on": "name",
-        "polymorphic_identity": "instrument",
-    }
-
     def __init__(self, **kwargs):
         self.name = None  # name of the instrument (e.g., DECam)
+
+        # telescope related properties
         self.telescope = None  # name of the telescope it is mounted on (e.g., Blanco)
         self.focal_ratio = None  # focal ratio of the telescope (e.g., 2.7)
         self.aperture = None  # telescope aperture in meters (e.g., 4.0)
         self.pixel_scale = None  # number of arc-seconds per pixel (e.g., 0.2637)
+
+        # sensor related properties
+        # these are average value for all sensor sections,
+        # and if no sections can be loaded, or if the sections
+        # do not define these properties, then the global values are used
+        self.size_x = 512  # number of pixels in the x direction
+        self.size_y = 1024  # number of pixels in the y direction
         self.read_time = None  # read time in seconds (e.g., 20.0)
         self.read_noise = None  # read noise in electrons (e.g., 7.0)
         self.dark_current = None  # dark current in electrons/pixel/second (e.g., 0.2)
@@ -280,12 +240,14 @@ class Instrument(Base):
 
         self.allowed_filters = None  # list of allowed filter names (e.g., ['g', 'r', 'i', 'z', 'Y'])
 
-        self.sections = self._make_sections()  # list of SensorSection objects (ordered by identifier)
+        # self.sections = self._make_sections()  # list of SensorSection objects (ordered by identifier)
+        self.sections = None  # can populate this using fetch_sections(), then it would be a dict
+        self._dateobs_for_sections = None  # what the dateobs was when loading sections
+        self._dateobs_range_days = 1.0  # how many days away from dateobs needs to reload sections
 
         super(Base, self).__init__(**kwargs)
 
-    @staticmethod
-    def _make_sections():
+    def _make_new_section(self, identifier):
         raise NotImplementedError("Subclass this base class to add methods that are unique to each instrument.")
 
     def __repr__(self):
@@ -295,60 +257,10 @@ class Instrument(Base):
             f'[{",".join(self.allowed_filters)}])>'
         )
 
-    def __eq__(self, other):
-        """
-        Compare this instrument to another instrument,
-        and return true if all their attributes are the same.
-        This does not include database level attributes such
-        as id, created_at, etc.
-        """
-
-        # will also check the section list is the same, using SensorSection.__eq__
-        for att in self.get_attribute_list():
-            if getattr(self, att) != getattr(other, att):
-                # print(f'Instrument attribute {att} is different: {getattr(self, att)} != {getattr(other, att)}')
-                return False
-
-        return True
-
-    def update(self, other):
-        """
-        Update instance with new attribute values.
-        Will also selectively update the sections list,
-        by calling SensorSection.update() on any sections that
-        are not the same.
-        """
-
-        for att in self.get_attribute_list():
-            if att == 'sections':
-                # allow a new list with new section objects to update existing database section rows:
-                other_sections = {s.identifier: s for s in other.sections}
-                self_sections = list(self.sections)  # make a copy of the list
-                for s in self.sections:
-                    if s.identifier in other_sections:
-                        s.update(other_sections.pop(s.identifier))  # update sections from new list
-                    else:
-                        self_sections.remove(s)  # remove sections that don't exist in new list
-
-                # add any new sections
-                for s in other_sections.values():
-                    self_sections.append(s)
-
-                # make sure list is sorted by identifier at the end
-                self_sections.sort(key=lambda s: s.identifier)
-
-                # this assignment should also cause SQLA to update the array column
-                self.sections = self_sections
-                if self.sections is not None and self.id is not None:
-                    [setattr(s, 'instrument_id', self.id) for s in self.sections]
-
-            else:
-                setattr(self, att, getattr(other, att))
-
     def load(self, filename, section_ids=None):
         """
-        Load a part of an exposure file, based on the ccd_id.
-        If the instrument does not have multiple CCDs, set ccd_id=0.
+        Load a part of an exposure file, based on the section identifier.
+        If the instrument does not have multiple sections, set section_ids=0.
 
         Parameters
         ----------
@@ -382,31 +294,7 @@ class Instrument(Base):
                 f"section_ids must be a string, int, or list of strings or ints. Got {type(section_ids)}"
             )
 
-    def get_section_by_identifier(self, section_id):
-        """
-        Get the section with the given identifier,
-        from the list of sections on this instrument.
-
-        Parameters
-        ----------
-        section_id: str or int
-            The identifier of the SensorSection object.
-            This can be a serial number which is converted to a string.
-
-        Returns
-        -------
-        section: SensorSection
-            The section with the given identifier.
-        """
-        if not isinstance(section_id, (str, int)):
-            raise ValueError(f"section_id must be a string or int. Got {type(section_id)}")
-        section_id = str(section_id)
-        section = next((section for section in self.sections if section.identifier == section_id), None)
-        if section is None:
-            raise ValueError(f"Could not find section with identifier {section_id}")
-        return section
-
-    def load_section(self, filename, section_id):
+    def load_section_image(self, filename, section_id):
         """
         Load one section of an exposure file.
         This must be implemented by each subclass.
@@ -424,16 +312,210 @@ class Instrument(Base):
         data: np.ndarray
             The data from the exposure file.
         """
-        section = self.get_section_by_identifier(section_id)
-
         raise NotImplementedError("This method must be implemented by the subclass.")
 
     def get_section_ids(self):
         """
         Get a list of SensorSection identifiers for this instrument.
+        """
+        raise NotImplementedError("This method must be implemented by the subclass.")
+
+    def check_section_id(self, section_id):
+        """
+        Check that the type and value of the section is compatible with the instrument.
+        For example, many instruments will key the section by a running integer (e.g., CCD ID),
+        while others will use a string (e.g., channel 'A').
+
+        Will raise a meaningful error if not compatible.
+
+        Subclasses should override this method to be more specific
+        (e.g., to test if an integer is in range).
+        """
+        if not isinstance(section_id, (int, str)):
+            raise ValueError(f"The section_id must be an integer or string. Got {type(section_id)}. ")
+
+    def get_section(self, section_id):
+        """Get a section from the sections dictionary. """
+        self.check_section_id(section_id)
+
+        if self.sections is None:
+            raise RuntimeError("No sections loaded for this instrument. Use fetch_sections() first.")
+
+        return self.sections[section_id]
+
+    def fetch_sections(self, session=None, dateobs=None):
+        """
+        Get the sensor section objects associated with this instrument.
+
+        Will try to get sections that are valid during the given date.
+        If any sections are missing, they will be created using the
+        hard coded values in _make_new_section().
+        If multiple valid sections are found, use the latest one
+        (the one with the most recent "modified" value).
+
+        Will populate the self.sections attribute,
+        and will lazy load that before checking against the DB.
+        If the dateobs value is too far from that used the last time
+        the sections were populated, then they will be cleared and reloaded.
+        The time delta for this is set by self._dateobs_range_days (=1 by default).
+
+        Parameters
+        ----------
+        session: sqlalchemy.orm.Session (optional)
+            The database session to use. If None, will create a new session.
+            Use session=False to avoid using the database entirely.
+        dateobs: datetime or Time or float (as MJD) or string (optional)
+            The date of the observation. If None, will use the current date.
+            If there are multiple instances of a sensor section on the DB,
+            only choose the ones valid during the observation.
+
+        Returns
+        -------
+        sections: list of SensorSection
+            The sensor sections associated with this instrument.
+        """
+        dateobs = parse_dateobs(dateobs, output='datetime')
+
+        # if dateobs is too far from last time we loaded sections, reload
+        if self._dateobs_for_sections is not None:
+            if abs(self._dateobs_for_sections - dateobs) < timedelta(self._dateobs_range_days):
+                self.sections = None
+
+        # this should never happen, but still
+        if self._dateobs_for_sections is None:
+            self.sections = None
+
+        # we are allowed to use the DB
+        if self.sections is None:
+            self.sections = {}
+            self._dateobs_for_sections = dateobs  # track the date used to load
+            if session is False:
+                all_sec = []
+            else:
+                # load sections from DB
+                with SmartSession(session) as session:
+                    all_sec = session.scalars(
+                        sa.select(SensorSection).where(
+                            SensorSection.instrument == self.name,
+                            SensorSection.validity_start <= dateobs,
+                            SensorSection.validity_end >= dateobs,
+                        ).order_by(SensorSection.modified.desc())
+                    ).all()
+
+            for sid in self.get_section_ids():
+                sec = [s for s in all_sec if s.identifier == str(sid)]
+                if len(sec) > 0:
+                    self.sections[sid] = sec[0]
+                else:
+                    self.sections[sid] = self._make_new_section(sid)
+
+        return self.sections
+
+    def commit_sections(self, session=None, validity_start=None, validity_end=None):
+        """
+        Commit the sensor sections associated with this instrument to the database.
+        This is used to update or add missing sections that were created from
+        hard-coded values (i.e., using the _make_new_section() method).
+
+        Parameters
+        ----------
+        session: sqlalchemy.orm.Session (optional)
+            The database session to use. If None, will create a new session.
+        validity_start: datetime or Time or float (as MJD) or string (optional)
+            The start of the validity range for these sections.
+            Only changes the validity start of sections that have validity_start=None.
+            If None, will not modify any of the validity start values.
+        validity_end: datetime or Time or float (as MJD) or string (optional)
+            The end of the validity range for these sections.
+            Only changes the validity end of sections that have validity_end=None.
+            If None, will not modify any of the validity end values.
+        """
+        with SmartSession(session) as session:
+            for sec in self.sections.values():
+                if sec.validity_start is None and validity_start is not None:
+                    sec.validity_start = validity_start
+                if sec.validity_end is None and validity_end is not None:
+                    sec.validity_end = validity_end
+                session.add(sec)
+
+            session.commit()
+
+    def get_property(self, section_id, prop):
+        """
+        Get the value of a property for a given section of the instrument.
+        If that property is not defined on the sensor section
+        (e.g., if it is None) then the global value from the Instrument is used.
+
+        Will raise an error if no sections were loaded (if sections=None).
+        If sections were loaded but no section with the required id is found,
+        will quietly use the global value.
 
         """
-        return [section.identifier for section in self.sections]
+
+        if self.sections is None:
+            raise ValueError('Must use fetch_sections() before calling this function. ')
+
+        if section_id in self.sections:
+            section = self.sections[section_id]
+            if hasattr(section, prop) and getattr(section, prop) is not None:
+                return getattr(section, prop)
+
+        # first check if we can recover these properties from hard-coded functions:
+        if prop == 'offset_x':
+            return self.get_section_offsets(section_id)[0]
+        elif prop == 'offset_y':
+            return self.get_section_offsets(section_id)[1]
+        elif prop == 'filter_array_index':
+            return self.get_section_filter_array_index(section_id)
+        else:  # just get the value from the object
+            return getattr(self, prop)
+
+    def get_section_offsets(self, section_id):
+        """
+        Get the offset of the given section from the origin of the detector.
+        This can be used if the SensorSection object itself does not have
+        values for offset_x and offset_y. Use this function in subclasses
+        to hard-code the offsets.
+        If the offsets need to be updated over time, they should be
+        added to the SensorSection objects on the database.
+
+        Parameters
+        ----------
+        section_id: int or str
+            The identifier of the section.
+
+        Returns
+        -------
+        offset: tuple
+            The offsets in the x and y direction.
+        """
+        # this simple instrument defaults to zero offsets for ALL sections
+        offset_x = 0
+        offset_y = 0
+        return offset_x, offset_y
+
+    def get_section_filter_array_index(self, section_id):
+        """
+        Get the index in the filter array under which this section is placed.
+        This can be used if the SensorSection object itself does not have
+        a value for filter_array_index. Use this function in subclasses
+        to hard-code the array index.
+        If the array index need to be updated over time, it should be
+        added to the SensorSection objects on the database.
+
+        Parameters
+        ----------
+        section_id: int or str
+            The identifier of the section.
+
+        Returns
+        -------
+        idx: int
+            The index in the filter array.
+        """
+        # this simple instrument has no filter array, so return zero
+        idx = 0
+        return idx
 
     def get_filename_regex(self):
         """
@@ -476,7 +558,7 @@ class Instrument(Base):
         and do not have a default value.
 
         Subclasses can override this method to add or remove keys.
-        As the value returned is a copy of the global value,
+        As the list returned is a copy of the global parameter,
         the subclass can modify the list without affecting the global value.
         """
         return list(HEADER_KEYS_WITHOUT_DEFAULT)
@@ -487,7 +569,7 @@ class Instrument(Base):
         and do have a default value from the instrument class.
 
         Subclasses can override this method to add or remove keys.
-        As the value returned is a copy of the global value,
+        As the list returned is a copy of the global parameter,
         the subclass can modify the list without affecting the global value.
         """
         return list(HEADER_KEYS_WITH_DEFAULT)
@@ -528,7 +610,7 @@ class Instrument(Base):
 
         # check if any values exist in the header.
         for k, v in header:
-            norm_k = normalize_header_key(k)
+            norm_k = self.normalize_header_key(k)
             if norm_k in ['MJD-OBS', 'MJD']:
                 header_values['mjd'] = v
             elif norm_k in ['PROPOSID', 'PROPOSAL', 'PROJECT']:
@@ -546,46 +628,8 @@ class Instrument(Base):
 
         return header_values
 
-    # TODO: when should this be called? Ideally on the first time we connect to the DB...
-    @classmethod
-    def _verify_instrument_on_db(cls, session=None):
-        """
-        Add this instrument to the database.
-        This will add the instrument to the database, along with all the sections.
-        This will make sure the instrument row on the DB is identical to the
-        (sub-)class definition of the instrument, including all the hard coded defaults.
-
-        Parameters
-        ----------
-        session: sqlalchemy.orm.session.Session
-            The database session to use.
-            If none is given, will open a new one and close it
-            at the end of the function.
-        """
-        inst = cls()  # load the current hard-coded defaults
-        with SmartSession(session) as session:
-            db_inst = session.scalars(
-                sa.select(Instrument).where(
-                    Instrument.name == inst.name,
-                    Instrument.telescope == inst.telescope,
-                )
-            ).first()  # should be unique combination of name/telescope
-
-            if db_inst is None:
-                session.add(inst)
-                session.commit()
-            else:
-                if db_inst != inst:
-                    print(f'Updating instrument {inst.name} on DB!')
-                    db_inst.update(inst)  # also make sure sections are updated
-                    session.commit()
-
 
 class DemoInstrument(Instrument):
-
-    __mapper_args__ = {
-        "polymorphic_identity": "DemoInstrument",
-    }
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -606,24 +650,42 @@ class DemoInstrument(Instrument):
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-    @staticmethod
-    def _make_sections():
+    def get_section_ids(self):
+        """
+        Get a list of SensorSection identifiers for this instrument.
+        """
+        return [0]
+
+    def check_section_id(self, section_id):
+        """
+        Check if the section_id is valid for this instrument.
+        The demo instrument only has one section, so the section_id must be 0.
+        """
+        if not isinstance(section_id, int):
+            raise ValueError(f"section_id must be an integer. Got {type(section_id)} instead.")
+        if section_id != 0:
+            raise ValueError(f"section_id must be 0 for this instrument. Got {section_id} instead.")
+
+    def _make_new_section(self, identifier):
         """
         Make a single section for the DEMO instrument.
+        The identifier must be a valid section identifier.
 
         Returns
         -------
-        sections: list of SensorSection
-            The sections for this instrument.
+        section: SensorSection
+            A new section for this instrument.
         """
-        return [SensorSection(0, 512, 1024)]
+        return SensorSection(identifier, size_x=512, size_y=1024)
 
-    def load_section(self, filename, section_id):
+    def load_section_image(self, filename, section_id):
         """
         A spoof load method for this demo instrument.
         The data is just a random array.
         The instrument only has one section,
-        so the input must be 0.
+        so the section_id must be 0.
+
+        Will fail if sections were not loaded using fetch_sections().
 
         Parameters
         ----------
@@ -632,14 +694,15 @@ class DemoInstrument(Instrument):
             In this case the filename is not used.
         section_id: str or int
             The identifier of the SensorSection object.
-            This instrument only has one section, so this must be 0 or "0".
+            This instrument only has one section, so this must be 0.
 
         Returns
         -------
         data: np.ndarray
             The data from the exposure file.
         """
-        section = self.get_section_by_identifier(section_id)
+
+        section = self.get_section(section_id)
 
         return np.random.poisson(10, (section.size_y, section.size_x))
 
@@ -651,9 +714,6 @@ class DemoInstrument(Instrument):
 
 
 class DECam(Instrument):
-    __mapper_args__ = {
-        "polymorphic_identity": "DECam",
-    }
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -674,23 +734,59 @@ class DECam(Instrument):
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-    @staticmethod
-    def _make_sections():
+    def get_section_ids(self):
         """
-        Make the sections for the DECam instrument,
-        including the sizes and offsets for each section.
+        Get a list of SensorSection identifiers for this instrument.
+        """
+        return range(64)
+
+    def check_section_id(self, section_id):
+        """
+        Check that the type and value of the section is compatible with the instrument.
+        In this case, it must be an integer in the range [0, 63].
+        """
+        if not isinstance(section_id, int):
+            raise ValueError(f"The section_id must be an integer. Got {type(section_id)}. ")
+
+        if not 0 <= section_id <= 63:
+            raise ValueError(f"The section_id must be in the range [0, 63]. Got {section_id}. ")
+
+    def get_section_offsets(self, section_id):
+        """
+        Find the offset for a specific section.
+
+        Parameters
+        ----------
+        section_id: int
+            The identifier of the section.
 
         Returns
         -------
-        sections: list
-            A list of SensorSection objects.
+        offset_x: int
+            The x offset of the section.
+        offset_y: int
+            The y offset of the section.
+        """
+        # TODO: this is just a placeholder, we need to put the actual offsets here!
+        dx = section_id % 8
+        dy = section_id // 8
+        return dx * 2048, dy * 4096
+
+    def _make_new_section(self, section_id):
+        """
+        Make a single section for the DECam instrument.
+        The section_id must be a valid section identifier (int in this case).
+
+        Returns
+        -------
+        section: SensorSection
+            A new section for this instrument.
         """
         # TODO: we must improve this!
-        sections = []
-        for i in range(62):
-            sections.append(SensorSection(i, 2048, 4096, 0, i * 4096))
-
-        return sections
+        #  E.g., we should add some info on the gain and read noise (etc) for each chip.
+        #  Also need to fix the offsets, this is really not correct.
+        (dx, dy) = self.get_section_offsets(section_id)
+        return SensorSection(section_id, size_x=2048, size_y=4096, offset_x=dx, offset_y=dy)
 
     def get_filename_regex(self):
         return [r'c4d.*ori\.fits']

@@ -2,8 +2,11 @@ import os
 import git
 from collections import defaultdict
 import numpy as np
+from datetime import datetime
 
 import sqlalchemy as sa
+
+from astropy.time import Time
 
 from models.base import SmartSession
 
@@ -60,6 +63,51 @@ def get_latest_provenance(process_name, session=None):
         ).first()
 
     return prov
+
+
+def parse_dateobs(dateobs=None, output='datetime'):
+    """
+    Parse the dateobs, that can be a float, string, datetime or Time object.
+    The output is datetime by default, but can be any of the above types.
+    If the dateobs is None, the current time will be returned.
+    If float, will assume MJD.
+
+    Parameters
+    ----------
+    dateobs: float, str, datetime, Time or None
+        The dateobs to parse.
+    output: str
+        Choose one of the output formats:
+        'datetime', 'Time', 'float', 'str'.
+
+    Returns
+    -------
+    datetime, Time, float or str
+    """
+    if dateobs is None:
+        dateobs = Time.now()
+    elif isinstance(dateobs, (int, float)):
+        dateobs = Time(dateobs, format='mjd')
+    elif isinstance(dateobs, str):
+        if dateobs == 'now':
+            dateobs = Time.now()
+        else:
+            dateobs = Time(dateobs)
+    elif isinstance(dateobs, datetime):
+        dateobs = Time(dateobs)
+    else:
+        raise ValueError(f'Cannot parse dateobs of type {type(dateobs)}')
+
+    if output == 'datetime':
+        return dateobs.datetime
+    elif output == 'Time':
+        return dateobs
+    elif output == 'float':
+        return dateobs.mjd
+    elif output == 'str':
+        return dateobs.isot
+    else:
+        raise ValueError(f'Unknown output type {output}')
 
 
 def parse_session(*args, **kwargs):

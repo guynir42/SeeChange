@@ -129,10 +129,16 @@ def test_delete_instrument():
 
 def test_non_null_constraints():
     class TestInstrument(Instrument):
+
+        __mapper_args__ = {
+            "polymorphic_identity": "TestInstrument",
+        }
+
         def _make_sections(self):
             return []
 
     inst = TestInstrument()
+    inst.name = 'TestInstrument'
 
     try:  # cleanup at the end
         with SmartSession() as session:
