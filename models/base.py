@@ -19,7 +19,6 @@ CODE_ROOT = os.path.abspath(os.path.join(__file__, os.pardir, os.pardir))
 
 _engine = None
 _Session = None
-_instruments_loaded = False
 
 
 def Session():
@@ -36,7 +35,7 @@ def Session():
     sqlalchemy.orm.session.Session
         A session object that doesn't automatically close.
     """
-    global _Session, _engine, _instruments_loaded
+    global _Session, _engine
 
     if _Session is None:
         cfg = config.Config.get()
@@ -47,21 +46,6 @@ def Session():
         _Session = sessionmaker(bind=_engine, expire_on_commit=True)
 
     session = _Session()
-
-    if not _instruments_loaded and sa.inspect(_engine).has_table('instruments'):
-        import models.instrument
-        for name, class_ in inspect.getmembers(models.instrument, inspect.isclass):
-            if name != 'Instrument':
-                if hasattr(class_, '_verify_instrument_on_db'):
-                    class_._verify_instrument_on_db(session)
-
-        # make sure all the filename regex values are registered to local dictionary
-        inst_list = session.scalars(sa.select(models.instrument.Instrument)).all()
-        for inst in inst_list:
-            for regex in inst.get_filename_regex():
-                models.instrument.INSTRUMENT_FILENAME_REGEX[regex] = inst.id
-
-        _instruments_loaded = True
 
     return session
 
@@ -98,10 +82,13 @@ def SmartSession(input_session=None):
 def safe_mkdir(path):
 
     cfg = config.Config.get()
-    allowed_dirs = [
-        cfg.value('path.data_root'),
-        cfg.value('path.data_temp'),
-    ]
+    allowed_dirs = []
+    if cfg.value('path.data_root') is not None:
+        allowed_dirs.append(cfg.value('path.data_root'))
+    if cfg.value('path.data_temp') is not None:
+        allowed_dirs.append(cfg.value('path.data_temp'))
+    if cfg.value('path.server_data') is not None:
+        allowed_dirs.append(cfg.value('path.server_data'))
 
     ok = False
 
@@ -180,6 +167,193 @@ class SeeChangeBase:
 
 
 Base = declarative_base(cls=SeeChangeBase)
+
+
+class FileOnDiskMixin:
+    """
+    Mixin for objects that refer to files on disk.
+
+    Files are assumed to live in a remote server or on local disk.
+    The path to both these locations is configurable and not stored on DB!
+    Once the top level directory is set (locally and remotely),
+    the object's path relative to either of those is saved as "filename".
+
+    If multiple files need to be copied or loaded, we can also append
+    the array "filename_extensions" to the filename.
+    These could be actual extensions as in:
+    filename = 'foo.fits' and filename_extensions=['.bias', '.dark', '.flat']
+    or they could be just a different part of the filename itself:
+    filename = 'foo_' and filename_extensions=['bias.fits.gz', 'dark.fits.gz', 'flat.fits.gz']
+
+    If the filename_extensions array is null, will just load a single file.
+    If the filename_extensions is an array, will load a list of files (even if length 1).
+
+    When calling get_fullname(), the object will first check if the file exists locally,
+    and then it will download it from server if missing.
+    If no remote server is defined in the config, this part is skipped.
+    If you want to avoid downloading, use get_fullname(download=False).
+    If you want to always get a list of filenames (even if filename_extensions=None)
+    use get_fullname(as_list=True).
+    If downloading cannot proceed (because no server address is defined, or because
+    the download=False flag is used, or because the file is missing from server),
+    then the object will raise an exception.
+
+    After all the downloading is done and the file(s) exist locally,
+    the full path to the local file is returned.
+    It is then up to the inheriting object (e.g., the Exposure or Image)
+    to actually load the file from disk and figure out what to do with the data.
+
+    The path to the local and server side data folders is saved
+    in class variables, and must be initialized by the application
+    when the app starts / when the config file is read.
+    """
+    cfg = config.Config.get()
+    server_path = cfg.value('path.server_data')
+    local_path = cfg.value('path.data_root')
+    if local_path is None:
+        local_path = cfg.value('path.data_temp')
+    if local_path is None:
+        local_path = os.path.join(CODE_ROOT, 'data')
+    if not os.path.isdir(local_path):
+        os.makedirs(local_path, exist_ok=True)
+
+    filename = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        unique=True,
+        doc="Filename for raw exposure. "
+    )
+
+    filename_extensions = sa.Column(
+        sa.ARRAY(sa.Text),
+        nullable=True,
+        doc="Filename extensions for raw exposure. "
+    )
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize an object that is associated with a file on disk.
+        If giving a single unnamed argument, will assume that is the filename.
+        Note that the filename should not include the global data path,
+        but only a path relative to that. # TODO: remove the global path if filename starts with it?
+
+        Parameters
+        ----------
+        args: list
+            List of arguments, should only contain one string as the filename.
+        kwargs: dict
+            Dictionary of keyword arguments.
+            These include:
+            - nofile: bool
+                If True, will not require the file to exist on disk.
+                That means it will not try to download it from server, either.
+                This should be used only when creating a new object that will
+                later be associated with a file on disk (or for tests).
+                This property is NOT SAVED TO DB!
+                Saving to DB should only be done when a file exists
+                # TODO: add the check that file exists before committing?
+        """
+        if len(args) == 1 and isinstance(args[0], str):
+            self.filename = args[0]
+
+        self.nofile = kwargs.pop('nofile', False)  # do not require a file to exist when making the exposure object
+
+    def get_fullpath(self, download=True, as_list=False):
+        """
+        Get the full path of the file, or list of full paths
+        of files if filename_extensions is not None.
+        If the server_path is defined, and download=True (default),
+        the file will be downloaded from the  server if missing.
+        If the file is not found on server or locally, will
+        raise a FileNotFoundError.
+        When setting self.nofile=True, will not check if the file exists,
+        or try to download it from server. The assumption is that an
+        object with self.nofile=True will be associated with a file later on.
+
+        If the file is found on the local drive, under the local_path,
+        (either it was there or after it was downloaded)
+        the full path is returned.
+        The application is then responsible for loading the content
+        of the file.
+
+        When the filename_extensions is None, will return a single string.
+        When the filename_extensions is an array, will return a list of strings.
+        If as_list=False, will always return a list of strings,
+        even if filename_extensions is None.
+
+        Parameters
+        ----------
+        download: bool
+            Whether to download the file from server if missing.
+            Must have server_path defined. Default is True.
+        as_list: bool
+            Whether to return a list of filenames, even if filename_extensions=None.
+            Default is False.
+
+        Returns
+        -------
+        str or list of str
+            Full path to the file(s) on local disk.
+        """
+        if self.filename_extensions is None:
+            if as_list:
+                return [self._get_fullpath_single(download)]
+            else:
+                return self._get_fullpath_single(download)
+        else:
+            return [self._get_fullpath_single(download, ext) for ext in self.filename_extensions]
+
+    def _get_fullpath_single(self, download=True, ext=None):
+        """
+        Get the full path of a single file.
+        Will follow the same logic as get_fullpath(),
+        of checking and downloading the file from the server
+        if it is not on local disk.
+
+        Parameters
+        ----------
+        download: bool
+            Whether to download the file from server if missing.
+            Must have server_path defined. Default is True.
+        ext: str
+            Extension to add to the filename. Default is None.
+
+        Returns
+        -------
+        str
+            Full path to the file on local disk.
+        """
+        if not self.nofile and self.local_path is None:
+            raise ValueError("Local path not defined!")
+
+        fname = self.filename
+        if ext is not None:
+            fname += ext
+
+        fullname = os.path.join(self.local_path, fname)
+
+        if not self.nofile and not os.path.exists(fullname) and download and self.server_path is not None:
+            self._download_file(fname)
+
+        if not self.nofile and not os.path.exists(fullname):
+            raise FileNotFoundError(f"File {fullname} not found!")
+
+        return fullname
+
+    def _download_file(self, filename):
+        """
+        Search and download the file from a remote server.
+        The server_path must be defined on the class
+        (e.g., by setting a value for it from the config).
+        The download can be a simple copy from an address
+        (e.g., a join of server_path and filename)
+        or it can be a more complicated request.
+        This depends on the exact configuration.
+        """
+
+        # TODO: finish this
+        raise NotImplementedError('Downloading files from server is not yet implemented!')
 
 
 class SpatiallyIndexed:

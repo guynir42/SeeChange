@@ -10,22 +10,114 @@
 #  Then when making Image objects from an Exposure object we would check if the filter_array,
 #  and fall back to the regular filter column if filter_array is None.
 
+import re
+
 import numpy as np
 from datetime import datetime, timedelta
-from collections import defaultdict
 
 import sqlalchemy as sa
-from sqlalchemy.schema import UniqueConstraint
 
 from models.base import Base, SmartSession
 
 from pipeline.utils import parse_dateobs
 
-INSTRUMENT_FILENAME_REGEX = {}
+# dictionary of regex for filenames, pointing at instrument names
+INSTRUMENT_FILENAME_REGEX = None
 
-HEADER_KEYS_WITH_DEFAULT = ['mjd', 'exp_time', 'filter', ]
-HEADER_KEYS_WITHOUT_DEFAULT = []
+# dictionary of names of instruments, pointing to the relevant class
+INSTRUMENT_NAME_TO_CLASS = None
 
+# dictionary of instrument object instances, lazy loaded to be shared between exposures
+INSTRUMENT_INSTANCE_CACHE = None
+
+
+# from: https://stackoverflow.com/a/5883218
+def get_inheritors(klass):
+    """Get all classes that inherit from klass. """
+    subclasses = set()
+    work = [klass]
+    while work:
+        parent = work.pop()
+        for child in parent.__subclasses__():
+            if child not in subclasses:
+                subclasses.add(child)
+                work.append(child)
+    return subclasses
+
+
+def register_all_instruments():
+    """
+    Go over all subclasses of Instrument and register them in the global dictionaries.
+    """
+    global INSTRUMENT_FILENAME_REGEX, INSTRUMENT_NAME_TO_CLASS
+
+    if INSTRUMENT_FILENAME_REGEX is None:
+        INSTRUMENT_FILENAME_REGEX = {}
+    if INSTRUMENT_NAME_TO_CLASS is None:
+        INSTRUMENT_NAME_TO_CLASS = {}
+
+    inst = get_inheritors(Instrument)
+    for i in inst:
+        INSTRUMENT_NAME_TO_CLASS[i.__name__] = i
+        if i.get_filename_regex() is not None:
+            for regex in i.get_filename_regex():
+                INSTRUMENT_FILENAME_REGEX[regex] = i.__name__
+
+
+def guess_instrument(filename):
+    """
+    Find the name of the instrument from the filename.
+    Uses the regex of each instrument (if it exists)
+    to try to match the filename with the expected
+    instrument's file name convention.
+    If multiple instruments match, raises an error.
+
+    If no instruments match, returns None.
+    TODO: add a fallback method that lets each instrument
+      run its own load method and see if it can load the file.
+
+    """
+    if filename is None:
+        raise ValueError("Cannot guess instrument without a filename! ")
+
+    if INSTRUMENT_FILENAME_REGEX is None:
+        register_all_instruments()
+
+    instrument_list = []
+    for k, v in INSTRUMENT_FILENAME_REGEX.items():
+        if re.search(k, filename):
+            instrument_list.append(v)
+
+    if len(instrument_list) == 0:
+        # TODO: maybe add a fallback of looking into the file header?
+        # raise ValueError(f"Could not guess instrument from filename: {filename}. ")
+        return None  # leave empty is the right thing? should probably go to a fallback method
+    elif len(instrument_list) == 1:
+        return instrument_list[0]
+    else:
+        raise ValueError(f"Found multiple instruments in filename: {filename}. ")
+
+    # TODO: add fallback method that runs all instruments
+    #  (or only those on the short list) and checks if they can load the file
+
+
+def get_instrument_instance(instrument_name):
+    """
+    Get an instance of the instrument class, given the name of the instrument.
+    Will store that instance in the INSTRUMENT_INSTANCE_CACHE dictionary,
+    so the instruments can be re-used for e.g., loading multiple exposures.
+    """
+    if INSTRUMENT_NAME_TO_CLASS is None:
+        register_all_instruments()
+
+    global INSTRUMENT_INSTANCE_CACHE
+    if INSTRUMENT_INSTANCE_CACHE is None:
+        INSTRUMENT_INSTANCE_CACHE = {}
+
+    if instrument_name not in INSTRUMENT_INSTANCE_CACHE:
+        INSTRUMENT_INSTANCE_CACHE[instrument_name] = INSTRUMENT_NAME_TO_CLASS[instrument_name]()
+
+    return INSTRUMENT_INSTANCE_CACHE[instrument_name]
 
 class SensorSection(Base):
     """
@@ -193,7 +285,7 @@ class SensorSection(Base):
         return True
 
 
-class Instrument(Base):
+class Instrument:
     """
     Base class for an instrument.
     Instruments contain all the information about the instrument and telescope,
@@ -245,7 +337,9 @@ class Instrument(Base):
         self._dateobs_for_sections = None  # what the dateobs was when loading sections
         self._dateobs_range_days = 1.0  # how many days away from dateobs needs to reload sections
 
-        super(Base, self).__init__(**kwargs)
+        # set the attributes from the kwargs
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
     def _make_new_section(self, identifier):
         raise NotImplementedError("Subclass this base class to add methods that are unique to each instrument.")
@@ -284,10 +378,10 @@ class Instrument(Base):
             section_ids = self.get_section_ids()
 
         if isinstance(section_ids, (int, str)):
-            return self.load_section(filename, section_ids)
+            return self.load_section_image(filename, section_ids)
 
         elif isinstance(section_ids, list):
-            return [self.load_section(filename, section_id) for section_id in section_ids]
+            return [self.load_section_image(filename, section_id) for section_id in section_ids]
 
         else:
             raise ValueError(
@@ -341,7 +435,7 @@ class Instrument(Base):
         if self.sections is None:
             raise RuntimeError("No sections loaded for this instrument. Use fetch_sections() first.")
 
-        return self.sections[section_id]
+        return self.sections.get(section_id)
 
     def fetch_sections(self, session=None, dateobs=None):
         """
@@ -452,11 +546,8 @@ class Instrument(Base):
 
         """
 
-        if self.sections is None:
-            raise ValueError('Must use fetch_sections() before calling this function. ')
-
-        if section_id in self.sections:
-            section = self.sections[section_id]
+        section = self.get_section(section_id)
+        if section is not None:
             if hasattr(section, prop) and getattr(section, prop) is not None:
                 return getattr(section, prop)
 
@@ -517,7 +608,8 @@ class Instrument(Base):
         idx = 0
         return idx
 
-    def get_filename_regex(self):
+    @classmethod
+    def get_filename_regex(cls):
         """
         Get the regular expression used to match filenames for this instrument.
 
@@ -528,105 +620,162 @@ class Instrument(Base):
         """
         raise NotImplementedError("This method must be implemented by the subclass.")
 
-    # TODO: should we read headers independently for each section?
-    def read_header(self, filename):
+    def read_header(self, filename, section_id=None):
         """
-        Load the FITS header from filename.
+        Load the header from file.
+
+        By default, instruments use a "standard" FITS header.
+        Subclasses can override this method to use a different header format.
+        Note that all keyword normalizations happen later,
+        in the normalize_header() method.
 
         Parameters
         ----------
         filename: str
             The filename of the exposure file.
+        section_id: int or str (optional)
+            The identifier of the section to load.
+            If None (default), will load the header for the entire detector,
+            which could be a generic header for that exposure, that doesn't
+            capture any of the section-specific information.
 
         Returns
         -------
         header: dict
             The header from the exposure file, as a dictionary.
         """
-        raise NotImplementedError("This method must be implemented by the subclass.")
+        # TODO: implement the default loader for FITS files
+        return {}
 
-    def normalize_header_key(key):
+    @staticmethod
+    def normalize_keyword(key):
         """
-        Normalize the header key to be all uppercase and
+        Normalize the header keyword to be all uppercase and
         remove spaces and underscores.
         """
         return key.upper().replace(' ', '').replace('_', '')
 
-    def get_keys_without_default(self):
+    def extract_critical_header_info(self, header, names):
         """
-        Get the keys that must be present in the header,
-        and do not have a default value.
-
-        Subclasses can override this method to add or remove keys.
-        As the list returned is a copy of the global parameter,
-        the subclass can modify the list without affecting the global value.
-        """
-        return list(HEADER_KEYS_WITHOUT_DEFAULT)
-
-    def get_keys_with_default(self):
-        """
-        Get the keys that don't have to be present in the header,
-        and do have a default value from the instrument class.
-
-        Subclasses can override this method to add or remove keys.
-        As the list returned is a copy of the global parameter,
-        the subclass can modify the list without affecting the global value.
-        """
-        return list(HEADER_KEYS_WITH_DEFAULT)
-
-    def parse_header_keys(self, header):
-        """
-        Parse the relevant columns: mjd, project, target,
-        width, height, exp_time, filter, telescope, etc
-        from self.header and into the column attributes.
-
-        NOTE: this default method will parse the "normal"
-        header keys, but subclasses for new instruments can
-        augment or replace this method to parse other keys
-        or keys that have different meaning for that instrument.
+        Get the critical information from the raw header.
+        This includes keywords that are required for non-nullable columns
+        (like MJD). If they are not found, an error is raised.
+        If any
 
         Parameters
         ----------
         header: dict
-            The header from the exposure file, as a dictionary.
+            The raw header as loaded from the file.
+        names: list of str
+            The names of the columns to extract.
 
         Returns
         -------
-        header_values: dict
-            The parsed header values.
-            Some values will use the instrument's default,
-            while others (like mjd or filter) will have None
-            as the default (which could raise exceptions later
-            on if they are missing from the header).
+        critical_values: dict
+            A dictionary with the critical values from the header.
+        """
+        header = {self.normalize_keyword(key): value for key, value in header.items()}
+        critical_values = {}
+        translations = self._get_header_keyword_translation()
+        converters = self._get_header_values_converters()
+        for name in names:
+            if name not in translations:
+                raise ValueError(f'Missing translation for header keyword: {name}')
+            for key in translations[name]:
+                if key in header:
+                    value = header[key]
+                    if name in converters:
+                        value = converters[name](value)
+                    critical_values[name] = value
+                    break
+
+        return critical_values
+
+    def extract_auxiliary_header_info(self, header, names):
+        """
+        Get additional information from the raw header.
+        This includes keywords that would be useful to have,
+        but if they are not found, or if there is no translation
+        for them, they are just ignored.
+        Often those values can be extracted from the instrument object
+        if they are missing from the header.
+
+        Parameters
+        ----------
+        header: dict
+            The raw header as loaded from the file.
+        names: list of str
+            The names of the columns to extract.
+
+        Returns
+        -------
+        extra_values: dict
+            A dictionary with the additional values from the header.
+        """
+        header = {self.normalize_keyword(key): value for key, value in header.items()}
+        extra_values = {}
+        translations = self._get_header_keyword_translation()
+        converters = self._get_header_values_converters()
+        for name in names:
+            for key in translations.get(name, []):
+                if key in header:
+                    value = header[key]
+                    if name in converters:
+                        value = converters[name](value)
+                    extra_values[name] = value
+                    break
+
+        return extra_values
+
+    def get_auxiliary_exposure_header_keys(self):
+        """
+        Additional header keys that can be useful to have on the
+        Exposure header. This could include instrument specific
+        items that are saved to the global header, but are not
+        included in Exposure.EXPOSURE_HEADER_KEYS.
+
+        Subclasses should override this method to add additional items.
         """
 
-        header_values = {}
-        for k in self.get_keys_without_default():
-            header_values[k] = None
+        return []
 
-        # use the instrument defaults for some values
-        for k in self.get_keys_with_default():
-            header_values[k] = getattr(self, k)
+    def _get_header_keyword_translation(self):
+        """
+        Get a dictionary that translates the header keywords into normalized column names.
+        Each column name has a list of possible header keywords that can be used to populate it.
+        When parsing the header, look for each one of these keywords, and use the first one that is found.
+        """
+        t = dict(
+            ra=['RA', 'RADEG'],
+            dec=['DEC', 'DECDEG'],
+            mjd=['MJD', 'MJDOBS'],
+            project=['PROJECT', 'PROJID', 'PROPOSID', 'PROPOSAL', 'PROPID'],
+            target=['TARGET', 'OBJECT', 'FIELD', 'FIELDID'],
+            width=['WIDTH', 'NAXIS1'],
+            height=['HEIGHT', 'NAXIS2'],
+            exp_time=['EXPTIME', 'EXPOSURE'],
+            filter=['FILTER', 'FILT'],
+            filter_array=['FILTER_ARRAY', 'FILTERA'],
+            instrument=['INSTRUME', 'INSTRUMENT'],
+            telescope=['TELESCOP', 'TELESCOPE'],
+        )
+        return t
+        # TODO: add more!
 
-        # check if any values exist in the header.
-        for k, v in header:
-            norm_k = self.normalize_header_key(k)
-            if norm_k in ['MJD-OBS', 'MJD']:
-                header_values['mjd'] = v
-            elif norm_k in ['PROPOSID', 'PROPOSAL', 'PROJECT']:
-                header_values['project'] = v
-            elif norm_k in ['OBJECT', 'TARGET', 'FIELD', 'FIELDID']:
-                header_values['target'] = v
-            elif norm_k in ['EXPTIME', 'EXPOSURE']:
-                header_values['exp_time'] = v
-            elif norm_k in ['FILTER', 'FILT']:
-                header_values['filter'] = v
-            elif norm_k in ['TELESCOP', 'TELESCOPE']:
-                header_values['telescope'] = v
-            elif norm_k in ['INSTRUME', 'INSTRUMENT']:
-                header_values['instrument'] = v
+    def _get_header_values_converters(self):
+        """
+        Get a dictionary with some  keywords
+        and the conversion functions needed to turn the
+        raw header values into the correct units.
+        For example, if this instrument uses milliseconds
+        as the exposure time units, the output dictionary
+        would be: {'exp_time': lambda t: t/1000.0}.
 
-        return header_values
+        The base class does not assume any unit conversions
+        are needed, so it returns an empty dict.
+        Subclasses can override this method to add conversions.
+        """
+        return {}
 
 
 class DemoInstrument(Instrument):
@@ -709,7 +858,8 @@ class DemoInstrument(Instrument):
     def read_header(self, filename):
         return {}
 
-    def get_filename_regex(self):
+    @classmethod
+    def get_filename_regex(cls):
         return [r'Demo']
 
 
@@ -788,7 +938,8 @@ class DECam(Instrument):
         (dx, dy) = self.get_section_offsets(section_id)
         return SensorSection(section_id, size_x=2048, size_y=4096, offset_x=dx, offset_y=dy)
 
-    def get_filename_regex(self):
+    @classmethod
+    def get_filename_regex(cls):
         return [r'c4d.*ori\.fits']
 
 

@@ -1,18 +1,34 @@
 import re
-import inspect
 from collections import defaultdict
-
-import numpy as np
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CheckConstraint
-from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy.orm.session import object_session
 
 from astropy.coordinates import SkyCoord
 
-from models.base import Base, SpatiallyIndexed, SmartSession
-from models.instrument import Instrument, INSTRUMENT_FILENAME_REGEX
+from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession
+from models.instrument import Instrument, guess_instrument, get_instrument_instance
+
+
+# columns key names that must be loaded from the header for each Exposure
+EXPOSURE_COLUMN_NAMES = [
+    'ra',
+    'dec',
+    'mjd',
+    'project',
+    'target',
+    'exp_time',
+    'filter',
+    'filter_array',
+    'telescope',
+    'instrument'
+]
+
+# these are header keywords that are not stored as columns of the Exposure table,
+# but are still useful to keep around inside the "header" JSONB column.
+EXPOSURE_HEADER_KEYS = []  # TODO: add more here
 
 
 class SectionData:
@@ -22,14 +38,31 @@ class SectionData:
     disk and store it in memory.
     To clear the memory cache, call the clear_cache() method.
     """
-    def __init__(self, filename, inst):
+    def __init__(self, filename, instrument):
+        """
+        Must initialize this object with a filename
+        (or list of filenames) and an instrument object.
+        These two things will control how data is loaded
+        from the disk.
+
+        Parameters
+        ----------
+        filename: str or list of str
+            The filename of the exposure to load.
+            If each section is in a different file, then
+            this should be a list of filenames.
+        instrument: Instrument
+            The instrument object that describes the
+            sections and how to load them from disk.
+
+        """
         self.filename = filename
-        self.instrument = inst
+        self.instrument = instrument
         self._data = defaultdict(lambda: None)
 
     def __getitem__(self, section_id):
         if self._data[section_id] is None:
-            self._data[section_id] = self.instrument.load_section(self.filename, section_id)
+            self._data[section_id] = self.instrument.load_section_image(self.filename, section_id)
         return self._data[section_id]
 
     def __setitem__(self, section_id, value):
@@ -39,19 +72,28 @@ class SectionData:
         self._data = defaultdict(lambda: None)
 
 
-class Exposure(Base, SpatiallyIndexed):
+class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = "exposures"
 
-    header = sa.Column(JSONB, nullable=False, default={}, doc="Header of the raw exposure. ")
-
-    filename = sa.Column(sa.Text, nullable=False, index=True, unique=True, doc="Filename for raw exposure. ")
+    header = sa.Column(
+        JSONB,
+        nullable=False,
+        default={},
+        doc=(
+            "Header of the raw exposure. "
+            "Only keep a subset of the keywords, "
+            "and re-key them to be more consistent. "
+            "This will only include global values, "
+            "not those associated with a specific section. "
+        )
+    )
 
     mjd = sa.Column(
         sa.Double,
         nullable=False,
         index=True,
-        doc="Modified Julian date of the exposure. (MJD=JD-2400000.5)"
+        doc="Modified Julian date of the exposure (MJD=JD-2400000.5)."
     )
 
     exp_time = sa.Column(sa.Float, nullable=False, index=True, doc="Exposure time in seconds")
@@ -67,21 +109,40 @@ class Exposure(Base, SpatiallyIndexed):
         ),
     )
 
-    instrument_id = sa.Column(sa.Integer, sa.ForeignKey("instruments.id", ondelete="CASCADE"), nullable=False)
-
-    instrument = sa.orm.relationship(
-        Instrument,
-        back_populates='exposures',
-        doc='Instrument used to take the exposure'
+    instrument = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        doc='Name of the instrument used to take the exposure. '
     )
 
-    instrument_name = association_proxy('instrument', 'name')
+    section_id = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        doc='Section ID of the exposure. '
+    )
 
-    telescope_name = association_proxy('instrument', 'telescope')
+    telescope = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        doc='Telescope used to take the exposure. '
+    )
 
-    project = sa.Column(sa.Text, index=True, nullable=False, doc='Name of the project, (could also be a proposal ID). ')
+    project = sa.Column(
+        sa.Text,
+        index=True,
+        nullable=False,
+        doc='Name of the project, (could also be a proposal ID). '
+    )
 
-    target = sa.Column(sa.Text, index=True, nullable=False, doc='Name of the target object or field id. ')
+    target = sa.Column(
+        sa.Text,
+        index=True,
+        nullable=False,
+        doc='Name of the target object or field id. '
+    )
 
     gallat = sa.Column(sa.Double, index=True, doc="Galactic latitude of the target. ")
 
@@ -104,81 +165,87 @@ class Exposure(Base, SpatiallyIndexed):
         the instrument name from the filename.
         The header will be read out from the FITS file.
         """
-        super(Base, self).__init__(**kwargs)  # put keywords into columns
+        FileOnDiskMixin.__init__(self, *args, **kwargs)
+        SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
+        # manually set all properties (columns or not)
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
 
         self._data = None
 
-        if len(args) == 1 and isinstance(args[0], str):
-            self.filename = args[0]
-
-        if self.filename is None:
-            # TODO: is there any use case where we dump the data into an exposure and then make a file?
+        if self.filename is None and not self.nofile:
             raise ValueError("Must give a filename to initialize an Exposure object. ")
 
-        if self.instrument_id is None:
-            self.guess_instrument()
+        if self.instrument is None:
+            self.instrument = guess_instrument(self.filename)
 
-        self.read_header()
+        self._instrument_object = None
+
+        if self.instrument_object is not None:
+            if self.telescope is None:
+                self.telescope = self.instrument_object.telescope
+
+            # get the header from the file in its raw form
+            raw_header_dictionary = self.instrument_object.read_header(self.get_fullpath())
+
+            critical_info = self.instrument_object.extract_critical_header_info(raw_header_dictionary, EXPOSURE_COLUMN_NAMES)
+            for k, v in critical_info.items():
+                if k == 'instrument':
+                    if self.instrument != v:
+                        raise ValueError(f"Header instrument {v} does not match Exposure instrument {self.instrument}")
+                elif k == 'telescope':
+                    if self.telescope != v:
+                        raise ValueError(
+                            f"Header telescope {v} does not match Exposure telescope {self.instrument.telescope}"
+                        )
+                else:
+                    setattr(self, k, v)
+
+            auxiliary_names = EXPOSURE_HEADER_KEYS + self.instrument_object.get_auxiliary_exposure_header_keys()
+            self.header = self.instrument_object.extract_auxiliary_header_info(raw_header_dictionary, auxiliary_names)
 
         if self.ra is not None and self.dec is not None:
             self.calculate_coordinates()
 
+    @property
+    def instrument_object(self):
+        if self.instrument is not None:
+            if self._instrument_object is None or self._instrument_object.name != self.instrument:
+                self._instrument_object = get_instrument_instance(self.instrument)
+
+        return self._instrument_object
+
+    @instrument_object.setter
+    def instrument_object(self, value):
+        self._instrument_object = value
+
     @sa.orm.reconstructor
     def init_on_load(self):
-        super(Base, self).init_on_load()
+        Base.init_on_load(self)
         self._data = None
-
-    def guess_instrument(self):
-        if self.filename is None:
-            raise ValueError("Cannot guess instrument without a filename! ")
-
-        instrument_list = []
-        for k, v in INSTRUMENT_FILENAME_REGEX.items():
-            if re.search(k, self.filename):
-                instrument_list.append(v)
-
-        if len(instrument_list) == 0:
-            # TODO: maybe add a fallback of looking into the file header?
-            # raise ValueError(f"Could not guess instrument from filename: {self.filename}. ")
-            pass  # leave empty is the right thing? should probably go to a fallback method
-        elif len(instrument_list) == 1:
-            self.instrument_id = instrument_list[0]
-        else:
-            raise ValueError(f"Found multiple instruments in filename: {self.filename}. ")
-
-        # TODO: add fallback method that runs all instruments
-        #  (or only those on the short list) and checks if they can load the file
+        self._instrument_object = None
+        session = object_session(self)
+        if session is not None:
+            self.instrument_object.fetch_sections(session=session)
 
     def __repr__(self):
+
+        filter_str = '--'
+        if self.filter is not None:
+            filter_str = self.filter
+        if self.filter_array is not None:
+            filter_str = f"[{', '.join(self.filter_array)}]"
+
         return (
             f"Exposure(id: {self.id}, "
             f"exp: {self.exp_time}s, "
-            f"filt: {self.filter}, "
-            f"from: {self.instrument_name}/{self.telescope_name})"
+            f"filt: {filter_str}, "
+            f"from: {self.instrument}/{self.telescope})"
         )
 
     def __str__(self):
         return self.__repr__()
-
-    def fetch_instrument(self, session=None):
-        """
-        Fetch the instrument object from the database.
-
-        Parameters
-        ----------
-        session: sqlalchemy.orm.session.Session
-            Session to use to query the database.
-            If not given (or None), will open a session
-            and close it at the end of the call.
-
-        Returns
-        -------
-        Instrument
-            Instrument object from the database.
-        """
-        with SmartSession(session) as session:
-            self.instrument = session.scalars(sa.select(Instrument).where(Instrument.id == self.instrument_id)).first()
-            return self.instrument  # careful, this instrument is attached to session that could close right away
 
     def save(self):
         pass  # TODO: implement this! do we need this?
@@ -190,7 +257,7 @@ class Exposure(Base, SpatiallyIndexed):
         if not isinstance(section_ids, list):
             section_ids = [section_ids]
 
-        if not all([isinstance(sec_id, int) for sec_id in section_ids]):
+        if not all([isinstance(sec_id, (str, int)) for sec_id in section_ids]):
             raise ValueError("section_ids must be a list of integers. ")
 
         if self.filename is not None:
@@ -204,7 +271,7 @@ class Exposure(Base, SpatiallyIndexed):
         if self._data is None:
             if self.instrument is None:
                 raise ValueError("Cannot load data without an instrument! ")
-            self._data = SectionData(self.filename, self.instrument)
+            self._data = SectionData(self.get_fullpath(), self.instrument_object)
         return self._data
 
     @data.setter
@@ -223,51 +290,6 @@ class Exposure(Base, SpatiallyIndexed):
         self.ecllat = coords.barycentrictrueecliptic.lat.deg
         self.ecllon = coords.barycentrictrueecliptic.lon.deg
 
-    def read_header(self):
-        # read header info, put it in the header JOSNB column
-        if self.instrument is not None:
-            self.header = self.instrument.read_header(self.filename)
-            self.parse_header_keys()
-
-    def parse_header_keys(self):
-        """
-        Parse the relevant columns: mjd, project, target,
-        num_ccds, width, height, exp_time, filter, telescope
-        from self.header and into the column attributes.
-
-        Also checks if the header's "instrument" key
-        matches the name of the Exposure's instrument.
-        """
-        if self.instrument is None:
-            raise ValueError("Cannot parse header keys without an instrument! ")
-
-        if self.header is None:
-            return
-
-        header_values = self.instrument.parse_header_keys(self.header)
-
-        for key in ['mjd', 'project', 'target', 'width', 'height', 'exp_time', 'filter', 'telescope']:
-            setattr(self, key, header_values[key])
-
-        for key in [
-            'aperture',
-            'focal_ratio',
-            'pixel_scale',
-            'read_time',
-            'read_noise',
-            'dark_current',
-            'gain',
-            'saturation_limit',
-            'non_linearity_limit',
-        ]:
-            self.header[key] = header_values[key]
-
-        if header_values['instrument'] is not None and header_values['instrument'] != self.instrument.name:
-            raise ValueError(
-                f"Header's instrument ({header_values['instrument']}) "
-                f"does not match Exposure's instrument ({self.instrument.name})! "
-            )
-
 
 if __name__ == '__main__':
 
@@ -280,10 +302,6 @@ if __name__ == '__main__':
     e = Exposure(f"Demo_test_{rnd_str(5)}.fits", exp_time=30, mjd=58392.0, filter="F160W", ra=123, dec=-23, project='foo', target='bar')
 
     session = Session()
-
-    inst = session.scalars(sa.select(Instrument)).all()
-
-    e.guess_instrument()
 
     session.add(e)
     session.commit()

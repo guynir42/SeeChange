@@ -1,7 +1,7 @@
 path:
-  seechange_data: null
+  data_root: null
   data_temp: null
-
+  server_data: null
 db:
   engine: postgresql
   user: postgres

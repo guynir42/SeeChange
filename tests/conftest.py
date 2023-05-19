@@ -1,3 +1,4 @@
+import os
 import pytest
 import uuid
 
@@ -70,22 +71,32 @@ def provenance_extra(code_version, provenance_base):
 
 @pytest.fixture
 def exposure():
-
     e = Exposure(
         f"Demo_test_{rnd_str(5)}.fits",
+        section_id=0,
         exp_time=30,
         mjd=58392.0,
         filter="g",
         ra=123,
         dec=-23,
         project='foo',
-        target='bar'
+        target='bar',
+        nofile=True,
     )
+    fullname = None
+    try:  # make sure to remove file at the end
+        fullname = e.get_fullpath()
+        open(fullname, 'a').close()
+        e.nofile = False
 
-    yield e
+        yield e
 
-    with SmartSession() as session:
-        e = session.merge(e)
-        if e.id is not None:
-            session.execute(sa.delete(Exposure).where(Exposure.id == e.id))
-            session.commit()
+    finally:
+        with SmartSession() as session:
+            e = session.merge(e)
+            if e.id is not None:
+                session.execute(sa.delete(Exposure).where(Exposure.id == e.id))
+                session.commit()
+        print(fullname)
+        if fullname is not None and os.path.isfile(fullname):
+            os.remove(fullname)
