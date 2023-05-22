@@ -257,6 +257,7 @@ class FileOnDiskMixin:
         if len(args) == 1 and isinstance(args[0], str):
             self.filename = args[0]
 
+        self.filename = kwargs.pop('filename', self.filename)
         self.nofile = kwargs.pop('nofile', False)  # do not require a file to exist when making the exposure object
 
     def get_fullpath(self, download=True, as_list=False):

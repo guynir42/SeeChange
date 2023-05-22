@@ -11,186 +11,267 @@ from sqlalchemy.exc import IntegrityError
 
 from models.base import SmartSession
 from models.instrument import SensorSection, Instrument, DemoInstrument, DECam
+from models.exposure import Exposure
 
 
-def test_instruments_on_db():
+def test_base_instrument_not_implemented():
+    inst = Instrument()
+
+    with pytest.raises(NotImplementedError):
+        inst.get_section_ids()
+
+    with pytest.raises(NotImplementedError):
+        inst.load('foo.bar')
+
+    with pytest.raises(NotImplementedError):
+        inst.get_filename_regex()
+
+
+def test_global_vs_sections_values():
+    inst = DemoInstrument()
+    inst.name = 'TestInstrument' + uuid.uuid4().hex
+    assert inst.gain == 2.0
+    assert inst.read_noise == 1.5
+
+    # make sure there are no sections matching this instrument on the DB
     with SmartSession() as session:
-        assert session.scalars(sa.select(Instrument).where(Instrument.name == 'DECam')).first() is not None
-        assert session.scalars(sa.select(Instrument).where(Instrument.name == 'DemoInstrument')).first() is not None
+        sections = session.scalars(sa.select(SensorSection).where(SensorSection.instrument == inst.name)).all()
+        assert len(sections) == 0
 
+    # instrument is generated without any sections (use fetch_sections() to get them)
+    assert inst.sections is None
 
-def test_modified_instrument():
-    try:
-        with SmartSession() as session:
-            # get the original instrument
-            inst_db = session.scalars(sa.select(Instrument).where(Instrument.name == 'DemoInstrument')).first()
-            inst_id = inst_db.id
-            assert inst_db is not None
-            assert isinstance(inst_db, DemoInstrument)
+    # cannot use get_property() without checking if there are SensorSections on the DB...
+    with pytest.raises(RuntimeError, match='No sections loaded for this instrument'):
+        inst.get_property(0, 'gain')
 
-            # modify the aperture size:
-            new_aperture = np.random.uniform(1, 2)
-            inst_new = DemoInstrument(aperture=new_aperture)
-
-            # new and old instruments are different!
-            assert inst_new != inst_db
-
-            # make them the same:
-            inst_db.update(inst_new)
-
-            assert inst_new == inst_db
-            assert inst_db.aperture == new_aperture
-            assert inst_db.focal_ratio == inst_new.focal_ratio
-            assert inst_db.id != inst_new.id
-            assert inst_db.from_db is True
-            assert inst_new.from_db is False
-            session.add(inst_db)
-            session.commit()
-
-        with SmartSession() as session:
-            # check that the database has been updated
-            inst_db = session.scalars(sa.select(Instrument).where(Instrument.name == 'DemoInstrument')).first()
-
-            assert inst_db.id == inst_id
-
-            assert inst_new == inst_db
-            assert inst_db.aperture == new_aperture
-            assert inst_db.focal_ratio == inst_new.focal_ratio
-            assert inst_db.id != inst_new.id
-            assert inst_db.from_db is True
-            assert inst_new.from_db is False
-
-            # modify the list of allow filters
-            new_filters = [np.random.choice(list('abcdefghijk')) for _ in range(5)]
-            inst_new = DemoInstrument(allowed_filters=new_filters, aperture=new_aperture)
-
-            # new and old instruments are different!
-            assert inst_new != inst_db
-
-            # make them the same:
-            inst_db.update(inst_new)
-
-            assert inst_new == inst_db
-            assert inst_db.aperture == new_aperture
-            assert inst_db.allowed_filters == new_filters
-            assert inst_db.focal_ratio == inst_new.focal_ratio
-            assert inst_db.id != inst_new.id
-            assert inst_db.from_db is True
-            assert inst_new.from_db is False
-            session.add(inst_db)
-            session.commit()
-
-        with SmartSession() as session:
-            inst_db = session.scalars(sa.select(Instrument).where(Instrument.name == 'DemoInstrument')).first()
-
-            assert inst_db.id == inst_id
-
-            assert inst_new == inst_db
-            assert inst_db.aperture == new_aperture
-            assert inst_db.allowed_filters == new_filters
-            assert inst_db.focal_ratio == inst_new.focal_ratio
-            assert inst_db.id != inst_new.id
-            assert inst_db.from_db is True
-            assert inst_new.from_db is False
-
-    finally:  # return to original state
-        with SmartSession() as session:
-            DemoInstrument._verify_instrument_on_db(session=session)
-            inst_db = session.scalars(sa.select(Instrument).where(Instrument.name == 'DemoInstrument')).first()
-            assert inst_db.aperture != new_aperture
-            assert inst_db.allowed_filters != new_filters
-
-
-def test_name_telescope_uniqueness():
+    # generate a section with null values
     with SmartSession() as session:
-        session.add(DemoInstrument())
-        with pytest.raises(IntegrityError) as e:
-            session.commit()
+        inst.fetch_sections(session=session)  # must generate a new section (there are none in the DB)
 
-        assert 'duplicate key value violates unique constraint' in str(e.value)
+    assert inst.sections is not None
+    assert len(inst.sections) == 1
 
+    # new section is created with null values
+    assert inst.sections[0].gain is None
+    assert inst.sections[0].read_noise is None
+    assert inst.get_property(0, 'gain') == 2.0
+    assert inst.get_property(0, 'read_noise') == 1.5
 
-def test_delete_instrument():
+    # now adjust the values on that section:
+    inst.sections[0].gain = 2.5
+    inst.sections[0].read_noise = 1.3
+    assert inst.get_property(0, 'gain') == 2.5
+    assert inst.get_property(0, 'read_noise') == 1.3
+
+    # add the new section to the DB:
     with SmartSession() as session:
-        instruments = session.scalars(sa.select(Instrument)).all()
-        assert 'DemoInstrument' in [inst.name for inst in instruments]
-        assert 'DECam' in [inst.name for inst in instruments]
-        inst = [i for i in instruments if i.name == 'DemoInstrument'][0]
-        section_id = inst.sections[0].id  # should be only one section
+        inst.commit_sections(session=session)
+        sections = session.scalars(sa.select(SensorSection).where(SensorSection.instrument == inst.name)).all()
+        assert len(sections) == 1  # now it is on the DB
 
-        assert section_id is not None
+    # make a new instrument and fetch sections
+    inst2 = DemoInstrument()
+    inst2.name = inst.name
+    with SmartSession() as session:
+        inst2.fetch_sections(session=session)
+        assert inst2.get_property(0, 'gain') == 2.5
+        assert inst2.get_property(0, 'read_noise') == 1.3
 
-        session.delete(inst)
-        session.commit()
+        t0 = datetime.datetime.now()
+        # re-commit the section with a validity range
+        inst2.commit_sections(session=session, validity_start=t0, validity_end=t0 + datetime.timedelta(days=1))
 
-        section = session.scalars(sa.select(SensorSection).where(SensorSection.id == section_id)).first()
-        assert section is None
+    # new instrument should be able to fetch that section TODAY
+    inst3 = DemoInstrument()
+    inst3.name = inst.name
+
+    with SmartSession() as session:
+        inst3.fetch_sections(session=session)
+        assert inst3.get_property(0, 'gain') == 2.5
+        assert inst3.get_property(0, 'read_noise') == 1.3
+
+    # but not if we ask for a date in the past (e.g., an image taken last week)
+    inst4 = DemoInstrument()
+    inst4.name = inst.name
+
+    with SmartSession() as session:
+        inst4.fetch_sections(session=session, dateobs=t0 - datetime.timedelta(days=7))
+        assert inst4.get_property(0, 'gain') == 2.0
+        assert inst4.get_property(0, 'read_noise') == 1.5
 
 
-def test_non_null_constraints():
+def test_instrument_offsets_and_filter_array_index():
+    inst = DemoInstrument()
+    inst.name = 'TestInstrument' + uuid.uuid4().hex
+    assert inst.gain == 2.0
+
+    inst.fetch_sections()
+    assert inst.sections is not None
+    assert len(inst.sections) == 1
+
+    assert inst.get_property(0, 'gain') == 2.0
+
+    # check that there's also a default offsets list
+    offsets = inst.get_property(0, 'offsets')
+    assert offsets is not None
+    assert isinstance(offsets, tuple)
+    assert offsets == (0, 0)
+
+    offsets_x = inst.get_property(0, 'offset_x')
+    assert offsets_x == 0
+
+    offsets_y = inst.get_property(0, 'offset_y')
+    assert offsets_y == 0
+
+    # check that there's also a default filter array index list
+    idx = inst.get_property(0, 'filter_array_index')
+    assert idx == 0
+
+    # for the DECam instrument, the offsets are different
+    inst = DECam()
+    inst.name = 'TestInstrument' + uuid.uuid4().hex
+    inst.fetch_sections()
+
+    assert inst.sections is not None
+    assert len(inst.sections) > 1
+
+    # check that there are default (no zero) offsets for other sections
+    offsets = inst.get_property(1, 'offsets')
+    assert isinstance(offsets, tuple)
+    assert offsets != (0, 0)
+
+    # the filter array for DECam is also just 0 for any section
+    idx = inst.get_property(1, 'filter_array_index')
+    assert idx == 0
+
+
+def test_instrument_inheritance_full_example():
+    # define a new instrument class and make all the necessary overrides
     class TestInstrument(Instrument):
+        def __init__(self, **kwargs):
+            self.name = 'TestInstrument' + uuid.uuid4().hex
+            self.telescope = 'TestTelescope'
+            self.focal_ratio = np.random.uniform(1.5, 2.5)
+            self.aperture = np.random.uniform(0.5, 1.5)
+            self.pixel_scale = np.random.uniform(0.1, 0.2)
+            self.square_degree_fov = 0.5
+            self.read_noise = 1.5
+            self.dark_current = 0.1
+            self.size_x = 2048
+            self.size_y = 4096
+            self.gain = 1.2
+            self.read_time = 10.0
+            self.non_linearity_limit = 10000.0
+            self.saturation_limit = 50000.0
 
-        __mapper_args__ = {
-            "polymorphic_identity": "TestInstrument",
-        }
+            self.allowed_filters = ['r', 'g', 'b']
 
-        def _make_sections(self):
-            return []
+            # will apply kwargs to attributes, and register instrument in the INSTRUMENT_INSTANCE_CACHE
+            Instrument.__init__(self, **kwargs)
 
+        def get_section_ids(self):
+            """
+            Get a list of SensorSection identifiers for this instrument.
+            """
+            return range(10)  # let's assume this instrument has 10 sections
+
+        def check_section_id(self, section_id):
+            """
+            Check if the section_id is valid for this instrument.
+            The section identifier must be between 0 and 9.
+            """
+            if not isinstance(section_id, int):
+                raise ValueError(f"section_id must be an integer. Got {type(section_id)} instead.")
+            if section_id < 0 or section_id > 9:
+                raise ValueError(f"section_id must be between 0 and 9. Got {section_id} instead.")
+
+        def _make_new_section(self, identifier):
+            return SensorSection(
+                identifier=identifier,
+                instrument=self.name,
+                offset_x=0,
+                offset_y=identifier*(self.size_y + 100),
+            )
+
+        def load_section_image(self, filename, section_id):
+            size_x = self.get_property(section_id, 'size_x')
+            size_y = self.get_property(section_id, 'size_y')
+            return np.random.poisson(10, (size_y, size_x))
+
+        def read_header(self, filename):
+            # return a spoof header
+            return {
+                'RA': np.random.uniform(0, 360),
+                'DEC': np.random.uniform(-90, 90),
+                'EXPTIME': 25.0,  # milliseconds!!!
+                'FILTER': 'r',
+                'MJD': np.random.uniform(50000, 60000),
+                'PROPID': '2020A-0001',
+                'OBJECT': 'crab nebula',
+                'TELESCOP': 'TestTelescope',
+                'INSTRUME': 'TestInstrument',
+                'SHUTMODE': 'ROLLING',
+                'GAIN': np.random.normal(self.gain, 0.01),
+            }
+
+        @classmethod
+        def get_filename_regex(cls):
+            return [r'TestInstrument']
+
+        def get_auxiliary_exposure_header_keys(self):
+            return ['shutter_mode']
+
+        def _get_header_keyword_translations(self):
+            translations = Instrument._get_header_keyword_translations(self)
+            translations.update({'shutter_mode': 'SHUTMODE'})
+            return translations
+
+        def _get_header_values_converters(self):
+            # convert exp_time from ms to s:
+            return {'exp_time': lambda t: t/1000.0}
+
+    from models.instrument import register_all_instruments
+    register_all_instruments()  # make sure this instrument is registered to global dictionaries
+
+    # create an instance of the new instrument class
     inst = TestInstrument()
-    inst.name = 'TestInstrument'
+    inst.fetch_sections()  # there are no sections on DB, so make new ones
 
-    try:  # cleanup at the end
-        with SmartSession() as session:
-            # string attributes
-            for att in ['name', 'telescope']:
-                with pytest.raises(IntegrityError) as e:
-                    session.add(inst)
-                    session.commit()
-                assert re.search('null value in column ".*" violates not-null constraint', str(e.value))
-                session.rollback()
-                if att == 'name':
-                    setattr(inst, att, 'DemoInstrument')
-                else:
-                    setattr(inst, att, uuid.uuid4().hex)
+    assert len(inst.sections) == 10
+    for i in range(10):
+        assert inst.sections[i].identifier == str(i)
+        assert inst.sections[i].offset_x == 0
+        if i > 0:
+            assert inst.sections[i].offset_y > 0
 
-            # float attributes
-            for att in [
-                'aperture',
-                'focal_ratio',
-                'pixel_scale',
-                'square_degree_fov',
-                'read_time',
-                'read_noise',
-                'dark_current',
-                'gain',
-                'saturation_limit',
-                'non_linearity_limit',
+    with pytest.raises(ValueError, match='section_id must be an integer'):
+        inst.get_section('0')
 
-            ]:
-                with pytest.raises(IntegrityError) as e:
-                    session.add(inst)
-                    session.commit()
-                assert re.search('null value in column ".*" violates not-null constraint', str(e.value))
-                session.rollback()
-                setattr(inst, att, np.random.uniform(0, 1))
+    with pytest.raises(ValueError, match='section_id must be between 0 and 9'):
+        inst.get_section(10)
 
-            # string array attributes
-            for att in ['allowed_filters']:
-                with pytest.raises(IntegrityError) as e:
-                    session.add(inst)
-                    session.commit()
-                assert re.search('null value in column ".*" violates not-null constraint', str(e.value))
-                session.rollback()
-                setattr(inst, att, [np.random.choice(list('grizy')) for _ in range(3)])
+    inst.sections[1].gain = 1.6
+    assert inst.get_property(0, 'gain') == 1.2
+    assert inst.get_property(1, 'gain') == 1.6
 
-            # should now be ok to add
-            session.add(inst)
-            session.commit()
+    # check that the exposure object gets the correct header
+    e = Exposure(filename='TestInstrument.fits', nofile=True)
+    assert e.instrument == 'TestInstrument'
+    assert isinstance(e.instrument_object, TestInstrument)
+    assert e.exp_time == 0.025  # needs to be converted from ms to s
+    assert e.mjd is not None
+    assert e.header.get('shutter_mode') == 'ROLLING'
 
-    finally:
-        # get rid of this instrument
+    # allow the instrument to update with SensorSections consistent with the exposure's MJD
+    with SmartSession() as session:
+        e.update_instrument(session)
 
-        with SmartSession() as session:
-            session.execute(sa.delete(Instrument).where(Instrument.name == 'DemoInstrument'))
-            session.commit()
+    im_data = e.data[0]  # load the first CCD image
+    assert isinstance(im_data, np.ndarray)
+    assert im_data.shape == (4096, 2048)
+    assert im_data.sum() > 0
+    assert abs(np.mean(im_data) - 10) < 0.1  # random numbers with Poisson distribution around lambda=10
+
+
+# TODO: add more tests for e.g., loading FITS headers

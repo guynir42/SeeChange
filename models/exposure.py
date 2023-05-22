@@ -21,7 +21,6 @@ EXPOSURE_COLUMN_NAMES = [
     'target',
     'exp_time',
     'filter',
-    'filter_array',
     'telescope',
     'instrument'
 ]
@@ -71,6 +70,8 @@ class SectionData:
     def clear_cache(self):
         self._data = defaultdict(lambda: None)
 
+
+# TODO: add a SectionHeader class to read headers for individual sections
 
 class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
@@ -167,10 +168,6 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
-        # manually set all properties (columns or not)
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
 
         self._data = None
 
@@ -183,30 +180,73 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         self._instrument_object = None
 
         if self.instrument_object is not None:
-            if self.telescope is None:
-                self.telescope = self.instrument_object.telescope
+            self.use_instrument_to_read_header_data()
 
-            # get the header from the file in its raw form
-            raw_header_dictionary = self.instrument_object.read_header(self.get_fullpath())
-
-            critical_info = self.instrument_object.extract_critical_header_info(raw_header_dictionary, EXPOSURE_COLUMN_NAMES)
-            for k, v in critical_info.items():
-                if k == 'instrument':
-                    if self.instrument != v:
-                        raise ValueError(f"Header instrument {v} does not match Exposure instrument {self.instrument}")
-                elif k == 'telescope':
-                    if self.telescope != v:
-                        raise ValueError(
-                            f"Header telescope {v} does not match Exposure telescope {self.instrument.telescope}"
-                        )
-                else:
-                    setattr(self, k, v)
-
-            auxiliary_names = EXPOSURE_HEADER_KEYS + self.instrument_object.get_auxiliary_exposure_header_keys()
-            self.header = self.instrument_object.extract_auxiliary_header_info(raw_header_dictionary, auxiliary_names)
+        # manually set all properties (columns or not)
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
 
         if self.ra is not None and self.dec is not None:
             self.calculate_coordinates()
+
+    def use_instrument_to_read_header_data(self):
+        """
+        Use the instrument object to read the header data from the file.
+        This will check that all critical header values exist,
+        and will set the column attributes from these values.
+        Additional header values will be stored in the header JSONB column.
+        """
+        if self.telescope is None:
+            self.telescope = self.instrument_object.telescope
+
+        # get the header from the file in its raw form as a dictionary
+        raw_header_dictionary = self.instrument_object.read_header(self.get_fullpath())
+
+        # read and rename/convert units for all the column attributes:
+        critical_info = self.instrument_object.extract_header_info(
+            header=raw_header_dictionary,
+            names=EXPOSURE_COLUMN_NAMES,
+        )
+
+        # verify some attributes match, and besides set the column attributes from these values
+        for k, v in critical_info.items():
+            if k == 'instrument':
+                if self.instrument != v:
+                    raise ValueError(f"Header instrument {v} does not match Exposure instrument {self.instrument}")
+            elif k == 'telescope':
+                if self.telescope != v:
+                    raise ValueError(
+                        f"Header telescope {v} does not match Exposure telescope {self.telescope}"
+                    )
+            elif k == 'filter' and isinstance(v, list):
+                self.filter_array = v
+            elif k == 'filter' and isinstance(v, str):
+                self.filter = v
+            else:
+                setattr(self, k, v)
+
+        # these additional keys go into the header only
+        auxiliary_names = EXPOSURE_HEADER_KEYS + self.instrument_object.get_auxiliary_exposure_header_keys()
+        self.header = self.instrument_object.extract_header_info(
+            header=raw_header_dictionary,
+            names=auxiliary_names,
+        )
+
+    def check_required_attributes(self):
+        """Check that this exposure has all the required attributes."""
+
+        missing = []
+        for name in ['ra', 'dec', 'mjd', 'exp_time', 'instrument', 'section_id', 'telescope', 'project', 'target']:
+            if getattr(self, name) is None:
+                missing.append(name)
+
+        # one of these must be defined:
+        if self.filter is None and self.filter_array is None:
+            missing.append('filter')
+
+        if len(missing) > 0:
+            raise ValueError(f"Missing required attributes: {missing}")
 
     @property
     def instrument_object(self):
@@ -227,7 +267,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         self._instrument_object = None
         session = object_session(self)
         if session is not None:
-            self.instrument_object.fetch_sections(session=session)
+            self.update_instrument(session=session)
 
     def __repr__(self):
 
@@ -279,6 +319,31 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         if not isinstance(value, SectionData):
             raise ValueError(f"data must be a SectionData object. Got {type(value)} instead. ")
         self._data = value
+
+    def update_instrument(self, session=None):
+        """
+        Make sure the instrument object is up to date with the current database session.
+
+        This will call the instrument's fetch_sections() method,
+        using the given session and the exposure's MJD as dateobs.
+
+        If there are SensorSections for this instrument on the DB,
+        and if their validity range is consistent with this exposure's MJD,
+        those sections will be loaded to the instrument.
+        This must be called before loading any data.
+
+        This function is called automatically when an exposure
+        is loaded from the database.
+
+        Parameters
+        ----------
+        session: sqlalchemy.orm.Session
+            The database session to use.
+            If None, will open a new session
+            and close it at the end of the function.
+        """
+        with SmartSession(session) as session:
+            self.instrument_object.fetch_sections(session=session, dateobs=self.mjd)
 
     def calculate_coordinates(self):
         if self.ra is None or self.dec is None:

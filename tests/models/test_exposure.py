@@ -45,9 +45,14 @@ def test_exposure_no_null_values():
 
     try:
         exposure_id = None  # make sure to delete the exposure if it is added to DB
+        e = Exposure(f"Demo_test_{rnd_str(5)}.fits", nofile=True)
         with SmartSession() as session:
-            for i in range(len(required) - 1):
-                e = Exposure(f"Demo_test_{rnd_str(5)}.fits", nofile=True, **added)
+            for i in range(len(required)):
+                # set the exposure to the values in "added" or None if not in "added"
+                for k in required.keys():
+                    setattr(e, k, added.get(k, None))
+
+                # without all the required columns on e, it cannot be added to DB
                 with pytest.raises(IntegrityError) as exc:
                     session.add(e)
                     session.commit()
@@ -58,7 +63,7 @@ def test_exposure_no_null_values():
                     # the constraint on the filter is either filter or filter array must be not-null
                     colname = 'filter'
                 else:
-
+                    # a constraint on a column being not-null was violated
                     match_obj = re.search(expr, str(exc.value))
                     assert match_obj is not None
 
@@ -68,7 +73,8 @@ def test_exposure_no_null_values():
                 # add missing column name:
                 added.update({colname: required[colname]})
 
-        e = Exposure(f"Demo_test_{rnd_str(5)}.fits", nofile=True, **added)
+        for k in required.keys():
+            setattr(e, k, added.get(k, None))
         session.add(e)
         session.commit()
         exposure_id = e.id
@@ -93,11 +99,8 @@ def test_exposure_guess_demo_instrument():
     assert e.telescope == 'DemoTelescope'
     assert isinstance(e.instrument_object, DemoInstrument)
 
-    # check that we can override the "telescope" name:
-    e = Exposure(f"Demo_test_{rnd_str(5)}.fits", exp_time=30, mjd=58392.0, filter="F160W", ra=123, dec=-23,
-                 project='foo', target='bar', nofile=True, telescope='foo')
-    assert e.instrument == 'DemoInstrument'
-    assert e.telescope == 'foo'
+    # check that we can override the RA value:
+    assert e.ra == 123
 
 
 def test_exposure_guess_decam_instrument():
