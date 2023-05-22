@@ -6,6 +6,7 @@ Create Date: 2023-05-19 15:25:14.920521
 
 """
 from alembic import op
+from sqlalchemy.sql import text
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
@@ -61,6 +62,9 @@ def upgrade() -> None:
     sa.CheckConstraint('NOT(filter IS NULL AND filter_array IS NULL)', name='exposures_filter_or_array_check'),
     sa.PrimaryKeyConstraint('id')
     )
+    # Q3C index
+    op.get_bind().execute(text('CREATE EXTENSION IF NOT EXISTS q3c;'))
+    op.create_index('exposure_q3c_ang2ipix_idx', 'exposures', [sa.text('q3c_ang2ipix(ra, dec)')], unique=False)
     op.create_index(op.f('ix_exposures_created_at'), 'exposures', ['created_at'], unique=False)
     op.create_index(op.f('ix_exposures_ecllat'), 'exposures', ['ecllat'], unique=False)
     op.create_index(op.f('ix_exposures_exp_time'), 'exposures', ['exp_time'], unique=False)
@@ -231,6 +235,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_exposures_exp_time'), table_name='exposures')
     op.drop_index(op.f('ix_exposures_ecllat'), table_name='exposures')
     op.drop_index(op.f('ix_exposures_created_at'), table_name='exposures')
+    op.drop_index('exposure_q3c_ang2ipix_idx', table_name='exposures')
     op.drop_table('exposures')
     op.drop_index(op.f('ix_cutouts_id'), table_name='cutouts')
     op.drop_index(op.f('ix_cutouts_created_at'), table_name='cutouts')
