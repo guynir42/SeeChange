@@ -101,7 +101,12 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     filter = sa.Column(sa.Text, nullable=True, index=True, doc="Filter name")
 
-    filter_array = sa.Column(sa.ARRAY(sa.Text), nullable=True, index=True, )
+    filter_array = sa.Column(
+        sa.ARRAY(sa.Text),
+        nullable=True,
+        index=True,
+        doc="Array of filter names, if multiple filters were used. "
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -133,15 +138,15 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     project = sa.Column(
         sa.Text,
-        index=True,
         nullable=False,
+        index=True,
         doc='Name of the project, (could also be a proposal ID). '
     )
 
     target = sa.Column(
         sa.Text,
-        index=True,
         nullable=False,
+        index=True,
         doc='Name of the target object or field id. '
     )
 
@@ -164,7 +169,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         If the filename is given, it will parse
         the instrument name from the filename.
-        The header will be read out from the FITS file.
+        The header will be read out from the file.
         """
         FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
@@ -179,6 +184,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         self._instrument_object = None
 
+        # instrument_obj is lazy loaded when first getting it
         if self.instrument_object is not None:
             self.use_instrument_to_read_header_data()
 
@@ -188,13 +194,12 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
                 setattr(self, key, value)
 
         if self.ra is not None and self.dec is not None:
-            self.calculate_coordinates()
+            self.calculate_coordinates()  # galactic and ecliptic coordinates
 
     def use_instrument_to_read_header_data(self):
         """
         Use the instrument object to read the header data from the file.
-        This will check that all critical header values exist,
-        and will set the column attributes from these values.
+        This will set the column attributes from these values.
         Additional header values will be stored in the header JSONB column.
         """
         if self.telescope is None:
@@ -237,7 +242,9 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         """Check that this exposure has all the required attributes."""
 
         missing = []
-        for name in ['ra', 'dec', 'mjd', 'exp_time', 'instrument', 'section_id', 'telescope', 'project', 'target']:
+        required = EXPOSURE_COLUMN_NAMES
+        required.pop('filter')  # check this manually after the loop
+        for name in required:
             if getattr(self, name) is None:
                 missing.append(name)
 

@@ -400,16 +400,16 @@ class Instrument:
         including the most up-to-date information about the instrument.
         If that information changes, a new section should be added,
         with the old section saved to the DB with some validity range
-        add manually.
+        added manually.
 
         Any properties of the section that are the same as the global
         value of the instrument can be left as None, and the global
         value will be used when calling get_property() on the instrument.
 
-        Often the offsets of a section will be non-zero and hard coded
+        Often the offsets of a section will be non-zero and hard-coded
         based on the physical layout of a tiled-CCD focal plane.
         Other properties like the gain, read noise, etc. can be measured
-        and hard coded here, be read out from a table, etc.
+        and hard-coded here, be read out from a table, etc.
         It is the user's responsibility to maintain updated values
         for the sections.
 
@@ -704,9 +704,9 @@ class Instrument:
     @classmethod
     def get_filename_regex(cls):
         """
-        Get the regular expression used to match filenames for this instrument.
+        Get the regular expressions used to match filenames for this instrument.
         This is used to guess the correct instrument class to load the file
-        based only on the filename.
+        based only on the filename. Must return a list of regular expressions.
 
         THIS FUNCTION MUST BE OVERRIDEN BY EACH SUBCLASS.
 
@@ -801,7 +801,7 @@ class Instrument:
         items that are saved to the global exposure header,
         in addition to the keys in Exposure.EXPOSURE_HEADER_KEYS.
 
-        Subclasses should override this method to add additional items.
+        THIS METHOD SHOULD BE OVERRIDEN BY SUBCLASSES, TO ADD MORE ITEMS
         """
 
         return []
@@ -811,6 +811,8 @@ class Instrument:
         Get a dictionary that translates the header keywords into normalized column names.
         Each column name has a list of possible header keywords that can be used to populate it.
         When parsing the header, look for each one of these keywords, and use the first one that is found.
+
+        THIS METHOD SHOULD BE EXTENDED BY SUBCLASSES, OR REPLACED COMPLETELY.
         """
         t = dict(
             ra=['RA', 'RADEG'],
@@ -840,6 +842,8 @@ class Instrument:
         The base class does not assume any unit conversions
         are needed, so it returns an empty dict.
         Subclasses can override this method to add conversions.
+
+        THIS METHOD SHOULD BE OVERRIDEN BY SUBCLASSES, TO ADD MORE ITEMS
         """
         return {}
 

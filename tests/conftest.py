@@ -97,6 +97,6 @@ def exposure():
             if e.id is not None:
                 session.execute(sa.delete(Exposure).where(Exposure.id == e.id))
                 session.commit()
-        print(fullname)
+
         if fullname is not None and os.path.isfile(fullname):
             os.remove(fullname)

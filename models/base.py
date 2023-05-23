@@ -188,15 +188,15 @@ class FileOnDiskMixin:
     If the filename_extensions array is null, will just load a single file.
     If the filename_extensions is an array, will load a list of files (even if length 1).
 
-    When calling get_fullname(), the object will first check if the file exists locally,
+    When calling get_fullpath(), the object will first check if the file exists locally,
     and then it will download it from server if missing.
     If no remote server is defined in the config, this part is skipped.
-    If you want to avoid downloading, use get_fullname(download=False).
+    If you want to avoid downloading, use get_fullpath(download=False).
     If you want to always get a list of filenames (even if filename_extensions=None)
-    use get_fullname(as_list=True).
-    If downloading cannot proceed (because no server address is defined, or because
-    the download=False flag is used, or because the file is missing from server),
-    then the object will raise an exception.
+    use get_fullpath(as_list=True).
+    If the file is missing locally, and downloading cannot proceed
+    (because no server address is defined, or because the download=False flag is used,
+    or because the file is missing from server), then the call to get_fullpath() will raise an exception.
 
     After all the downloading is done and the file(s) exist locally,
     the full path to the local file is returned.
@@ -245,6 +245,8 @@ class FileOnDiskMixin:
         kwargs: dict
             Dictionary of keyword arguments.
             These include:
+            - filename: str
+                Use instead of the unnamed argument.
             - nofile: bool
                 If True, will not require the file to exist on disk.
                 That means it will not try to download it from server, either.
@@ -265,7 +267,7 @@ class FileOnDiskMixin:
         Get the full path of the file, or list of full paths
         of files if filename_extensions is not None.
         If the server_path is defined, and download=True (default),
-        the file will be downloaded from the  server if missing.
+        the file will be downloaded from the server if missing.
         If the file is not found on server or locally, will
         raise a FileNotFoundError.
         When setting self.nofile=True, will not check if the file exists,
