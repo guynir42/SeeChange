@@ -55,8 +55,8 @@ def upgrade() -> None:
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('modified', sa.DateTime(), nullable=False),
-    sa.Column('filename', sa.Text(), nullable=False),
-    sa.Column('filename_extensions', sa.ARRAY(sa.Text()), nullable=True),
+    sa.Column('filepath', sa.Text(), nullable=False),
+    sa.Column('filepath_extensions', sa.ARRAY(sa.Text()), nullable=True),
     sa.Column('ra', sa.Double(), nullable=False),
     sa.Column('dec', sa.Double(), nullable=False),
     sa.CheckConstraint('NOT(filter IS NULL AND filter_array IS NULL)', name='exposures_filter_or_array_check'),
@@ -68,7 +68,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_exposures_created_at'), 'exposures', ['created_at'], unique=False)
     op.create_index(op.f('ix_exposures_ecllat'), 'exposures', ['ecllat'], unique=False)
     op.create_index(op.f('ix_exposures_exp_time'), 'exposures', ['exp_time'], unique=False)
-    op.create_index(op.f('ix_exposures_filename'), 'exposures', ['filename'], unique=True)
+    op.create_index(op.f('ix_exposures_filepath'), 'exposures', ['filepath'], unique=True)
     op.create_index(op.f('ix_exposures_filter'), 'exposures', ['filter'], unique=False)
     op.create_index(op.f('ix_exposures_filter_array'), 'exposures', ['filter_array'], unique=False)
     op.create_index(op.f('ix_exposures_gallat'), 'exposures', ['gallat'], unique=False)
@@ -231,7 +231,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_exposures_gallat'), table_name='exposures')
     op.drop_index(op.f('ix_exposures_filter_array'), table_name='exposures')
     op.drop_index(op.f('ix_exposures_filter'), table_name='exposures')
-    op.drop_index(op.f('ix_exposures_filename'), table_name='exposures')
+    op.drop_index(op.f('ix_exposures_filepath'), table_name='exposures')
     op.drop_index(op.f('ix_exposures_exp_time'), table_name='exposures')
     op.drop_index(op.f('ix_exposures_ecllat'), table_name='exposures')
     op.drop_index(op.f('ix_exposures_created_at'), table_name='exposures')

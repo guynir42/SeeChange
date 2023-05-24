@@ -1,15 +1,4 @@
-# TODO: make a base Instrument class that has all the common methods.
-#  Subclass it for each instrument we want to use, e.g., DECam, LS4, etc.
-#  Each one of these classes must implement load and save methods.
-#  There are other things we may need from an instrument, like aperture, pixel scale, etc.
-
-# TODO: what about CCD chips with different filters? we sort of assume all sections have the same filter
-#  in each exposure, but for e.g., LS4 this will not be the case.
-#  Maybe we need to add an optional filter_array column to the Exposure class,
-#  where each exposure will have a list of filter names corresponding to the sections in that one frame.
-#  Then when making Image objects from an Exposure object we would check if the filter_array,
-#  and fall back to the regular filter column if filter_array is None.
-
+import os
 import re
 
 import numpy as np
@@ -79,6 +68,8 @@ def guess_instrument(filename):
     """
     if filename is None:
         raise ValueError("Cannot guess instrument without a filename! ")
+
+    filename = os.path.basename(filename)  # only scan the file name itself!
 
     if INSTRUMENT_FILENAME_REGEX is None:
         register_all_instruments()
@@ -640,7 +631,7 @@ class Instrument:
         idx = 0
         return idx
 
-    def load(self, filename, section_ids=None):
+    def load(self, filepath, section_ids=None):
         """
         Load a part of an exposure file, based on the section identifier.
         If the instrument does not have multiple sections, set section_ids=0.
@@ -649,8 +640,8 @@ class Instrument:
 
         Parameters
         ----------
-        filename: str
-            The filename of the exposure file.
+        filepath: str
+            The filepath of the exposure file.
         section_ids: str, int, or list of str or int (optional)
             Choose which section to load.
             The section_id is the identifier of the SensorSection object.
@@ -669,17 +660,17 @@ class Instrument:
             section_ids = self.get_section_ids()
 
         if isinstance(section_ids, (int, str)):
-            return self.load_section_image(filename, section_ids)
+            return self.load_section_image(filepath, section_ids)
 
         elif isinstance(section_ids, list):
-            return [self.load_section_image(filename, section_id) for section_id in section_ids]
+            return [self.load_section_image(filepath, section_id) for section_id in section_ids]
 
         else:
             raise ValueError(
                 f"section_ids must be a string, int, or list of strings or ints. Got {type(section_ids)}"
             )
 
-    def load_section_image(self, filename, section_id):
+    def load_section_image(self, filepath, section_id):
         """
         Load one section of an exposure file.
 
@@ -688,8 +679,8 @@ class Instrument:
 
         Parameters
         ----------
-        filename: str
-            The filename of the exposure file.
+        filepath: str
+            The filename (with full path) of the exposure file.
         section_id: str or int
             The identifier of the SensorSection object.
             This can be a serial number which is converted to a string.
@@ -713,7 +704,7 @@ class Instrument:
         """
         raise NotImplementedError("This method must be implemented by the subclass.")
 
-    def read_header(self, filename, section_id=None):
+    def read_header(self, filepath, section_id=None):
         """
         Load the header from file.
 
@@ -726,8 +717,8 @@ class Instrument:
 
         Parameters
         ----------
-        filename: str
-            The filename of the exposure file.
+        filepath: str
+            The filename (and full path) of the exposure file.
         section_id: int or str (optional)
             The identifier of the section to load.
             If None (default), will load the header for the entire detector,
@@ -896,7 +887,7 @@ class DemoInstrument(Instrument):
         """
         return SensorSection(identifier, self.name, size_x=512, size_y=1024)
 
-    def load_section_image(self, filename, section_id):
+    def load_section_image(self, filepath, section_id):
         """
         A spoof load method for this demo instrument.
         The data is just a random array.
@@ -907,9 +898,9 @@ class DemoInstrument(Instrument):
 
         Parameters
         ----------
-        filename: str
-            The filename of the exposure file.
-            In this case the filename is not used.
+        filepath: str
+            The filename (and full path) of the exposure file.
+            In this case the filepath is not used.
         section_id: str or int
             The identifier of the SensorSection object.
             This instrument only has one section, so this must be 0.
@@ -924,7 +915,7 @@ class DemoInstrument(Instrument):
 
         return np.random.poisson(10, (section.size_y, section.size_x))
 
-    def read_header(self, filename):
+    def read_header(self, filepath):
         # return a spoof header
         return {
             'RA': np.random.uniform(0, 360),

@@ -2,6 +2,7 @@ path:
   data_root: null
   data_temp: null
   server_data: null
+  # TODO: need to add additional options for server communications
 db:
   engine: postgresql
   user: postgres

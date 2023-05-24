@@ -37,31 +37,31 @@ class SectionData:
     disk and store it in memory.
     To clear the memory cache, call the clear_cache() method.
     """
-    def __init__(self, filename, instrument):
+    def __init__(self, filepath, instrument):
         """
-        Must initialize this object with a filename
-        (or list of filenames) and an instrument object.
+        Must initialize this object with a filepath
+        (or list of filepaths) and an instrument object.
         These two things will control how data is loaded
         from the disk.
 
         Parameters
         ----------
-        filename: str or list of str
-            The filename of the exposure to load.
+        filepath: str or list of str
+            The filepath of the exposure to load.
             If each section is in a different file, then
-            this should be a list of filenames.
+            this should be a list of filepaths.
         instrument: Instrument
             The instrument object that describes the
             sections and how to load them from disk.
 
         """
-        self.filename = filename
+        self.filepath = filepath
         self.instrument = instrument
         self._data = defaultdict(lambda: None)
 
     def __getitem__(self, section_id):
         if self._data[section_id] is None:
-            self._data[section_id] = self.instrument.load_section_image(self.filename, section_id)
+            self._data[section_id] = self.instrument.load_section_image(self.filepath, section_id)
         return self._data[section_id]
 
     def __setitem__(self, section_id, value):
@@ -161,7 +161,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
     def __init__(self, *args, **kwargs):
         """
         Initialize the exposure object.
-        Can give the filename of the exposure
+        Can give the filepath of the exposure
         as the single positional argument.
 
         Otherwise, give any arguments that are
@@ -176,11 +176,11 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         self._data = None
 
-        if self.filename is None and not self.nofile:
-            raise ValueError("Must give a filename to initialize an Exposure object. ")
+        if self.filepath is None and not self.nofile:
+            raise ValueError("Must give a filepath to initialize an Exposure object. ")
 
         if self.instrument is None:
-            self.instrument = guess_instrument(self.filename)
+            self.instrument = guess_instrument(self.filepath)
 
         self._instrument_object = None
 
@@ -307,11 +307,11 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         if not all([isinstance(sec_id, (str, int)) for sec_id in section_ids]):
             raise ValueError("section_ids must be a list of integers. ")
 
-        if self.filename is not None:
+        if self.filepath is not None:
             for i in section_ids:
                 self.data[i]  # use the SectionData __getitem__ method to load the data
         else:
-            raise ValueError("Cannot load data from database without a filename! ")
+            raise ValueError("Cannot load data from database without a filepath! ")
 
     @property
     def data(self):

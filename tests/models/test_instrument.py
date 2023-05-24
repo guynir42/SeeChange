@@ -194,12 +194,12 @@ def test_instrument_inheritance_full_example():
                 offset_y=identifier*(self.size_y + 100),
             )
 
-        def load_section_image(self, filename, section_id):
+        def load_section_image(self, filepath, section_id):
             size_x = self.get_property(section_id, 'size_x')
             size_y = self.get_property(section_id, 'size_y')
             return np.random.poisson(10, (size_y, size_x))
 
-        def read_header(self, filename):
+        def read_header(self, filepath):
             # return a spoof header
             return {
                 'RA': np.random.uniform(0, 360),
@@ -256,7 +256,7 @@ def test_instrument_inheritance_full_example():
     assert inst.get_property(1, 'gain') == 1.6
 
     # check that the exposure object gets the correct header
-    e = Exposure(filename='TestInstrument.fits', nofile=True)
+    e = Exposure(filepath='TestInstrument.fits', nofile=True)
     assert e.instrument == 'TestInstrument'
     assert isinstance(e.instrument_object, TestInstrument)
     assert e.exp_time == 0.025  # needs to be converted from ms to s

@@ -175,7 +175,7 @@ These can be normal file extensions:
 
 ```
 filename = 'Camera_Project_2021-01-01T00:00:00.000.fits'
-filename_extensions = ['.bias', '.flat'] 
+filename_extensions = ['.image', '.mask', '.weight'] 
 ```
 
 or they can be arbitrary parts of the filename, or even entire filenames, 
@@ -183,7 +183,7 @@ leaving the `filename` to contain just the path:
 
 ```
 filename = 'path/to/files/Camera_Project_'
-filename_extensions = ['bias.fits', 'flat.fits'] 
+filename_extensions = ['image.fits', 'mask.fits', 'weight.fits'] 
 ```
 
 To get the full path to the file, use the `get_fullpath()` method. 

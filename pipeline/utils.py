@@ -70,7 +70,7 @@ def parse_dateobs(dateobs=None, output='datetime'):
     Parse the dateobs, that can be a float, string, datetime or Time object.
     The output is datetime by default, but can be any of the above types.
     If the dateobs is None, the current time will be returned.
-    If float, will assume MJD.
+    If int or float, will assume MJD (or JD if bigger than 2400000).
 
     Parameters
     ----------
@@ -87,7 +87,10 @@ def parse_dateobs(dateobs=None, output='datetime'):
     if dateobs is None:
         dateobs = Time.now()
     elif isinstance(dateobs, (int, float)):
-        dateobs = Time(dateobs, format='mjd')
+        if dateobs > 2400000:
+            dateobs = Time(dateobs, format='jd')
+        else:
+            dateobs = Time(dateobs, format='mjd')
     elif isinstance(dateobs, str):
         if dateobs == 'now':
             dateobs = Time.now()

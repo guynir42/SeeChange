@@ -22,8 +22,8 @@ def rnd_str(n):
 
 def test_exposure_no_null_values():
 
-    # cannot create an exposure without a filename!
-    with pytest.raises(ValueError, match='Must give a filename'):
+    # cannot create an exposure without a filepath!
+    with pytest.raises(ValueError, match='Must give a filepath'):
         _ = Exposure()
 
     required = {
@@ -144,7 +144,7 @@ def test_exposure_load_demo_instrument_data(exposure):
 
     # the data is a SectionData object that lazy loads from file
     assert isinstance(exposure.data, SectionData)
-    assert exposure.data.filename == exposure.get_fullpath()
+    assert exposure.data.filepath == exposure.get_fullpath()
     assert exposure.data.instrument == exposure.instrument_object
 
     # must go to the DB to get the SensorSections first:

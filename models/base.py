@@ -176,23 +176,23 @@ class FileOnDiskMixin:
     Files are assumed to live in a remote server or on local disk.
     The path to both these locations is configurable and not stored on DB!
     Once the top level directory is set (locally and remotely),
-    the object's path relative to either of those is saved as "filename".
+    the object's path relative to either of those is saved as "filepath".
 
     If multiple files need to be copied or loaded, we can also append
-    the array "filename_extensions" to the filename.
+    the array "filepath_extensions" to the filepath.
     These could be actual extensions as in:
-    filename = 'foo.fits' and filename_extensions=['.bias', '.dark', '.flat']
-    or they could be just a different part of the filename itself:
-    filename = 'foo_' and filename_extensions=['bias.fits.gz', 'dark.fits.gz', 'flat.fits.gz']
+    filepath = 'foo.fits' and filepath_extensions=['.bias', '.dark', '.flat']
+    or they could be just a different part of the filepath itself:
+    filepath = 'foo_' and filepath_extensions=['bias.fits.gz', 'dark.fits.gz', 'flat.fits.gz']
 
-    If the filename_extensions array is null, will just load a single file.
-    If the filename_extensions is an array, will load a list of files (even if length 1).
+    If the filepath_extensions array is null, will just load a single file.
+    If the filepath_extensions is an array, will load a list of files (even if length 1).
 
     When calling get_fullpath(), the object will first check if the file exists locally,
     and then it will download it from server if missing.
     If no remote server is defined in the config, this part is skipped.
     If you want to avoid downloading, use get_fullpath(download=False).
-    If you want to always get a list of filenames (even if filename_extensions=None)
+    If you want to always get a list of filepaths (even if filepath_extensions=None)
     use get_fullpath(as_list=True).
     If the file is missing locally, and downloading cannot proceed
     (because no server address is defined, or because the download=False flag is used,
@@ -217,35 +217,38 @@ class FileOnDiskMixin:
     if not os.path.isdir(local_path):
         os.makedirs(local_path, exist_ok=True)
 
-    filename = sa.Column(
+    filepath = sa.Column(
         sa.Text,
         nullable=False,
         index=True,
         unique=True,
-        doc="Filename for raw exposure. "
+        doc="Filename and path (relative to the data root) for a raw exposure. "
     )
 
-    filename_extensions = sa.Column(
+    filepath_extensions = sa.Column(
         sa.ARRAY(sa.Text),
         nullable=True,
-        doc="Filename extensions for raw exposure. "
+        doc=(
+            "Filename extensions for raw exposure. "
+            "Can contain any part of the filepath that isn't shared between files. "
+        )
     )
 
     def __init__(self, *args, **kwargs):
         """
         Initialize an object that is associated with a file on disk.
-        If giving a single unnamed argument, will assume that is the filename.
-        Note that the filename should not include the global data path,
-        but only a path relative to that. # TODO: remove the global path if filename starts with it?
+        If giving a single unnamed argument, will assume that is the filepath.
+        Note that the filepath should not include the global data path,
+        but only a path relative to that. # TODO: remove the global path if filepath starts with it?
 
         Parameters
         ----------
         args: list
-            List of arguments, should only contain one string as the filename.
+            List of arguments, should only contain one string as the filepath.
         kwargs: dict
             Dictionary of keyword arguments.
             These include:
-            - filename: str
+            - filepath: str
                 Use instead of the unnamed argument.
             - nofile: bool
                 If True, will not require the file to exist on disk.
@@ -257,15 +260,15 @@ class FileOnDiskMixin:
                 # TODO: add the check that file exists before committing?
         """
         if len(args) == 1 and isinstance(args[0], str):
-            self.filename = args[0]
+            self.filepath = args[0]
 
-        self.filename = kwargs.pop('filename', self.filename)
+        self.filepath = kwargs.pop('filepath', self.filepath)
         self.nofile = kwargs.pop('nofile', False)  # do not require a file to exist when making the exposure object
 
     def get_fullpath(self, download=True, as_list=False):
         """
         Get the full path of the file, or list of full paths
-        of files if filename_extensions is not None.
+        of files if filepath_extensions is not None.
         If the server_path is defined, and download=True (default),
         the file will be downloaded from the server if missing.
         If the file is not found on server or locally, will
@@ -280,10 +283,10 @@ class FileOnDiskMixin:
         The application is then responsible for loading the content
         of the file.
 
-        When the filename_extensions is None, will return a single string.
-        When the filename_extensions is an array, will return a list of strings.
+        When the filepath_extensions is None, will return a single string.
+        When the filepath_extensions is an array, will return a list of strings.
         If as_list=False, will always return a list of strings,
-        even if filename_extensions is None.
+        even if filepath_extensions is None.
 
         Parameters
         ----------
@@ -291,7 +294,7 @@ class FileOnDiskMixin:
             Whether to download the file from server if missing.
             Must have server_path defined. Default is True.
         as_list: bool
-            Whether to return a list of filenames, even if filename_extensions=None.
+            Whether to return a list of filepaths, even if filepath_extensions=None.
             Default is False.
 
         Returns
@@ -299,13 +302,13 @@ class FileOnDiskMixin:
         str or list of str
             Full path to the file(s) on local disk.
         """
-        if self.filename_extensions is None:
+        if self.filepath_extensions is None:
             if as_list:
                 return [self._get_fullpath_single(download)]
             else:
                 return self._get_fullpath_single(download)
         else:
-            return [self._get_fullpath_single(download, ext) for ext in self.filename_extensions]
+            return [self._get_fullpath_single(download, ext) for ext in self.filepath_extensions]
 
     def _get_fullpath_single(self, download=True, ext=None):
         """
@@ -320,7 +323,7 @@ class FileOnDiskMixin:
             Whether to download the file from server if missing.
             Must have server_path defined. Default is True.
         ext: str
-            Extension to add to the filename. Default is None.
+            Extension to add to the filepath. Default is None.
 
         Returns
         -------
@@ -330,7 +333,7 @@ class FileOnDiskMixin:
         if not self.nofile and self.local_path is None:
             raise ValueError("Local path not defined!")
 
-        fname = self.filename
+        fname = self.filepath
         if ext is not None:
             fname += ext
 
@@ -344,13 +347,13 @@ class FileOnDiskMixin:
 
         return fullname
 
-    def _download_file(self, filename):
+    def _download_file(self, filepath):
         """
         Search and download the file from a remote server.
         The server_path must be defined on the class
         (e.g., by setting a value for it from the config).
         The download can be a simple copy from an address
-        (e.g., a join of server_path and filename)
+        (e.g., a join of server_path and filepath)
         or it can be a more complicated request.
         This depends on the exact configuration.
         """
