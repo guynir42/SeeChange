@@ -122,12 +122,12 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         doc='Name of the instrument used to take the exposure. '
     )
 
-    section_id = sa.Column(
-        sa.Text,
-        nullable=False,
-        index=True,
-        doc='Section ID of the exposure. '
-    )
+    # section_id = sa.Column(
+    #     sa.Text,
+    #     nullable=False,
+    #     index=True,
+    #     doc='Section ID of the exposure. '
+    # )
 
     telescope = sa.Column(
         sa.Text,
