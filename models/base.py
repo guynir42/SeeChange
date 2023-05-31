@@ -3,6 +3,8 @@ import inspect
 
 from contextlib import contextmanager
 
+from astropy.coordinates import SkyCoord
+
 import sqlalchemy as sa
 from sqlalchemy import func, orm
 
@@ -368,12 +370,30 @@ class SpatiallyIndexed:
     ra = sa.Column(sa.Double, nullable=False, doc='Right ascension in degrees')
     dec = sa.Column(sa.Double, nullable=False, doc='Declination in degrees')
 
+    gallat = sa.Column(sa.Double, index=True, doc="Galactic latitude of the target. ")
+
+    gallon = sa.Column(sa.Double, index=False, doc="Galactic longitude of the target. ")
+
+    ecllat = sa.Column(sa.Double, index=True, doc="Ecliptic latitude of the target. ")
+
+    ecllon = sa.Column(sa.Double, index=False, doc="Ecliptic longitude of the target. ")
+
     @declared_attr
     def __table_args__(cls):
         tn = cls.__tablename__
         return (
             sa.Index(f"{tn}_q3c_ang2ipix_idx", sa.func.q3c_ang2ipix(cls.ra, cls.dec)),
         )
+
+    def calculate_coordinates(self):
+        if self.ra is None or self.dec is None:
+            raise ValueError("Exposure must have RA and Dec set before calculating coordinates! ")
+
+        coords = SkyCoord(self.ra, self.dec, unit="deg", frame="icrs")
+        self.gallat = coords.galactic.b.deg
+        self.gallon = coords.galactic.l.deg
+        self.ecllat = coords.barycentrictrueecliptic.lat.deg
+        self.ecllon = coords.barycentrictrueecliptic.lon.deg
 
 
 if __name__ == "__main__":

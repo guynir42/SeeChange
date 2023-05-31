@@ -2,11 +2,11 @@ import re
 from collections import defaultdict
 
 import sqlalchemy as sa
+from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.orm.session import object_session
 
-from astropy.coordinates import SkyCoord
 
 from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession
 from models.instrument import Instrument, guess_instrument, get_instrument_instance
@@ -73,9 +73,14 @@ class SectionData:
 
 # TODO: add a SectionHeader class to read headers for individual sections
 
+im_type_enum = Enum("science", "reference", "difference", "bias", "dark", "flat", name='image_type')
+
+
 class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = "exposures"
+
+    type = sa.Column(im_type_enum, nullable=False, index=True, doc="Type of image (science, reference, difference, etc).")
 
     header = sa.Column(
         JSONB,
@@ -94,12 +99,12 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         sa.Double,
         nullable=False,
         index=True,
-        doc="Modified Julian date of the exposure (MJD=JD-2400000.5)."
+        doc="Modified Julian date of the start of the exposure (MJD=JD-2400000.5)."
     )
 
-    exp_time = sa.Column(sa.Float, nullable=False, index=True, doc="Exposure time in seconds")
+    exp_time = sa.Column(sa.Float, nullable=False, index=True, doc="Exposure time in seconds. ")
 
-    filter = sa.Column(sa.Text, nullable=True, index=True, doc="Filter name")
+    filter = sa.Column(sa.Text, nullable=True, index=True, doc="Name of the filter used to make this exposure. ")
 
     filter_array = sa.Column(
         sa.ARRAY(sa.Text),
@@ -122,13 +127,6 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         doc='Name of the instrument used to take the exposure. '
     )
 
-    # section_id = sa.Column(
-    #     sa.Text,
-    #     nullable=False,
-    #     index=True,
-    #     doc='Section ID of the exposure. '
-    # )
-
     telescope = sa.Column(
         sa.Text,
         nullable=False,
@@ -149,14 +147,6 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         index=True,
         doc='Name of the target object or field id. '
     )
-
-    gallat = sa.Column(sa.Double, index=True, doc="Galactic latitude of the target. ")
-
-    gallon = sa.Column(sa.Double, index=False, doc="Galactic longitude of the target. ")
-
-    ecllat = sa.Column(sa.Double, index=True, doc="Ecliptic latitude of the target. ")
-
-    ecllon = sa.Column(sa.Double, index=False, doc="Ecliptic longitude of the target. ")
 
     def __init__(self, *args, **kwargs):
         """
@@ -267,6 +257,25 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
     def instrument_object(self, value):
         self._instrument_object = value
 
+    @property
+    def start_mjd(self):
+        """Time of the beginning of the exposure (equal to mjd). """
+        return self.mjd
+
+    @property
+    def mid_mjd(self):
+        """Time of the middle of the exposure. """
+        if self.mjd is None or self.exp_time is None:
+            return None
+        return (self.start_mjd + self.end_mjd) / 2.0
+
+    @property
+    def end_mjd(self):
+        """The time when the exposure ended. """
+        if self.mjd is None or self.exp_time is None:
+            return None
+        return self.mjd + self.exp_time / 86400.0
+
     @sa.orm.reconstructor
     def init_on_load(self):
         Base.init_on_load(self)
@@ -351,16 +360,6 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         with SmartSession(session) as session:
             self.instrument_object.fetch_sections(session=session, dateobs=self.mjd)
-
-    def calculate_coordinates(self):
-        if self.ra is None or self.dec is None:
-            raise ValueError("Exposure must have RA and Dec set before calculating coordinates! ")
-
-        coords = SkyCoord(self.ra, self.dec, unit="deg", frame="icrs")
-        self.gallat = coords.galactic.b.deg
-        self.gallon = coords.galactic.l.deg
-        self.ecllat = coords.barycentrictrueecliptic.lat.deg
-        self.ecllon = coords.barycentrictrueecliptic.lon.deg
 
 
 if __name__ == '__main__':

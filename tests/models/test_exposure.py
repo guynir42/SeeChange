@@ -35,7 +35,6 @@ def test_exposure_no_null_values():
         'instrument': 'DemoInstrument',
         'project': 'foo',
         'target': 'bar',
-        'section_id': 0,
     }
 
     added = {}
@@ -180,6 +179,9 @@ def test_exposure_comes_loaded_with_instrument_from_db(exposure):
         assert isinstance(e2.instrument_object, DemoInstrument)
         assert e2.instrument_object.sections is not None
 
+
+def test_exposure_spatial_indexing(exposure):
+    pass  # TODO: complete this test
 
 # TODO: here's a list of tests that need to be added when more functionality is added:
 #  - test loading data from a FITS file (e.g., using the DECam instrument)
