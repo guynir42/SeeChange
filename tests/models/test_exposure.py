@@ -1,7 +1,6 @@
 import pytest
 import re
 
-import sqlalchemy as sa
 import numpy as np
 from datetime import datetime
 
@@ -114,14 +113,14 @@ def test_exposure_guess_decam_instrument():
     assert isinstance(e.instrument_object, DECam)
 
 
-def test_coordinates():
+def test_exposure_coordinates():
     e = Exposure('foo.fits', ra=None, dec=None, nofile=True)
     assert e.ecllat is None
     assert e.ecllon is None
     assert e.gallat is None
     assert e.gallon is None
 
-    with pytest.raises(ValueError, match='Exposure must have RA and Dec set'):
+    with pytest.raises(ValueError, match='Object must have RA and Dec set'):
         e.calculate_coordinates()
 
     e = Exposure('foo.fits', ra=123.4, dec=None, nofile=True)

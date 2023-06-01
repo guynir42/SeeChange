@@ -259,13 +259,29 @@ class FileOnDiskMixin:
                 later be associated with a file on disk (or for tests).
                 This property is NOT SAVED TO DB!
                 Saving to DB should only be done when a file exists
+                This is True by default, except for subclasses that
+                override the _do_not_require_file_to_exist() method.
                 # TODO: add the check that file exists before committing?
         """
         if len(args) == 1 and isinstance(args[0], str):
             self.filepath = args[0]
 
         self.filepath = kwargs.pop('filepath', self.filepath)
-        self.nofile = kwargs.pop('nofile', False)  # do not require a file to exist when making the exposure object
+        self.nofile = kwargs.pop('nofile', self._do_not_require_file_to_exist())
+
+    @staticmethod
+    def _do_not_require_file_to_exist():
+        """
+        The default value for the nofile property of new objects.
+        Generally it is ok to make new FileOnDiskMixin derived objects
+        without first having a file (the file is created by the app and
+        saved to disk before the object is committed).
+        Some subclasses (e.g., Exposure) will override this method
+        so that the default is that a file MUST exist upon creation.
+        In either case the caller to the __init__ method can specify
+        the value of nofile explicitly.
+        """
+        return True
 
     def get_fullpath(self, download=True, as_list=False):
         """
@@ -387,7 +403,7 @@ class SpatiallyIndexed:
 
     def calculate_coordinates(self):
         if self.ra is None or self.dec is None:
-            raise ValueError("Exposure must have RA and Dec set before calculating coordinates! ")
+            raise ValueError("Object must have RA and Dec set before calculating coordinates! ")
 
         coords = SkyCoord(self.ra, self.dec, unit="deg", frame="icrs")
         self.gallat = coords.galactic.b.deg

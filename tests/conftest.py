@@ -70,33 +70,63 @@ def provenance_extra(code_version, provenance_base):
 
 
 @pytest.fixture
-def exposure():
-    e = Exposure(
-        f"Demo_test_{rnd_str(5)}.fits",
-        section_id=0,
-        exp_time=30,
-        mjd=58392.0,
-        filter="g",
-        ra=123,
-        dec=-23,
-        project='foo',
-        target='bar',
-        nofile=True,
-    )
+def exposure_factory():
+    def factory():
+        e = Exposure(
+            f"Demo_test_{rnd_str(5)}.fits",
+            section_id=0,
+            exp_time=np.random.randint(1, 4) * 10,  # 10 to 40 seconds
+            mjd=np.random.uniform(58300, 58500),
+            filter=np.random.choice(list('grizY')),
+            ra=np.random.uniform(0, 360),
+            dec=np.random.uniform(-90, 90),
+            project='foo',
+            target=rnd_str(6),
+            nofile=True,
+        )
+        return e
+
+    return factory
+
+
+def make_exposure_file(exposure):
     fullname = None
     try:  # make sure to remove file at the end
-        fullname = e.get_fullpath()
+        fullname = exposure.get_fullpath()
         open(fullname, 'a').close()
-        e.nofile = False
+        exposure.nofile = False
 
-        yield e
+        yield exposure
 
     finally:
         with SmartSession() as session:
-            e = session.merge(e)
-            if e.id is not None:
-                session.execute(sa.delete(Exposure).where(Exposure.id == e.id))
+            exposure = session.merge(exposure)
+            if exposure.id is not None:
+                session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
                 session.commit()
 
         if fullname is not None and os.path.isfile(fullname):
             os.remove(fullname)
+
+@pytest.fixture
+def exposure(exposure_factory):
+    e = exposure_factory()
+    make_exposure_file(e)
+    yield e
+
+
+
+@pytest.fixture
+def exposure2(exposure_factory):
+    e = exposure_factory()
+    make_exposure_file(e)
+    yield e
+
+
+@pytest.fixture
+def exposure_filter_array(exposure_factory):
+    e = exposure_factory()
+    e.filter = None
+    e.filter_array = ['r', 'g', 'r', 'i']
+    make_exposure_file(e)
+    yield e

@@ -601,6 +601,7 @@ class Instrument:
         offset: tuple of floats
             The offsets in the x and y direction.
         """
+        self.check_section_id(section_id)
         # this simple instrument defaults to zero offsets for ALL sections
         offset_x = 0
         offset_y = 0
@@ -627,6 +628,7 @@ class Instrument:
         idx: int
             The index in the filter array.
         """
+        self.check_section_id(section_id)
         # this simple instrument has no filter array, so return zero
         idx = 0
         return idx
@@ -992,7 +994,6 @@ class DECam(Instrument):
         dx = section_id % 8
         dy = section_id // 8
         return dx * 2048, dy * 4096
-
 
     def _make_new_section(self, section_id):
         """

@@ -83,7 +83,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     )
 
     provenance_id = sa.Column(
-        sa.ForeignKey('provenances.id'),
+        sa.ForeignKey('provenances.id', ondelete="CASCADE"),
         nullable=False,
         index=True,
         doc=(
@@ -181,10 +181,25 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         doc='Section ID of the image, possibly inside a larger mosiaced exposure. '
     )
 
-    def __init__(self, **kwargs):
-        FileOnDiskMixin.__init__(self, **kwargs)
+    project = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        doc='Name of the project (could also be a proposal ID). '
+    )
+
+    target = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        doc='Name of the target object or field id. '
+    )
+
+    def __init__(self, *args, **kwargs):
+        FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
 
+        self.raw_data = None  # the raw exposure pixels (2D float or uint16 or whatever) not saved to disk!
         self._data = None  # the underlying pixel data array (2D float array)
         self._flags = None  # the bit-flag array (2D int array)
         self._weight = None  # the inverse-variance array (2D float array)
@@ -202,12 +217,75 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     @orm.reconstructor
     def init_on_load(self):
+        Base.init_on_load(self)
+        self.raw_data = None
         self._data = None
         self._flags = None
         self._weight = None
         self._background = None
         self._score = None
         self._psf = None
+
+    @classmethod
+    def from_exposure(cls, exposure, section_id):
+        """
+        Copy the raw pixel values and relevant metadata from a section of an Exposure.
+
+        Parameters
+        ----------
+        exposure: Exposure
+            The exposure object to copy data from.
+        section_id: int or str
+            The part of the sensor to use when making this image.
+            For single section instruments this is usually set to 0.
+
+        Returns
+        -------
+        image: Image
+            The new Image object. It would not have any data variables
+            except for raw_data (and all the metadata values).
+            To fill out data, flags, weight, etc., the application must
+            apply the proper preprocessing tools (e.g., bias, flat, etc).
+
+        """
+        if not isinstance(exposure, Exposure):
+            raise ValueError(f"The exposure must be an Exposure object. Got {type(exposure)} instead.")
+
+        new = cls()
+
+        same_columns = [
+            'type',
+            'mjd',
+            'end_mjd',
+            'exp_time',
+            'instrument',
+            'telescope',
+            'filter',
+            'project',
+            'target'
+        ]
+
+        # copy all the columns that are the same
+        for column in same_columns:
+            setattr(new, column, getattr(exposure, column))
+
+        if exposure.filter_array is not None:
+            idx = exposure.instrument_object.get_section_filter_array_index(section_id)
+            new.filter = exposure.filter_array[idx]
+
+        # TODO: must make a better effort to get the correct RA/Dec (from the header?)
+        new.ra = exposure.ra
+        new.dec = exposure.dec
+
+        # TODO: read the header from the exposure file's individual section data
+
+        new.section_id = section_id
+        new.raw_data = exposure.data[section_id]
+
+        # the exposure_id will be set automatically at commit time
+        new.exposure = exposure
+
+        return new
 
     def __repr__(self):
 
@@ -230,6 +308,108 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     def __str__(self):
         return self.__repr__()
+
+    def save(self, filename=None):
+        """
+        Save the data (along with flags, weights, etc.) to disk.
+        The format to save is determined by the config file.
+        Use the filename to override the default naming convention.
+
+        Parameters
+        ----------
+        filename: str (optional)
+            The filename to use to save the data.
+            If not provided, the default naming convention will be used.
+        """
+        pass  # TODO: finish this
+
+    def load(self):
+        """
+        Load the image data from disk.
+        This includes the _data property,
+        but can also load the _flags, _weight,
+        _background, _score, and _psf properties.
+
+        """
+        pass
+
+    @property
+    def data(self):
+        """
+        The underlying pixel data array (2D float array).
+        """
+        if self._data is None:
+            self.load()
+        return self._data
+
+    @data.setter
+    def data(self, value):
+        self._data = value
+
+    @property
+    def flags(self):
+        """
+        The bit-flag array (2D int array).
+        """
+        if self._data is None:
+            self.load()
+        return self._flags
+
+    @flags.setter
+    def flags(self, value):
+        self._flags = value
+
+    @property
+    def weight(self):
+        """
+        The inverse-variance array (2D float array).
+        """
+        if self._data is None:
+            self.load()
+        return self._weight
+
+    @weight.setter
+    def weight(self, value):
+        self._weight = value
+
+    @property
+    def background(self):
+        """
+        An estimate for the background flux (2D float array).
+        """
+        if self._data is None:
+            self.load()
+        return self._background
+
+    @background.setter
+    def background(self, value):
+        self._background = value
+
+    @property
+    def score(self):
+        """
+        The image after filtering with the PSF and normalizing to S/N units (2D float array).
+        """
+        if self._data is None:
+            self.load()
+        return self._score
+
+    @score.setter
+    def score(self, value):
+        self._score = value
+
+    @property
+    def psf(self):
+        """
+        A small point-spread-function image (2D float array).
+        """
+        if self._data is None:
+            self.load()
+        return self._psf
+
+    @psf.setter
+    def psf(self, value):
+        self._psf = value
 
 
 if __name__ == '__main__':

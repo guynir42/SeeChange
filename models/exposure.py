@@ -138,7 +138,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         sa.Text,
         nullable=False,
         index=True,
-        doc='Name of the project, (could also be a proposal ID). '
+        doc='Name of the project (could also be a proposal ID). '
     )
 
     target = sa.Column(
@@ -338,7 +338,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     def update_instrument(self, session=None):
         """
-        Make sure the instrument object is up to date with the current database session.
+        Make sure the instrument object is up-to-date with the current database session.
 
         This will call the instrument's fetch_sections() method,
         using the given session and the exposure's MJD as dateobs.
@@ -361,6 +361,17 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         with SmartSession(session) as session:
             self.instrument_object.fetch_sections(session=session, dateobs=self.mjd)
 
+    @staticmethod
+    def _do_not_require_file_to_exist():
+        """
+        By default, new Exposure objects are generated
+        with nofile=False, which means the file must exist
+        at the time the Exposure object is created.
+        This is the opposite default from the base class
+        FileOnDiskMixin behavior.
+        """
+        return False
+
 
 if __name__ == '__main__':
 
@@ -370,7 +381,17 @@ if __name__ == '__main__':
     import numpy as np
     rnd_str = lambda n: ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
 
-    e = Exposure(f"Demo_test_{rnd_str(5)}.fits", exp_time=30, mjd=58392.0, filter="F160W", ra=123, dec=-23, project='foo', target='bar')
+    e = Exposure(
+        f"Demo_test_{rnd_str(5)}.fits",
+        exp_time=30,
+        mjd=58392.0,
+        filter="F160W",
+        ra=123,
+        dec=-23,
+        project='foo',
+        target='bar',
+        nofile=True,
+    )
 
     session = Session()
 
