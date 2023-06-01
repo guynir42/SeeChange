@@ -75,6 +75,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     type = sa.Column(
         im_type_enum,  # defined in models/exposure.py
         nullable=False,
+        default="science",
         index=True,
         doc=(
             "Type of image. One of: science, reference, difference, bias, dark, flat. "

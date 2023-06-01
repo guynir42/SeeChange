@@ -80,7 +80,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = "exposures"
 
-    type = sa.Column(im_type_enum, nullable=False, index=True, doc="Type of image (science, reference, difference, etc).")
+    type = sa.Column(im_type_enum, nullable=False, default="science", index=True, doc="Type of image (science, reference, difference, etc).")
 
     header = sa.Column(
         JSONB,
