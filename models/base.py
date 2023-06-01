@@ -7,6 +7,7 @@ from astropy.coordinates import SkyCoord
 
 import sqlalchemy as sa
 from sqlalchemy import func, orm
+from sqlalchemy.types import Enum
 
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.declarative import declared_attr
@@ -14,6 +15,8 @@ from sqlalchemy.ext.declarative import declared_attr
 import util.config as config
 
 utcnow = func.timezone("UTC", func.current_timestamp())
+
+im_format_enum = Enum("fits", "hdf5", name='image_format')
 
 
 # this is the root SeeChange folder
@@ -234,6 +237,13 @@ class FileOnDiskMixin:
             "Filename extensions for raw exposure. "
             "Can contain any part of the filepath that isn't shared between files. "
         )
+    )
+
+    format = sa.Column(
+        im_format_enum,
+        nullable=False,
+        default='fits',
+        doc="Format of the file on disk. Should be fits or hdf5. "
     )
 
     def __init__(self, *args, **kwargs):

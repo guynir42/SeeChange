@@ -6,6 +6,7 @@ from datetime import datetime
 
 import sqlalchemy as sa
 
+from astropy.io import fits
 from astropy.time import Time
 
 from models.base import SmartSession
@@ -152,3 +153,85 @@ def parse_session(*args, **kwargs):
     return args, kwargs, session
 
 
+def read_fits_image(filename, ext_num=0):
+    """
+    Read a standard FITS file's image data and header.
+    Assumes this file doesn't have any complicated data structure.
+    For more complicated data files, allow each Instrument subclass
+    to use its own methods instead of this.
+
+    Parameters
+    ----------
+    filename: str
+        The full path to the file.
+    ext_num: int
+        The extension number to read.
+        For files with a single extension,
+        the default 0 is fine.
+
+    Returns
+    -------
+    data: np.ndarray
+        The image data.
+    header: astropy.io.fits.Header
+        The header of the image.
+    """
+    with fits.open(filename, memmap=False) as hdul:
+         data = hdul[ext_num].data
+         header = hdul[ext_num].header
+
+    return data, header
+
+
+def read_fits_image_data(filename, ext_num=0):
+    """
+    Read a standard FITS file's image data.
+    Assumes this file doesn't have any complicated data structure.
+    For more complicated data files, allow each Instrument subclass
+    to use its own methods instead of this.
+
+    Parameters
+    ----------
+    filename: str
+        The full path to the file.
+    ext_num: int
+        The extension number to read.
+        For files with a single extension,
+        the default 0 is fine.
+
+    Returns
+    -------
+    data: np.ndarray
+        The image data.
+    """
+    with fits.open(filename, memmap=False) as hdul:
+         data = hdul[ext_num].data
+
+    return data
+
+
+def read_fits_image_header(filename, ext_num=0):
+    """
+    Read a standard FITS file's image header.
+    Assumes this file doesn't have any complicated data structure.
+    For more complicated data files, allow each Instrument subclass
+    to use its own methods instead of this.
+
+    Parameters
+    ----------
+    filename: str
+        The full path to the file.
+    ext_num: int
+        The extension number to read.
+        For files with a single extension,
+        the default 0 is fine.
+
+    Returns
+    -------
+    header: astropy.io.fits.Header
+        The header of the image.
+    """
+    with fits.open(filename, memmap=False) as hdul:
+         header = hdul[ext_num].header
+
+    return header

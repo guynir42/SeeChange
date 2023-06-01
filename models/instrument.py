@@ -8,7 +8,7 @@ import sqlalchemy as sa
 
 from models.base import Base, SmartSession
 
-from pipeline.utils import parse_dateobs
+from pipeline.utils import parse_dateobs, read_fits_image_data, read_fits_image_header
 
 # dictionary of regex for filenames, pointing at instrument names
 INSTRUMENT_FILENAME_REGEX = None
@@ -359,7 +359,8 @@ class Instrument:
             f'[{",".join(self.allowed_filters)}])>'
         )
 
-    def get_section_ids(self):
+    @classmethod
+    def get_section_ids(cls):
         """
         Get a list of SensorSection identifiers for this instrument.
 
@@ -367,7 +368,8 @@ class Instrument:
         """
         raise NotImplementedError("This method must be implemented by the subclass.")
 
-    def check_section_id(self, section_id):
+    @classmethod
+    def check_section_id(cls, section_id):
         """
         Check that the type and value of the section is compatible with the instrument.
         For example, many instruments will key the section by a running integer (e.g., CCD ID),
@@ -675,9 +677,11 @@ class Instrument:
     def load_section_image(self, filepath, section_id):
         """
         Load one section of an exposure file.
+        The default loader uses the pipeline.utils.read_fits_image_data function,
+        which is a basic FITS reader utility. More advanced instruments should
+        override this function to use more complex file reading code.
 
-        THIS FUNCTION SHOULD BE OVERRIDEN BY EACH INSTRUMENT IMPLEMENTATION.
-        # TODO: maybe add a default FITS file reader here?
+        THIS FUNCTION CAN BE OVERRIDEN BY EACH INSTRUMENT IMPLEMENTATION.
 
         Parameters
         ----------
@@ -692,7 +696,9 @@ class Instrument:
         data: np.ndarray
             The data from the exposure file.
         """
-        raise NotImplementedError("This method must be implemented by the subclass.")
+        self.check_section_id(section_id)
+        idx = self.get_section_filter_array_index(section_id)
+        return read_fits_image_data(filepath, idx)
 
     @classmethod
     def get_filename_regex(cls):
@@ -710,7 +716,8 @@ class Instrument:
         """
         Load the header from file.
 
-        By default, instruments use a "standard" FITS header.
+        By default, instruments use a "standard" FITS header that is read
+        out using pipeline.utils.read_fits_image_header.
         Subclasses can override this method to use a different header format.
         Note that all keyword translations and value conversions happen later,
         in the extract_header_info function.
@@ -719,8 +726,10 @@ class Instrument:
 
         Parameters
         ----------
-        filepath: str
+        filepath: str or list of str
             The filename (and full path) of the exposure file.
+            If an Exposure is associated with multiple files,
+            this will be a list of filenames.
         section_id: int or str (optional)
             The identifier of the section to load.
             If None (default), will load the header for the entire detector,
@@ -729,11 +738,29 @@ class Instrument:
 
         Returns
         -------
-        header: dict
-            The header from the exposure file, as a dictionary.
+        header: dict or astropy.io.fits.Header
+            The header from the exposure file, as a dictionary
+            (or the more complex astropy.io.fits.Header object).
         """
-        # TODO: implement the default loader for FITS files
-        return {}
+        if isinstance(filepath, str):
+            if section_id is None:
+                return read_fits_image_header(filepath, 0)
+            else:
+                self.check_section_id(section_id)
+                idx = self._get_fits_hdu_index_from_section_id(section_id)
+                return read_fits_image_header(filepath, idx)
+        elif isinstance(filepath, list) and all(isinstance(f, str) for f in filepath):
+            if section_id is None:
+                # just read the header of the first file
+                return read_fits_image_header(filepath[0], 0)
+            else:
+                self.check_section_id(section_id)
+                idx = self._get_file_index_from_section_id(section_id)
+                return read_fits_image_header(filepath[idx], 0)
+        else:
+            raise ValueError(
+                f"filepath must be a string or list of strings. Got {type(filepath)}"
+            )
 
     @staticmethod
     def normalize_keyword(key):
@@ -745,7 +772,8 @@ class Instrument:
         """
         return key.upper().replace(' ', '').replace('_', '')
 
-    def extract_header_info(self, header, names):
+    @classmethod
+    def extract_header_info(cls, header, names):
         """
         Get information from the raw header into common column names.
         This includes keywords that are required for non-nullable columns (like MJD),
@@ -769,10 +797,10 @@ class Instrument:
         output_values: dict
             A dictionary with some of the required values from the header.
         """
-        header = {self.normalize_keyword(key): value for key, value in header.items()}
+        header = {cls.normalize_keyword(key): value for key, value in header.items()}
         output_values = {}
-        translations = self._get_header_keyword_translations()
-        converters = self._get_header_values_converters()
+        translations = cls._get_header_keyword_translations()
+        converters = cls._get_header_values_converters()
         for name in names:
             translation_list = translations.get(name, [])
             if isinstance(translation_list, str):
@@ -787,7 +815,8 @@ class Instrument:
 
         return output_values
 
-    def get_auxiliary_exposure_header_keys(self):
+    @classmethod
+    def get_auxiliary_exposure_header_keys(cls):
         """
         Additional header keys that can be useful to have on the
         Exposure header. This could include instrument specific
@@ -799,7 +828,8 @@ class Instrument:
 
         return []
 
-    def _get_header_keyword_translations(self):
+    @classmethod
+    def _get_header_keyword_translations(cls):
         """
         Get a dictionary that translates the header keywords into normalized column names.
         Each column name has a list of possible header keywords that can be used to populate it.
@@ -823,7 +853,8 @@ class Instrument:
         return t
         # TODO: add more!
 
-    def _get_header_values_converters(self):
+    @classmethod
+    def _get_header_values_converters(cls):
         """
         Get a dictionary with some keywords
         and the conversion functions needed to turn the
@@ -839,6 +870,59 @@ class Instrument:
         THIS METHOD SHOULD BE OVERRIDEN BY SUBCLASSES, TO ADD MORE ITEMS
         """
         return {}
+
+    @classmethod
+    def _get_fits_hdu_index_from_section_id(cls, section_id):
+        """
+        Translate the section_id into the index of the HDU in the FITS file.
+        For example, if we have an instrument with 10 CCDs, numbered 0 to 9,
+        the HDU list will probably contain a generic HDU at index 0,
+        and the individual section information in 1 through 10, so
+        the function should return section_id+1.
+        Another example could have section_id=A give an index 1,
+        and a section_id=B give an index 2 (so the function will read
+        from a dictionary to translate the values).
+
+        Parameters
+        ----------
+        section_id: int or str
+            The identifier of the section.
+
+        Returns
+        -------
+        index: int
+            The index of the HDU in the FITS file.
+            Note that the index is 0-based, as this value is
+            used in the astropy.io.fits functions/objects,
+            not in the native FITS format (which is 1-based).
+        """
+        cls.check_section_id(section_id)
+        return int(section_id) + 1
+
+    @classmethod
+    def _get_file_index_from_section_id(cls, section_id):
+        """
+        Translate the section_id into the file index in an array of filenames.
+        For example, if we have an instrument with 10 CCDs, numbered 0 to 9,
+        then we would probably have 10 filenames in some list.
+        In this case the function should return the section_id.
+        Another example could have section_id=A give an index 0,
+        and a section_id=B give an index 1 (so the function will read
+        from a dictionary to translate the values).
+
+        Parameters
+        ----------
+        section_id: int or str
+            The identifier of the section.
+
+        Returns
+        -------
+        index: int
+            The list index for the file that corresponds to the section_id.
+            The list of filenames must be in the correct order for this to work.
+        """
+        cls.check_section_id(section_id)
+        return int(section_id)
 
 
 class DemoInstrument(Instrument):
@@ -861,13 +945,15 @@ class DemoInstrument(Instrument):
         # will apply kwargs to attributes, and register instrument in the INSTRUMENT_INSTANCE_CACHE
         Instrument.__init__(self, **kwargs)
 
-    def get_section_ids(self):
+    @classmethod
+    def get_section_ids(cls):
         """
         Get a list of SensorSection identifiers for this instrument.
         """
         return [0]
 
-    def check_section_id(self, section_id):
+    @classmethod
+    def check_section_id(cls, section_id):
         """
         Check if the section_id is valid for this instrument.
         The demo instrument only has one section, so the section_id must be 0.
@@ -941,7 +1027,7 @@ class DECam(Instrument):
 
     def __init__(self, **kwargs):
         self.name = 'DECam'
-        self.telescope = 'Blanco'
+        self.telescope = 'CTIO 4.0-m telescope'
         self.aperture = 4.0
         self.focal_ratio = 2.7
         self.square_degree_fov = 3.0
@@ -957,13 +1043,15 @@ class DECam(Instrument):
         # will apply kwargs to attributes, and register instrument in the INSTRUMENT_INSTANCE_CACHE
         Instrument.__init__(self, **kwargs)
 
-    def get_section_ids(self):
+    @classmethod
+    def get_section_ids(cls):
         """
         Get a list of SensorSection identifiers for this instrument.
         """
         return range(64)
 
-    def check_section_id(self, section_id):
+    @classmethod
+    def check_section_id(cls, section_id):
         """
         Check that the type and value of the section is compatible with the instrument.
         In this case, it must be an integer in the range [0, 63].
@@ -974,7 +1062,8 @@ class DECam(Instrument):
         if not 0 <= section_id <= 63:
             raise ValueError(f"The section_id must be in the range [0, 63]. Got {section_id}. ")
 
-    def get_section_offsets(self, section_id):
+    @classmethod
+    def get_section_offsets(cls, section_id):
         """
         Find the offset for a specific section.
 
@@ -1013,7 +1102,7 @@ class DECam(Instrument):
 
     @classmethod
     def get_filename_regex(cls):
-        return [r'c4d.*ori\.fits']
+        return [r'c4d.*\.fits']
 
 
 if __name__ == "__main__":

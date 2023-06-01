@@ -105,8 +105,8 @@ def test_exposure_guess_decam_instrument():
 
     t = datetime.now()
     mjd = Time(t).mjd
-    time_str = t.strftime("%Y%m%d_%H%M%S")
-    e = Exposure(f"c4d_{time_str}_ori.fits", exp_time=30, mjd=mjd, filter="r", ra=123, dec=-23,
+
+    e = Exposure(f"DECam_examples/c4d_20221002_040239_r_v1.24.fits", exp_time=30, mjd=mjd, filter="r", ra=123, dec=-23,
                  project='foo', target='bar', nofile=True)
 
     assert e.instrument == 'DECam'

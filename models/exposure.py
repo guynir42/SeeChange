@@ -71,7 +71,46 @@ class SectionData:
         self._data = defaultdict(lambda: None)
 
 
-# TODO: add a SectionHeader class to read headers for individual sections
+class SectionHeader:
+    """
+    A helper class that lazy loads the section header from the database.
+    When requesting one of the section IDs it will fetch the header
+    for that section, load it from disk and store it in memory.
+    To clear the memory cache, call the clear_cache() method.
+    """
+    def __init__(self, filepath, instrument):
+        """
+        Must initialize this object with a filepath
+        (or list of filepaths) and an instrument object.
+        These two things will control how data is loaded
+        from the disk.
+
+        Parameters
+        ----------
+        filepath: str or list of str
+            The filepath of the exposure to load.
+            If each section is in a different file, then
+            this should be a list of filepaths.
+        instrument: Instrument
+            The instrument object that describes the
+            sections and how to load them from disk.
+
+        """
+        self.filepath = filepath
+        self.instrument = instrument
+        self._header = defaultdict(lambda: None)
+
+    def __getitem__(self, section_id):
+        if self._header[section_id] is None:
+            self._header[section_id] = self.instrument.read_header(self.filepath, section_id)
+        return self._data[section_id]
+
+    def __setitem__(self, section_id, value):
+        self._data[section_id] = value
+
+    def clear_cache(self):
+        self._data = defaultdict(lambda: None)
+
 
 im_type_enum = Enum("science", "reference", "difference", "bias", "dark", "flat", name='image_type')
 
@@ -80,7 +119,13 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = "exposures"
 
-    type = sa.Column(im_type_enum, nullable=False, default="science", index=True, doc="Type of image (science, reference, difference, etc).")
+    type = sa.Column(
+        im_type_enum,
+        nullable=False,
+        default="science",
+        index=True,
+        doc="Type of image (science, reference, difference, etc)."
+    )
 
     header = sa.Column(
         JSONB,
