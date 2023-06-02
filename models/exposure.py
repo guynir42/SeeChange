@@ -1,4 +1,3 @@
-import re
 from collections import defaultdict
 
 import sqlalchemy as sa
@@ -7,6 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.orm.session import object_session
 
+from pipeline.utils import read_fits_image
 
 from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession
 from models.instrument import Instrument, guess_instrument, get_instrument_instance
@@ -71,7 +71,7 @@ class SectionData:
         self._data = defaultdict(lambda: None)
 
 
-class SectionHeader:
+class SectionHeaders:
     """
     A helper class that lazy loads the section header from the database.
     When requesting one of the section IDs it will fetch the header
@@ -103,13 +103,13 @@ class SectionHeader:
     def __getitem__(self, section_id):
         if self._header[section_id] is None:
             self._header[section_id] = self.instrument.read_header(self.filepath, section_id)
-        return self._data[section_id]
+        return self._header[section_id]
 
     def __setitem__(self, section_id, value):
-        self._data[section_id] = value
+        self.header[section_id] = value
 
     def clear_cache(self):
-        self._data = defaultdict(lambda: None)
+        self._header = defaultdict(lambda: None)
 
 
 im_type_enum = Enum("science", "reference", "difference", "bias", "dark", "flat", name='image_type')
@@ -209,7 +209,9 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
 
-        self._data = None
+        self._data = None  # the underlying image data for each section
+        self._section_headers = None  # the headers for individual sections, directly from the FITS file
+        self._raw_header = None  # the global (exposure level) header, directly from the FITS file
 
         if self.filepath is None and not self.nofile:
             raise ValueError("Must give a filepath to initialize an Exposure object. ")
@@ -230,6 +232,17 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         if self.ra is not None and self.dec is not None:
             self.calculate_coordinates()  # galactic and ecliptic coordinates
+
+    @sa.orm.reconstructor
+    def init_on_load(self):
+        Base.init_on_load(self)
+        self._data = None
+        self._section_headers = None
+        self._raw_header = None
+        self._instrument_object = None
+        session = object_session(self)
+        if session is not None:
+            self.update_instrument(session=session)
 
     def use_instrument_to_read_header_data(self):
         """
@@ -321,15 +334,6 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
             return None
         return self.mjd + self.exp_time / 86400.0
 
-    @sa.orm.reconstructor
-    def init_on_load(self):
-        Base.init_on_load(self)
-        self._data = None
-        self._instrument_object = None
-        session = object_session(self)
-        if session is not None:
-            self.update_instrument(session=session)
-
     def __repr__(self):
 
         filter_str = '--'
@@ -380,6 +384,26 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         if not isinstance(value, SectionData):
             raise ValueError(f"data must be a SectionData object. Got {type(value)} instead. ")
         self._data = value
+
+    @property
+    def section_headers(self):
+        if self._section_headers is None:
+            if self.instrument is None:
+                raise ValueError("Cannot load headers without an instrument! ")
+            self._section_headers = SectionHeaders(self.get_fullpath(), self.instrument_object)
+        return self._section_headers
+
+    @section_headers.setter
+    def section_headers(self, value):
+        if not isinstance(value, SectionHeaders):
+            raise ValueError(f"data must be a SectionHeaders object. Got {type(value)} instead. ")
+        self._section_headers = value
+
+    @property
+    def raw_header(self):
+        if self._raw_header is None:
+            self._raw_header = read_fits_image(self.get_fullpath(), ext=0, output='header')
+        return self._raw_header
 
     def update_instrument(self, session=None):
         """

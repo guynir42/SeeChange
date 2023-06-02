@@ -153,7 +153,7 @@ def parse_session(*args, **kwargs):
     return args, kwargs, session
 
 
-def read_fits_image(filename, ext_num=0):
+def read_fits_image(filename, ext=0, output='data'):
     """
     Read a standard FITS file's image data and header.
     Assumes this file doesn't have any complicated data structure.
@@ -164,74 +164,75 @@ def read_fits_image(filename, ext_num=0):
     ----------
     filename: str
         The full path to the file.
-    ext_num: int
-        The extension number to read.
+    ext: int or str
+        The extension number or name to read.
         For files with a single extension,
         the default 0 is fine.
+    output: str
+        Choose which part of the file to read:
+        'data', 'header', 'both'.
 
     Returns
     -------
-    data: np.ndarray
+    The return value depends on the value of output:
+    data: np.ndarray (optional)
         The image data.
-    header: astropy.io.fits.Header
+    header: astropy.io.fits.Header (optional)
         The header of the image.
+    If both are requested, will return a tuple of both.
     """
     with fits.open(filename, memmap=False) as hdul:
-         data = hdul[ext_num].data
-         header = hdul[ext_num].header
+        if output in ['data', 'both']:
+            data = hdul[ext].data
 
-    return data, header
+        if output in ['header', 'both']:
+            header = hdul[ext].header
+
+    if output == 'data':
+        return data
+    elif output == 'header':
+        return header
+    elif output == 'both':
+        return data, header
+    else:
+        raise ValueError(f'Unknown output type "{output}", use "data", "header" or "both"')
 
 
-def read_fits_image_data(filename, ext_num=0):
+def save_fits_image_file(filename, data, header):
     """
-    Read a standard FITS file's image data.
-    Assumes this file doesn't have any complicated data structure.
-    For more complicated data files, allow each Instrument subclass
-    to use its own methods instead of this.
+    Save a single dataset (image data, weight, flags, etc) to a FITS file.
+    The header should be the raw header, with some possible adjustments,
+    including all the information (not just the minimal subset saved into the DB).
 
     Parameters
     ----------
     filename: str
         The full path to the file.
-    ext_num: int
-        The extension number to read.
-        For files with a single extension,
-        the default 0 is fine.
-
-    Returns
-    -------
     data: np.ndarray
-        The image data.
+        The image data. Can also supply the weight, flags, etc.
+    header: dict or astropy.io.fits.Header
+        The header of the image.
+
     """
-    with fits.open(filename, memmap=False) as hdul:
-         data = hdul[ext_num].data
+    hdu = fits.PrimaryHDU(data)
+    for k, v in header.items():
+        hdu.header[k] = v
+    hdul = fits.HDUList([hdu])
+    hdul.writeto(filename, overwrite=True)
 
-    return data
 
-
-def read_fits_image_header(filename, ext_num=0):
+def save_fits_image_file_combined(filename, data, header):
     """
-    Read a standard FITS file's image header.
-    Assumes this file doesn't have any complicated data structure.
-    For more complicated data files, allow each Instrument subclass
-    to use its own methods instead of this.
+    Save multiple data arrays into a single FITS file, using multiple extension.
 
     Parameters
     ----------
     filename: str
         The full path to the file.
-    ext_num: int
-        The extension number to read.
-        For files with a single extension,
-        the default 0 is fine.
-
-    Returns
-    -------
-    header: astropy.io.fits.Header
+    data: list of np.ndarray
+        The image data. # TODO: should we provide these as named arguments?
+    header: dict or astropy.io.fits.Header
         The header of the image.
-    """
-    with fits.open(filename, memmap=False) as hdul:
-         header = hdul[ext_num].header
 
-    return header
+    """
+    pass  # TODO: implement this

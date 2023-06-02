@@ -10,3 +10,7 @@ db:
   host: localhost
   port: 5432
   database: seechange
+
+storage:
+  images:
+    single_file: false

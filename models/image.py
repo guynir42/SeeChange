@@ -1,13 +1,16 @@
-
+import os
 import sqlalchemy as sa
 from sqlalchemy import orm
-from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
+
+from pipeline.utils import read_fits_image, save_fits_image_file, save_fits_image_file_combined
 
 from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed
 from models.exposure import Exposure, im_type_enum
 from models.provenance import Provenance
+
+import util.config as config
 
 image_source_self_association_table = sa.Table(
     'image_sources',
@@ -200,6 +203,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
 
         self.raw_data = None  # the raw exposure pixels (2D float or uint16 or whatever) not saved to disk!
+        self._raw_header = None  # the header data taken directly from the FITS file
         self._data = None  # the underlying pixel data array (2D float array)
         self._flags = None  # the bit-flag array (2D int array)
         self._weight = None  # the inverse-variance array (2D float array)
@@ -219,6 +223,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     def init_on_load(self):
         Base.init_on_load(self)
         self.raw_data = None
+        self._raw_header = None
         self._data = None
         self._flags = None
         self._weight = None
@@ -331,7 +336,25 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         _background, _score, and _psf properties.
 
         """
-        pass
+        cfg = config.Config.get()
+        single_file = config.value('storage.images.single_file')
+
+        if single_file:
+            filename = self.get_fullpath()
+            if not os.path.isfile(filename):
+                raise FileNotFoundError(f"Could not find the image file: {filename}")
+            self._data, self._raw_header = read_fits_image(filename, ext=0, output='both')
+            # TODO: do we know what the extensions are for weight/flags/etc? are they ordered or named?
+            self._flags = read_fits_image(filename, ext=1)  # TODO: is the flags always extension 1??
+            self._weight = read_fits_image(filename, ext=2)  # TODO: is the weight always extension 2??
+
+        else:  # save each data array to a separate file
+            # assumes there are filepath_extensions so get_fullpath() will return a list (as_list guarantees this)
+            for filename in self.get_fullpath(as_list=True):
+                if not os.path.isfile(filename):
+                    raise FileNotFoundError(f"Could not find the image file: {filename}")
+
+                self._data, self._raw_header = read_fits_image(filename, output='both')
 
     @property
     def data(self):
@@ -345,6 +368,16 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     @data.setter
     def data(self, value):
         self._data = value
+
+    @property
+    def raw_header(self):
+        if self._raw_header is None:
+            self.load()
+        return self._raw_header
+
+    @raw_header.setter
+    def raw_header(self, value):
+        self._raw_header = value
 
     @property
     def flags(self):
