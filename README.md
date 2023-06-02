@@ -387,7 +387,7 @@ A really important requirement from this pipeline is to make the data quickly ac
 So where is the data stored and how to get it quickly? 
 
 Each Exposure object is associated with a single FITS file (or sometimes multiple files, for different sections). 
-To get the imaging data for an Exposure, simply call the `data` property. This dictionary like object will
+To get the imaging data for an Exposure, simply call the `data` property. This dictionary-like object will
 provide a numpy array for each section of the instrument:
 
 ```python
@@ -407,9 +407,9 @@ When there are several sections, use `exp.instrument_object.get_section_ids()` t
 Note that these could be integers or strings, but the SectionData can use either type. 
 
 Header information is also loaded from the FITS file, but this information can be kept in three different places. 
-The first is the `header` property of the Exposure object. This is a dictionary like object that contains
+The first is the `header` property of the Exposure object. This is a dictionary-like object that contains
 a small subset of the full FITS header. Generally only the properties we intend to query on will be saved here. 
-Since some of this information is given as independet columns (like `exp_time`), the `header` column does not 
+Since some of this information is given as independent columns (like `exp_time`), the `header` column does not 
 necessarily keep much information beyond that. Note that this header is filled using the global header, 
 not the header of individual sections.
 The keywords in this header are all lower-case, and are translated to standardized names using the
@@ -418,10 +418,8 @@ from the raw header information (in upper case) which also uses instrument-speci
 The value of the header cards are also converted to standard units using the `_get_header_values_converters()`
 
 In addition to the `header` column which is saved to the database, the Exposure also has a `raw_header` and
-a `section_headers` properties. The `raw_header` is a dictionary like object that contains the full FITS header
+a `section_headers` properties. The `raw_header` is a dictionary-like object that contains the full FITS header
 of the file. This is not saved to the database, but is lazy loaded from the file when needed. 
-The `section_headers` is a dictionary of dictionaries, where each key is a section ID and the value is a dictionary
-that contains the raw header of the individual sections. 
 The raw headers use all upper case keywords. They are saved with the file on disk, and are not kept in the database. 
 The `section_headers` property is a SectionHeaders object (also defined in `models/exposure.py`) 
 which acts like a dictionary that lazy loads the FITS header from file for a specific section when needed. 
@@ -429,7 +427,7 @@ Note that the "global" header could be the same as the header of the first secti
 This usually happens if the raw data includes a separate FITS file for each section. 
 Each one would have a different raw header, and the "exposure global header" would arbitrarily be the header of the 
 first file. If the instrument only has one section, this is trivially true as well. 
-In cases where multiple section data is saved in one FITS files, there would usually be a primary HDU that contains
+In cases where multiple section data is saved in one FITS file, there would usually be a primary HDU that contains
 the global exposure header information, and additional extension HDUs with their own image data and headers. 
 In this case the `section_headers` are all different from the `raw_header`. 
 
@@ -454,8 +452,8 @@ This header is produced during the pre-processing step and contains only the imp
 The Image data is saved to disk using the format defined in the config file (using `storage.images.format`). 
 Unlike the Exposure object, which is linked to files that were created by an instrument we are not in control of, 
 the files associated with an Image object are created by the pipeline. 
-We can also choose to save all the different arrays in different files, or in the same file (using multiple extensions). 
-This is defined in the config file using `storage.images.single_file`. 
+We can also choose to save all the different arrays (data, weight, flags, etc.) in different files, 
+or in the same file (using multiple extensions). This is defined in the config file using `storage.images.single_file`. 
 In either case, the additional arrays are saved with their own headers, which are all identical to the Image object's
 `raw_header` dictionary. 
 

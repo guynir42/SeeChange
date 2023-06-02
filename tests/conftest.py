@@ -6,7 +6,7 @@ import numpy as np
 
 import sqlalchemy as sa
 
-from models.base import SmartSession
+from models.base import SmartSession, CODE_ROOT
 from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
 
@@ -115,7 +115,6 @@ def exposure(exposure_factory):
     yield e
 
 
-
 @pytest.fixture
 def exposure2(exposure_factory):
     e = exposure_factory()
@@ -130,3 +129,8 @@ def exposure_filter_array(exposure_factory):
     e.filter_array = ['r', 'g', 'r', 'i']
     make_exposure_file(e)
     yield e
+
+
+@pytest.fixture
+def decam_example_file_on_disk():
+    filename = os.path.join(CODE_ROOT, 'data/DECam_examples/c4d_221104_074232_ori.fits.fz')
