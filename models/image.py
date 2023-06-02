@@ -336,8 +336,12 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         _background, _score, and _psf properties.
 
         """
+
+        if self.filepath is None:
+            raise ValueError("The filepath is not set. Cannot load the image.")
+
         cfg = config.Config.get()
-        single_file = config.value('storage.images.single_file')
+        single_file = cfg.value('storage.images.single_file')
 
         if single_file:
             filename = self.get_fullpath()
@@ -361,7 +365,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         The underlying pixel data array (2D float array).
         """
-        if self._data is None:
+        if self._data is None and self.filepath is not None:
             self.load()
         return self._data
 
@@ -371,7 +375,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     @property
     def raw_header(self):
-        if self._raw_header is None:
+        if self._raw_header is None and self.filepath is not None:
             self.load()
         return self._raw_header
 
@@ -384,7 +388,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         The bit-flag array (2D int array).
         """
-        if self._data is None:
+        if self._data is None and self.filepath is not None:
             self.load()
         return self._flags
 
@@ -397,7 +401,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         The inverse-variance array (2D float array).
         """
-        if self._data is None:
+        if self._data is None and self.filepath is not None:
             self.load()
         return self._weight
 
@@ -410,7 +414,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         An estimate for the background flux (2D float array).
         """
-        if self._data is None:
+        if self._data is None and self.filepath is not None:
             self.load()
         return self._background
 
@@ -423,7 +427,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         The image after filtering with the PSF and normalizing to S/N units (2D float array).
         """
-        if self._data is None:
+        if self._data is None and self.filepath is not None:
             self.load()
         return self._score
 
@@ -436,7 +440,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         A small point-spread-function image (2D float array).
         """
-        if self._data is None:
+        if self._data is None and self.filepath is not None:
             self.load()
         return self._psf
 

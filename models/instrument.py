@@ -8,7 +8,7 @@ import sqlalchemy as sa
 
 from models.base import Base, SmartSession
 
-from pipeline.utils import parse_dateobs, read_fits_image_data, read_fits_image_header
+from pipeline.utils import parse_dateobs, read_fits_image
 
 # dictionary of regex for filenames, pointing at instrument names
 INSTRUMENT_FILENAME_REGEX = None
@@ -677,7 +677,7 @@ class Instrument:
     def load_section_image(self, filepath, section_id):
         """
         Load one section of an exposure file.
-        The default loader uses the pipeline.utils.read_fits_image_data function,
+        The default loader uses the pipeline.utils.read_fits_image function,
         which is a basic FITS reader utility. More advanced instruments should
         override this function to use more complex file reading code.
 
@@ -698,7 +698,7 @@ class Instrument:
         """
         self.check_section_id(section_id)
         idx = self.get_section_filter_array_index(section_id)
-        return read_fits_image_data(filepath, idx)
+        return read_fits_image(filepath, idx)
 
     @classmethod
     def get_filename_regex(cls):
@@ -717,7 +717,7 @@ class Instrument:
         Load the header from file.
 
         By default, instruments use a "standard" FITS header that is read
-        out using pipeline.utils.read_fits_image_header.
+        out using pipeline.utils.read_fits_image.
         Subclasses can override this method to use a different header format.
         Note that all keyword translations and value conversions happen later,
         in the extract_header_info function.
@@ -744,19 +744,19 @@ class Instrument:
         """
         if isinstance(filepath, str):
             if section_id is None:
-                return read_fits_image_header(filepath, 0)
+                return read_fits_image(filepath, ext=0, output='header')
             else:
                 self.check_section_id(section_id)
                 idx = self._get_fits_hdu_index_from_section_id(section_id)
-                return read_fits_image_header(filepath, idx)
+                return read_fits_image(filepath, ext=idx, output='header')
         elif isinstance(filepath, list) and all(isinstance(f, str) for f in filepath):
             if section_id is None:
                 # just read the header of the first file
-                return read_fits_image_header(filepath[0], 0)
+                return read_fits_image(filepath[0], ext=0, output='header')
             else:
                 self.check_section_id(section_id)
                 idx = self._get_file_index_from_section_id(section_id)
-                return read_fits_image_header(filepath[idx], 0)
+                return read_fits_image(filepath[idx], ext=0, output='header')
         else:
             raise ValueError(
                 f"filepath must be a string or list of strings. Got {type(filepath)}"
