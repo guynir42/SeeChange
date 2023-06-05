@@ -8,6 +8,8 @@ import sqlalchemy as sa
 
 from astropy.io import fits
 from astropy.time import Time
+from astropy import units as u
+from astropy.coordinates import SkyCoord
 
 from models.base import SmartSession
 
@@ -64,6 +66,60 @@ def get_latest_provenance(process_name, session=None):
         ).first()
 
     return prov
+
+
+def parse_ra_deg_to_hms(ra):
+    """
+    Convert an RA in degrees to a string in sexagesimal format (in hh:mm:ss).
+    """
+    if ra < 0 or ra > 360:
+        raise ValueError("RA out of range.")
+    ra /= 15.0  # convert to hours
+    return f"{int(ra):02d}:{int((ra % 1) * 60):02d}:{((ra % 1) * 60) % 1 * 60:05.2f}"
+
+
+def parse_dec_deg_to_dms(dec):
+    """
+    Convert a Dec in degrees to a string in sexagesimal format (in dd:mm:ss).
+    """
+    if dec < -90 or dec > 90:
+        raise ValueError("Dec out of range.")
+    return (
+        f"{int(dec):+03d}:{int((dec % 1) * 60):02d}:{((dec % 1) * 60) % 1 * 60:04.1f}"
+    )
+
+
+def parse_ra_hms_to_deg(ra):
+    """
+    Convert the input right ascension from sexagesimal string (hh:mm:ss format) into a float of decimal degrees.
+
+    """
+    if not isinstance(ra, str):
+        raise ValueError(f"RA ({ra}) is not a string.")
+    c = SkyCoord(ra=ra, dec=0, unit=(u.hourangle, u.degree))
+    ra = c.ra.value  # output in degrees
+
+    if not 0.0 < ra < 360.0:
+        raise ValueError(f"Value of RA ({ra}) is outside range (0 -> 360).")
+
+    return ra
+
+
+def parse_dec_dms_to_deg(dec):
+    """
+    Convert the input declination from sexagesimal string (dd:mm:ss format) into a float of decimal degrees.
+    """
+    if not isinstance(dec, str):
+        raise ValueError(f"Dec ({dec}) is not a string.")
+
+    c = SkyCoord(ra=0, dec=dec, unit=(u.degree, u.degree))
+    dec = c.dec.value  # output in degrees
+
+    if not -90.0 < dec < 90.0:
+        raise ValueError(f"Value of dec ({dec}) is outside range (-90 -> +90).")
+
+    return dec
+
 
 
 def parse_dateobs(dateobs=None, output='datetime'):

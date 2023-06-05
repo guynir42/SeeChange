@@ -179,3 +179,76 @@ def test_image_from_exposure_filter_array(exposure_filter_array):
     assert im.filter == filt
 
 
+def test_image_with_multiple_source_images(exposure, exposure2, provenance_base):
+    exposure.update_instrument()
+    exposure2.update_instrument()
+
+    # get a couple of images from exposure objects
+    im1 = Image.from_exposure(exposure, section_id=0)
+    im2 = Image.from_exposure(exposure2, section_id=0)
+    if im1.mjd > im2.mjd:
+        im1, im2 = im2, im1
+
+    im1.provenance = provenance_base
+    im1.filepath = 'foo1.fits'
+    im2.provenance = provenance_base
+    im2.filepath = 'foo2.fits'
+
+    # make a new image from the two (we still don't have a coadd method for this)
+    im = Image(
+        exp_time=im1.exp_time + im2.exp_time,
+        mjd=im1.mjd,
+        end_mjd=im2.end_mjd,
+        filter=im1.filter,
+        instrument=im1.instrument,
+        telescope=im1.telescope,
+        project=im1.project,
+        target=im1.target,
+        combine_method='coadd',
+        section_id=im1.section_id,
+        ra=im1.ra,
+        dec=im1.dec,
+        filepath='foo.fits'
+    )
+    im.source_images = [im1, im2]
+    im.provenance = provenance_base
+
+    try:
+        im_id = None
+        im1_id = None
+        im2_id = None
+        with SmartSession() as session:
+            session.add(im)
+            session.commit()
+
+            im_id = im.id
+            assert im_id is not None
+            assert im.exposure_id is None
+            assert im.is_multi_image
+            assert im.source_images == [im1, im2]
+            assert np.isclose(im.mid_mjd, (im1.mjd + im2.mjd) / 2)
+
+            # make sure source images are pulled into the database too
+            im1_id = im1.id
+            assert im1_id is not None
+            assert im1.exposure_id is not None
+            assert im1.exposure_id == exposure.id
+            assert not im1.is_multi_image
+            assert im1.source_images == []
+
+            im2_id = im2.id
+            assert im2_id is not None
+            assert im2.exposure_id is not None
+            assert im2.exposure_id == exposure2.id
+            assert not im2.is_multi_image
+            assert im2.source_images == []
+
+    finally:  # make sure to clean up all images
+        for id_ in [im_id, im1_id, im2_id]:
+            if id_ is not None:
+                with SmartSession() as session:
+                    im = session.scalars(sa.select(Image).where(Image.id == id_)).first()
+                    session.delete(im)
+                    session.commit()
+
+

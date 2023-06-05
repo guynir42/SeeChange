@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.orm.session import object_session
 
-from pipeline.utils import read_fits_image
+from pipeline.utils import read_fits_image, parse_ra_hms_to_deg, parse_dec_dms_to_deg
 
 from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession
 from models.instrument import Instrument, guess_instrument, get_instrument_instance
@@ -244,6 +244,14 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         if session is not None:
             self.update_instrument(session=session)
 
+    def __setattr__(self, key, value):
+        if key == 'ra' and isinstance(value, str):
+            value = parse_ra_hms_to_deg(value)
+        if key == 'dec' and isinstance(value, str):
+            value = parse_dec_dms_to_deg(value)
+
+        super().__setattr__(key, value)
+
     def use_instrument_to_read_header_data(self):
         """
         Use the instrument object to read the header data from the file.
@@ -443,26 +451,6 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
 
 if __name__ == '__main__':
-
-    from models.base import Session
-    import models.instrument
-
-    import numpy as np
-    rnd_str = lambda n: ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
-
-    e = Exposure(
-        f"Demo_test_{rnd_str(5)}.fits",
-        exp_time=30,
-        mjd=58392.0,
-        filter="F160W",
-        ra=123,
-        dec=-23,
-        project='foo',
-        target='bar',
-        nofile=True,
-    )
-
-    session = Session()
-
-    session.add(e)
-    session.commit()
+    filename = '/home/guyn/Dropbox/python/SeeChange/data/DECam_examples/c4d_221104_074232_ori.fits.fz'
+    e = Exposure(filename)
+    print(e)

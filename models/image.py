@@ -56,14 +56,15 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         )
     )
 
+
     @property
     def is_multi_image(self):
-        if self.exposure_id is not None:
+        if self.exposure is not None:
             return False
         elif self.source_images is not None and len(self.source_images) > 0:
             return True
         else:
-            return None  # for new objects that have not defined either exposure_id or source_images
+            return None  # for new objects that have not defined either exposure or source_images
 
     combine_method = sa.Column(
         Enum("coadd", "subtraction", name='image_combine_method'),
@@ -278,14 +279,16 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
             idx = exposure.instrument_object.get_section_filter_array_index(section_id)
             new.filter = exposure.filter_array[idx]
 
+        new.section_id = section_id
+        new.raw_data = exposure.data[section_id]
+
+        # read the header from the exposure file's individual section data
+        new._raw_header = exposure.section_headers[section_id]
+
+        # TODO: get the important keywords translated into the searchable header column
         # TODO: must make a better effort to get the correct RA/Dec (from the header?)
         new.ra = exposure.ra
         new.dec = exposure.dec
-
-        # TODO: read the header from the exposure file's individual section data
-
-        new.section_id = section_id
-        new.raw_data = exposure.data[section_id]
 
         # the exposure_id will be set automatically at commit time
         new.exposure = exposure

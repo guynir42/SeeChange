@@ -697,7 +697,7 @@ class Instrument:
             The data from the exposure file.
         """
         self.check_section_id(section_id)
-        idx = self.get_section_filter_array_index(section_id)
+        idx = self._get_fits_hdu_index_from_section_id(section_id)
         return read_fits_image(filepath, idx)
 
     @classmethod
@@ -770,7 +770,7 @@ class Instrument:
 
         THIS FUNCTION MAY BE OVERRIDEN BY SUBCLASSES IN RARE CASES.
         """
-        return key.upper().replace(' ', '').replace('_', '')
+        return key.upper().replace(' ', '').replace('_', '').replace('-', '')
 
     @classmethod
     def extract_header_info(cls, header, names):
@@ -1003,7 +1003,7 @@ class DemoInstrument(Instrument):
 
         return np.random.poisson(10, (section.size_y, section.size_x))
 
-    def read_header(self, filepath):
+    def read_header(self, filepath, section_id=None):
         # return a spoof header
         return {
             'RA': np.random.uniform(0, 360),
@@ -1048,7 +1048,7 @@ class DECam(Instrument):
         """
         Get a list of SensorSection identifiers for this instrument.
         """
-        return range(64)
+        return list(range(1, 63))
 
     @classmethod
     def check_section_id(cls, section_id):
@@ -1059,8 +1059,8 @@ class DECam(Instrument):
         if not isinstance(section_id, int):
             raise ValueError(f"The section_id must be an integer. Got {type(section_id)}. ")
 
-        if not 0 <= section_id <= 63:
-            raise ValueError(f"The section_id must be in the range [0, 63]. Got {section_id}. ")
+        if not 0 < section_id < 63:
+            raise ValueError(f"The section_id must be in the range [1, 62]. Got {section_id}. ")
 
     @classmethod
     def get_section_offsets(cls, section_id):
@@ -1099,6 +1099,17 @@ class DECam(Instrument):
         #  Also need to fix the offsets, this is really not correct.
         (dx, dy) = self.get_section_offsets(section_id)
         return SensorSection(section_id, self.name, size_x=2048, size_y=4096, offset_x=dx, offset_y=dy)
+
+    @classmethod
+    def _get_fits_hdu_index_from_section_id(cls, section_id):
+        """
+        Return the index of the HDU in the FITS file for the DECam files.
+        Since the section ids for this instrument are numbered between 1 and 62,
+        the HDU indices (not including the primary HDU that contains no image data)
+        will be exactly equal to the section_id.
+        """
+        cls.check_section_id(section_id)
+        return int(section_id)
 
     @classmethod
     def get_filename_regex(cls):

@@ -1,6 +1,7 @@
 import os
 import pytest
 import uuid
+import wget
 
 import numpy as np
 
@@ -132,5 +133,14 @@ def exposure_filter_array(exposure_factory):
 
 
 @pytest.fixture
-def decam_example_file_on_disk():
+def decam_example_file():
     filename = os.path.join(CODE_ROOT, 'data/DECam_examples/c4d_221104_074232_ori.fits.fz')
+    if not os.path.isfile(filename):
+        url = 'https://astroarchive.noirlab.edu/api/retrieve/004d537b1347daa12f8361f5d69bc09b/'
+        response = wget.download(
+            url=url,
+            out=os.path.join(CODE_ROOT, 'data/DECam_examples/c4d_221104_074232_ori.fits.fz')
+        )
+        assert response == filename
+
+    yield filename

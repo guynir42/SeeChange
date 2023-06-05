@@ -1,3 +1,4 @@
+import os
 import pytest
 import re
 
@@ -182,7 +183,63 @@ def test_exposure_comes_loaded_with_instrument_from_db(exposure):
 def test_exposure_spatial_indexing(exposure):
     pass  # TODO: complete this test
 
-# TODO: here's a list of tests that need to be added when more functionality is added:
-#  - test loading data from a FITS file (e.g., using the DECam instrument)
-#  - test reading a header from FITS (e.g., using the DECam instrument)
-#  - test that header keys with different formatting (e.g., 'EXPTIME' vs 'exptime') are recognized
+
+def test_decam_exposure(decam_example_file):
+    assert os.path.isfile(decam_example_file)
+    e = Exposure(decam_example_file)
+
+    assert e.instrument == 'DECam'
+    assert isinstance(e.instrument_object, DECam)
+    assert e.telescope == 'CTIO 4.0-m telescope'
+    assert e.mjd == 59887.32121458
+    assert e.end_mjd == 59887.32232569111
+    assert e.ra == 116.32024583333332
+    assert e.dec == -26.25
+    assert e.exp_time == 96.0
+    assert e.filepath == 'DECam_examples/c4d_221104_074232_ori.fits.fz'
+    assert e.filter == 'g DECam SDSS c0001 4720.0 1520.0'
+    assert not e.from_db
+    assert e.header == {}
+    assert e.id is None
+    assert e.target == 'DECaPS-West'
+    assert e.project == '2022A-724693'
+
+    # check that we can lazy load the header from file
+    assert len(e.raw_header) == 150
+    assert e.raw_header['NAXIS'] == 0
+
+    with pytest.raises(ValueError, match=re.escape('The section_id must be in the range [1, 62]. Got 0. ')):
+        _ = e.data[0]
+
+    assert isinstance(e.data[1], np.ndarray)
+    assert e.data[1].shape == (4146, 2160)
+
+    with pytest.raises(ValueError, match=re.escape('The section_id must be in the range [1, 62]. Got 0. ')):
+        _ = e.section_headers[0]
+
+    assert len(e.section_headers[1]) == 102
+    assert e.section_headers[1]['NAXIS'] == 2
+    assert e.section_headers[1]['NAXIS1'] == 2160
+    assert e.section_headers[1]['NAXIS2'] == 4146
+
+    try:
+        exp_id = None
+        with SmartSession() as session:
+            session.add(e)
+            session.commit()
+            exp_id = e.id
+            assert exp_id is not None
+
+        with SmartSession() as session:
+            e2 = session.scalars(sa.select(Exposure).where(Exposure.id == exp_id)).first()
+            assert e2 is not None
+            assert e2.id == exp_id
+            assert e2.from_db
+
+    finally:
+        if exp_id is not None:
+            with SmartSession() as session:
+                session.delete(e)
+                session.commit()
+
+

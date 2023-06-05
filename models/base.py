@@ -293,6 +293,35 @@ class FileOnDiskMixin:
         """
         return True
 
+    def __setattr__(self, key, value):
+        if key == 'filepath':
+            value = self._validate_filepath(value)
+
+        super().__setattr__(key, value)
+
+    def _validate_filepath(self, filepath):
+        """
+        Make sure the filepath is legitimate.
+        If the filepath starts with the local path
+        (i.e., an absolute path is given) then
+        the local path is removed from the filepath,
+        forcing it to be a relative path.
+
+        Parameters
+        ----------
+        filepath: str
+            The filepath to validate.
+
+        Returns
+        -------
+        filepath: str
+            The validated filepath.
+        """
+        if filepath.startswith(self.local_path):
+            filepath = filepath[len(self.local_path) + 1:]
+
+        return filepath
+
     def get_fullpath(self, download=True, as_list=False):
         """
         Get the full path of the file, or list of full paths
@@ -366,7 +395,6 @@ class FileOnDiskMixin:
             fname += ext
 
         fullname = os.path.join(self.local_path, fname)
-
         if not self.nofile and not os.path.exists(fullname) and download and self.server_path is not None:
             self._download_file(fname)
 
