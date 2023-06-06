@@ -186,13 +186,14 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
     exposure.update_instrument()
     exposure2.update_instrument()
 
+    # make sure exposures are in chronological order...
     if exposure.mjd > exposure2.mjd:
         exposure, exposure2 = exposure2, exposure
 
     # get a couple of images from exposure objects
     im1 = Image.from_exposure(exposure, section_id=0)
     im2 = Image.from_exposure(exposure2, section_id=0)
-    
+
     im1.provenance = provenance_base
     im1.filepath = 'foo1.fits'
     im2.provenance = provenance_base
@@ -262,6 +263,7 @@ def test_image_filename_conventions(demo_image, provenance_base):
 
     # use the naming convention in the config file
     demo_image.save()
+    print(demo_image.filepath)
     assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d_._\d{3}\.fits', demo_image.filepath)
     for f in demo_image.get_fullpath(as_list=True):
         assert os.path.isfile(f)

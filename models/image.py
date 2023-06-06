@@ -346,7 +346,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         # TODO: we may want to get the naming convention from the config file
         #  in which case we will need to parse it somehow, e.g., using some blocks
         #  like <instrument>, <filter>, etc.
-        # cfg = config.Config.get()
+
         t = Time(self.mjd, format='mjd', scale='utc').datetime
 
         short_name = self.instrument_object.get_short_instrument_name()
@@ -372,7 +372,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         default_convention = "{short_name}_{date}_{time}_{section_id}_{filter}_{prov_id}"
 
         cfg = config.Config.get()
-        name_convention = cfg.value('storage.images.name_convention', default=default_convention)
+        name_convention = cfg.value('storage.images.name_convention', default=None)
         if name_convention is None:
             name_convention = default_convention
 
@@ -392,7 +392,6 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
             section_id=section_id,
             prov_id=prov_id,
         )
-        # TODO: we should probably add some sub-folders to the filename!
 
         return filename
 
@@ -451,6 +450,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
                 filename += '.fits'
 
         elif format == 'hdf5':
+            # TODO: consider writing a more generic utility to save_image_file that handles either fits or hdf5, etc.
             raise RuntimeError("HDF5 format is not yet supported.")
         else:
             raise ValueError(f"Unknown image format: {format}. Use 'fits' or 'hdf5'.")
