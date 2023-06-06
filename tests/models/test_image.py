@@ -186,12 +186,13 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
     exposure.update_instrument()
     exposure2.update_instrument()
 
+    if exposure.mjd > exposure2.mjd:
+        exposure, exposure2 = exposure2, exposure
+
     # get a couple of images from exposure objects
     im1 = Image.from_exposure(exposure, section_id=0)
     im2 = Image.from_exposure(exposure2, section_id=0)
-    if im1.mjd > im2.mjd:
-        im1, im2 = im2, im1
-
+    
     im1.provenance = provenance_base
     im1.filepath = 'foo1.fits'
     im2.provenance = provenance_base
