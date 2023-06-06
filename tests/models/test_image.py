@@ -46,7 +46,6 @@ def test_image_no_null_values(provenance_base):
         image = Image(f"Demo_test_{rnd_str(5)}.fits", nofile=True)
         with SmartSession() as session:
             for i in range(len(required)):
-                print(set(required.keys()) - set(added.keys()))
                 # set the exposure to the values in "added" or None if not in "added"
                 for k in required.keys():
                     setattr(image, k, added.get(k, None))
@@ -87,40 +86,52 @@ def test_image_no_null_values(provenance_base):
 
 
 def test_image_enum_values(demo_image, provenance_base):
+    data_filename = None
     with SmartSession() as session:
         demo_image.provenance_id = provenance_base.id
         with pytest.raises(RuntimeError, match='The image data is not loaded. Cannot save.'):
             demo_image.save()
+
         demo_image.data = np.float32(demo_image.raw_data)
         demo_image.save()
+        data_filename = demo_image.get_fullpath(as_list=True)[0]
+        assert os.path.exists(data_filename)
 
-        assert demo_image.combine_method is None
+        try:
+            assert demo_image.combine_method is None
 
-        with pytest.raises(DataError, match='invalid input value for enum image_combine_method: "foo"'):
-            demo_image.combine_method = 'foo'
+            with pytest.raises(DataError, match='invalid input value for enum image_combine_method: "foo"'):
+                demo_image.combine_method = 'foo'
+                session.add(demo_image)
+                session.commit()
+            session.rollback()
+
+            for method in ['coadd', 'subtraction']:
+                demo_image.combine_method = method
+                session.add(demo_image)
+                session.commit()
+
+            demo_image.combine_method = 'subtraction'
             session.add(demo_image)
             session.commit()
-        session.rollback()
 
-        for method in ['coadd', 'subtraction']:
-            demo_image.combine_method = method
-            session.add(demo_image)
-            session.commit()
+            with pytest.raises(DataError, match='invalid input value for enum image_type: "foo"'):
+                demo_image.type = 'foo'
+                session.add(demo_image)
+                session.commit()
+            session.rollback()
 
-        demo_image.combine_method = 'subtraction'
-        session.add(demo_image)
-        session.commit()
+            for t in ["science", "reference", "difference", "bias", "dark", "flat"]:
+                demo_image.type = t
+                session.add(demo_image)
+                session.commit()
 
-        with pytest.raises(DataError, match='invalid input value for enum image_type: "foo"'):
-            demo_image.type = 'foo'
-            session.add(demo_image)
-            session.commit()
-        session.rollback()
-
-        for t in ["science", "reference", "difference", "bias", "dark", "flat"]:
-            demo_image.type = t
-            session.add(demo_image)
-            session.commit()
+        finally:
+            if data_filename is not None and os.path.exists(data_filename):
+                os.remove(data_filename)
+                folder = os.path.dirname(data_filename)
+                if len(os.listdir(folder)) == 0:
+                    os.rmdir(folder)
 
 
 def test_image_coordinates():
@@ -320,6 +331,9 @@ def test_image_filename_conventions(demo_image, provenance_base):
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)
+            folder = os.path.dirname(f)
+            if len(os.listdir(folder)) == 0:
+                os.rmdir(folder)
 
         new_convention = '{ra_int:03d}/foo_{date}_{time}_{section_id:02d}_{filter}'
         cfg.set_value('storage.images.name_convention', new_convention)
@@ -328,14 +342,20 @@ def test_image_filename_conventions(demo_image, provenance_base):
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)
+            folder = os.path.dirname(f)
+            if len(os.listdir(folder)) == 0:
+                os.rmdir(folder)
 
-        new_convention = 'bar_{date}_{time}_{section_id:02d}_{ra_int_h:02d}{dec_int:+02d}'
+        new_convention = 'bar_{date}_{time}_{section_id:02d}_{ra_int_h:02d}{dec_int:+03d}'
         cfg.set_value('storage.images.name_convention', new_convention)
         demo_image.save()
         assert re.search(r'bar_\d{8}_\d{6}_\d{2}_\d{2}[+-]\d{2}\.image\.fits', demo_image.get_fullpath()[0])
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)
+            folder = os.path.dirname(f)
+            if len(os.listdir(folder)) == 0:
+                os.rmdir(folder)
 
     finally:  # return to the original convention
         cfg.set_value('storage.images.name_convention', convention)
