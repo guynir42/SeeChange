@@ -27,5 +27,5 @@ storage:
     # The name convention can also include subfolders (e.g., using {ra_int}/...).
     # The minimal set of fields to make the filenames unique include:
     # short_name (instrument name), date, time, section_id, prov_id (the unique provenance ID)
-    name_convention: "{ra_int:03d}/{short_name}_{date}_{time}_{section_id}_{filter}_{prov_id}"
+    name_convention: "{ra_int:03d}/{short_name}_{date}_{time}_{section_id:02d}_{filter}_{prov_id:03d}"
 

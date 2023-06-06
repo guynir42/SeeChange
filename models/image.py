@@ -369,7 +369,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         section_id = self.section_id
         prov_id = self.provenance_id
 
-        default_convention = "{short_name}_{date}_{time}_{section_id}_{filter}_{prov_id}"
+        default_convention = "{short_name}_{date}_{time}_{section_id:02d}_{filter}_{prov_id:03d}"
 
         cfg = config.Config.get()
         name_convention = cfg.value('storage.images.name_convention', default=None)

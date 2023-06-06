@@ -263,8 +263,8 @@ def test_image_filename_conventions(demo_image, provenance_base):
 
     # use the naming convention in the config file
     demo_image.save()
-    print(demo_image.filepath)
-    assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d_._\d{3}\.fits', demo_image.filepath)
+
+    assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.fits', demo_image.filepath)
     for f in demo_image.get_fullpath(as_list=True):
         assert os.path.isfile(f)
         os.remove(f)
@@ -276,23 +276,23 @@ def test_image_filename_conventions(demo_image, provenance_base):
     try:
         cfg.set_value('storage.images.name_convention', None)
         demo_image.save()
-        assert re.match(r'Demo_\d{8}_\d{6}_\d_._\d{3}\.fits', demo_image.filepath)
+        assert re.match(r'Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.fits', demo_image.filepath)
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)
 
-        new_convention = '{ra_int:3d}/foo_{date}_{time}_{section_id}_{filter}.fits'
+        new_convention = '{ra_int:3d}/foo_{date}_{time}_{section_id:02d}_{filter}.fits'
         cfg.set_value('storage.images.name_convention', new_convention)
         demo_image.save()
-        assert re.match(r'\d{3}/foo_\d{8}_\d{6}_\d_.\.fits', demo_image.filepath)
+        assert re.match(r'\d{3}/foo_\d{8}_\d{6}_\d{2}_.\.fits', demo_image.filepath)
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)
 
-        new_convention = 'bar_{date}_{time}_{section_id}_{ra_int_h:02d}{dec_int:+02d}.fits'
+        new_convention = 'bar_{date}_{time}_{section_id:02d}_{ra_int_h:02d}{dec_int:+02d}.fits'
         cfg.set_value('storage.images.name_convention', new_convention)
         demo_image.save()
-        assert re.match(r'bar_\d{8}_\d{6}_\d_\d{2}[+-]\d{2}\.fits', demo_image.filepath)
+        assert re.match(r'bar_\d{8}_\d{6}_\d{2}_\d{2}[+-]\d{2}\.fits', demo_image.filepath)
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)
