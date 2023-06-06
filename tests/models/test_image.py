@@ -6,6 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
 from models.base import SmartSession
+from models.exposure import Exposure
 from models.image import Image
 
 
@@ -252,3 +253,39 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
                     session.commit()
 
 
+def test_image_from_decam_exposure(decam_example_file, provenance_base):
+    e = Exposure(decam_example_file)
+    im = Image.from_exposure(e, section_id=1)  # load the first CCD
+
+    assert e.instrument == 'DECam'
+    assert e.telescope == 'CTIO 4.0-m telescope'
+    assert not im.from_db
+    # TODO: update this with coordinates different for each section
+    assert im.ra == 116.32024583333332
+    assert im.dec == -26.25
+    assert im.mjd == 59887.32121458
+    assert im.end_mjd == 59887.32232569111
+    assert im.exp_time == 96.0
+    assert im.filter == 'g DECam SDSS c0001 4720.0 1520.0'
+    assert im.target == 'DECaPS-West'
+    assert im.project == '2022A-724693'
+    assert im.section_id == 1
+
+    assert im.id is None  # not yet on the DB
+    assert im.filepath is None  # no file yet!
+
+    # the header lazy loads alright:
+    assert len(im.raw_header) == 102
+    assert im.raw_header['NAXIS'] == 2
+    assert im.raw_header['NAXIS1'] == 2160
+    assert im.raw_header['NAXIS2'] == 4146
+
+    # check we have the raw data copied into temporary attribute
+    assert im.raw_data is not None
+    assert isinstance(im.raw_data, np.ndarray)
+    assert im.raw_data.shape == (4146, 2160)
+
+    # just for this test we will do preprocessing just by reducing the median
+    im.data = np.float32(im.raw_data - np.median(im.raw_data))
+
+    # check we can save the image using the filename conventions

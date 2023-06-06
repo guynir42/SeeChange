@@ -213,6 +213,7 @@ def test_decam_exposure(decam_example_file):
 
     assert isinstance(e.data[1], np.ndarray)
     assert e.data[1].shape == (4146, 2160)
+    assert e.data[1].dtype == 'uint16'
 
     with pytest.raises(ValueError, match=re.escape('The section_id must be in the range [1, 62]. Got 0. ')):
         _ = e.section_headers[0]

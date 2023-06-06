@@ -924,6 +924,26 @@ class Instrument:
         cls.check_section_id(section_id)
         return int(section_id)
 
+    @classmethod
+    def get_short_instrument_name(cls):
+        """
+        Get a short name used for e.g., making filenames.
+        """
+
+        raise NotImplementedError("Subclasses must implement this method")
+
+    @classmethod
+    def get_short_filter_name(cls, filter):
+        """
+        Translate the full filter name into a shorter version,
+        e.g., for using in filenames.
+        The default is to just return the filter name,
+        but instruments that have very long filter names
+        should really override this with a table lookup with short names.
+        """
+
+        return filter
+
 
 class DemoInstrument(Instrument):
 
@@ -1022,6 +1042,13 @@ class DemoInstrument(Instrument):
     def get_filename_regex(cls):
         return [r'Demo']
 
+    @classmethod
+    def get_short_instrument_name(cls):
+        """
+        Get a short name used for e.g., making filenames.
+        """
+        return 'Demo'
+
 
 class DECam(Instrument):
 
@@ -1114,6 +1141,22 @@ class DECam(Instrument):
     @classmethod
     def get_filename_regex(cls):
         return [r'c4d.*\.fits']
+
+    @classmethod
+    def get_short_instrument_name(cls):
+        """
+        Get a short name used for e.g., making filenames.
+        """
+        return 'c4d'
+
+    @classmethod
+    def get_short_filter_name(cls, filter):
+        """
+        Return the short version of each filter used by DECam.
+        In this case we just return the first character of the filter name,
+        e.g., shortening "g DECam SDSS c0001 4720.0 1520.0" to "g".
+        """
+        return filter[0:1]
 
 
 if __name__ == "__main__":

@@ -4,10 +4,13 @@ from sqlalchemy import orm
 from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
 
+from astropy.time import Time
+
 from pipeline.utils import read_fits_image, save_fits_image_file, save_fits_image_file_combined
 
 from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed
 from models.exposure import Exposure, im_type_enum
+from models.instrument import get_instrument_instance
 from models.provenance import Provenance
 
 import util.config as config
@@ -212,6 +215,8 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         self._score = None  # the image after filtering with the PSF and normalizing to S/N units (2D float array)
         self._psf = None  # a small point-spread-function image (2D float array)
 
+        self._instrument_object = None
+
         # manually set all properties (columns or not)
         for key, value in kwargs.items():
             if hasattr(self, key):
@@ -231,6 +236,8 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         self._background = None
         self._score = None
         self._psf = None
+
+        self._instrument_object = None
 
     @classmethod
     def from_exposure(cls, exposure, section_id):
@@ -281,6 +288,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         new.section_id = section_id
         new.raw_data = exposure.data[section_id]
+        new.instrument_object = exposure.instrument_object
 
         # read the header from the exposure file's individual section data
         new._raw_header = exposure.section_headers[section_id]
@@ -294,6 +302,18 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         new.exposure = exposure
 
         return new
+
+    @property
+    def instrument_object(self):
+        if self.instrument is not None:
+            if self._instrument_object is None or self._instrument_object.name != self.instrument:
+                self._instrument_object = get_instrument_instance(self.instrument)
+
+        return self._instrument_object
+
+    @instrument_object.setter
+    def instrument_object(self, value):
+        self._instrument_object = value
 
     def __repr__(self):
 
@@ -317,6 +337,30 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     def __str__(self):
         return self.__repr__()
 
+    def invent_filename(self):
+        """
+        Create a filename for the image based on the metadata.
+        This is used when saving the image to disk.
+        """
+        # TODO: we may want to get the naming convention from the config file
+        #  in which case we will need to parse it somehow, e.g., using some blocks
+        #  like <instrument>, <filter>, etc.
+        # cfg = config.Config.get()
+        t = Time(self.mjd, format='mjd', scale='utc').datetime
+
+        short_name = self.instrument_object.get_short_instrument_name()
+        date = t.strftime('%Y%m%d')
+        time = t.strftime('%H%M%S')
+        filter = self.instrument_object.get_short_filter_name(self.filter)
+
+        section_id = self.section_id
+        prov_id = self.provenance_id
+        filename = f"{short_name}_{date}_{time}_{section_id}_{filter}_{prov_id}"
+
+        # TODO: we should probably add some sub-folders to the filename!
+
+        return filename
+
     def save(self, filename=None):
         """
         Save the data (along with flags, weights, etc.) to disk.
@@ -329,7 +373,50 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
             The filename to use to save the data.
             If not provided, the default naming convention will be used.
         """
-        pass  # TODO: finish this
+        if self.data is None:
+            raise RuntimeError("The image data is not loaded. Cannot save.")
+
+        if filename is None:
+            filename = self.invent_filename()
+
+        cfg = config.Config.get()
+        single_file = cfg.value('storage.images.single_file')
+        format = cfg.value('storage.images.format')
+        extensions = []
+
+        full_path = os.path.join(self.local_path, filename)
+
+        if format == 'fits':
+            # save the imaging data
+            extensions.append('')  # assume the primary extension has no name
+            save_fits_image_file(full_path, self.data, self.raw_header, extname=extensions[-1], single_file=single_file)
+            # TODO: we can have extensions at the end of the filename (e.g., foo.fits.flags)
+            #  or we can have the extension name carry the file extension (e.g., foo.flags.fits)
+            #  this should be configurable and will affect how we make the filename and extensions.
+
+            # save the other extensions
+            array_list = ['flags', 'weight', 'background', 'score', 'psf']
+            for array_name in array_list:
+                array = getattr(self, array_name)
+                if array is not None:
+                    extensions.append(array_name)
+                    save_fits_image_file(
+                        full_path,
+                        array,
+                        self.raw_header,
+                        extname=extensions[-1],
+                        single_file=single_file
+                    )
+
+        elif format == 'hdf5':
+            raise RuntimeError("HDF5 format is not yet supported.")
+        else:
+            raise ValueError(f"Unknown image format: {format}. Use 'fits' or 'hdf5'.")
+
+        self.filepath = filename
+
+        if not single_file:
+            self.filepath_extensions = extensions
 
     def load(self):
         """
@@ -453,5 +540,6 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
 
 if __name__ == '__main__':
-    im = Image()
-    print(im.id)
+    filename = '/home/guyn/Dropbox/python/SeeChange/data/DECam_examples/c4d_221104_074232_ori.fits.fz'
+    e = Exposure(filename)
+    im = Image.from_exposure(e, section_id=1)

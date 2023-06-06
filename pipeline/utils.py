@@ -121,7 +121,6 @@ def parse_dec_dms_to_deg(dec):
     return dec
 
 
-
 def parse_dateobs(dateobs=None, output='datetime'):
     """
     Parse the dateobs, that can be a float, string, datetime or Time object.
@@ -254,11 +253,21 @@ def read_fits_image(filename, ext=0, output='data'):
         raise ValueError(f'Unknown output type "{output}", use "data", "header" or "both"')
 
 
-def save_fits_image_file(filename, data, header):
+def save_fits_image_file(filename, data, header, extname=None, overwrite=True, single_file=False):
     """
     Save a single dataset (image data, weight, flags, etc) to a FITS file.
     The header should be the raw header, with some possible adjustments,
     including all the information (not just the minimal subset saved into the DB).
+
+    When single_file=False (default) the extname parameter will be appended to the filename,
+    and the file will contain only the primary HDU.
+
+    Using the single_file=True option will save each data array into a separate extension
+    of the same file, instead of saving each data array into a separate file.
+    In this case the extname will be used to name the FITS extension.
+
+    In all cases, if the final filename does not end with .fits,
+    that will be appended at the end of it.
 
     Parameters
     ----------
@@ -268,27 +277,38 @@ def save_fits_image_file(filename, data, header):
         The image data. Can also supply the weight, flags, etc.
     header: dict or astropy.io.fits.Header
         The header of the image.
+    extname: str
+        The name of the extension to save the data into.
+        If writing individual files (default) will just
+        append this string to the filename.
+        If writing a single file, will use this as the extension name.
+    overwrite: bool
+        Whether to overwrite the file if it already exists.
+    single_file: bool
+        Whether to save each data array into a separate extension of the same file.
+        if False (default) will save each data array into a separate file.
+        If True, will use the extname to name the FITS extension, and save
+        each array into the same file.
 
     """
-    hdu = fits.PrimaryHDU(data)
-    for k, v in header.items():
-        hdu.header[k] = v
-    hdul = fits.HDUList([hdu])
-    hdul.writeto(filename, overwrite=True)
+    if single_file:
+        if not filename.endswith('.fits'):
+            filename += '.fits'
+        with fits.open(filename, memmap=False, mode='append') as hdul:
+            hdul.append(fits.PrimaryHDU())
 
+            hdu = fits.ImageHDU(data, name=extname)
+            for k, v in header.items():
+                hdu.header[k] = v
+            hdul.append(hdu)
+            hdul.writeto(filename, overwrite=overwrite)
+    else:
+        hdu = fits.PrimaryHDU(data)
+        for k, v in header.items():
+            hdu.header[k] = v
+        hdul = fits.HDUList([hdu])
+        full_name = filename+extname
+        if not full_name.endswith('.fits'):
+            full_name += '.fits'
+        hdul.writeto(full_name, overwrite=overwrite)
 
-def save_fits_image_file_combined(filename, data, header):
-    """
-    Save multiple data arrays into a single FITS file, using multiple extension.
-
-    Parameters
-    ----------
-    filename: str
-        The full path to the file.
-    data: list of np.ndarray
-        The image data. # TODO: should we provide these as named arguments?
-    header: dict or astropy.io.fits.Header
-        The header of the image.
-
-    """
-    pass  # TODO: implement this
