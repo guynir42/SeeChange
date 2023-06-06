@@ -3,6 +3,9 @@ import pytest
 import re
 
 import numpy as np
+
+from astropy.io import fits
+
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
@@ -299,6 +302,68 @@ def test_image_filename_conventions(demo_image, provenance_base):
 
     finally:  # return to the original convention
         cfg.set_value('storage.images.name_convention', convention)
+
+
+def test_image_multifile(demo_image, provenance_base):
+    demo_image.data = np.float32(demo_image.raw_data)
+    demo_image.flags = np.random.randint(0, 100, size=demo_image.raw_data.shape, dtype=np.uint32)
+    demo_image.provenance_id = provenance_base.id
+
+    cfg = config.Config.get()
+    single_fileness = cfg.value('storage.images.single_file')  # store initial value
+
+    try:
+        # first use single file
+        cfg.set_value('storage.images.single_file', True)
+        demo_image.save()
+
+        assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.fits', demo_image.filepath)
+
+        files = demo_image.get_fullpath(as_list=True)
+        assert len(files) == 1
+        assert os.path.isfile(files[0])
+
+        with fits.open(files[0]) as hdul:
+            assert len(hdul) == 3  # primary plus one for image data and one for flags
+            assert hdul[0].header['NAXIS'] == 0
+            assert isinstance(hdul[0], fits.PrimaryHDU)
+            assert hdul[1].header['NAXIS'] == 2
+            assert isinstance(hdul[1], fits.ImageHDU)
+            assert np.array_equal(hdul[1].data, demo_image.data)
+            assert hdul[2].header['NAXIS'] == 2
+            assert isinstance(hdul[2], fits.ImageHDU)
+            assert np.array_equal(hdul[2].data, demo_image.flags)
+
+        for f in demo_image.get_fullpath(as_list=True):
+            os.remove(f)
+
+        # now test multiple files
+        cfg.set_value('storage.images.single_file', False)
+        demo_image.save()
+
+        assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d{2}_._\d{3}', demo_image.filepath)
+        fullnames = demo_image.get_fullpath(as_list=True)
+
+        assert len(fullnames) == 2
+
+        assert os.path.isfile(fullnames[0])
+        assert re.search(r'\d{3}/Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.image\.fits', fullnames[0])
+        with fits.open(fullnames[0]) as hdul:
+            assert len(hdul) == 1  # image data is saved on the primary HDU
+            assert hdul[0].header['NAXIS'] == 2
+            assert isinstance(hdul[0], fits.PrimaryHDU)
+            assert np.array_equal(hdul[0].data, demo_image.data)
+
+        assert os.path.isfile(fullnames[1])
+        assert re.search(r'\d{3}/Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.flags\.fits', fullnames[1])
+        with fits.open(fullnames[1]) as hdul:
+            assert len(hdul) == 1
+            assert hdul[0].header['NAXIS'] == 2
+            assert isinstance(hdul[0], fits.PrimaryHDU)
+            assert np.array_equal(hdul[0].data, demo_image.flags)
+
+    finally:
+        cfg.set_value('storage.images.single_file', single_fileness)
 
 
 def test_image_from_decam_exposure(decam_example_file, provenance_base):

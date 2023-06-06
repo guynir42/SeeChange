@@ -159,7 +159,4 @@ def demo_image(exposure):
             session.execute(sa.delete(Image).where(Image.id == im.id))
             session.commit()
 
-        if im.filepath is not None:
-            for f in im.get_fullpath(as_list=True):
-                if os.path.isfile(f):
-                    os.remove(f)
+        im.remove_data_from_disk(remove_folders=True)

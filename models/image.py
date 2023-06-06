@@ -425,8 +425,8 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         if format == 'fits':
             # save the imaging data
-            extensions.append('')  # assume the primary extension has no name
-            save_fits_image_file(full_path, self.data, self.raw_header, extname=extensions[-1], single_file=single_file)
+            extensions.append('.image.fits')  # assume the primary extension has no name
+            save_fits_image_file(full_path, self.data, self.raw_header, extname='image', single_file=single_file)
             # TODO: we can have extensions at the end of the filename (e.g., foo.fits.flags)
             #  or we can have the extension name carry the file extension (e.g., foo.flags.fits)
             #  this should be configurable and will affect how we make the filename and extensions.
@@ -443,10 +443,12 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
                         extname=array_name,
                         single_file=single_file
                     )
+                    array_name = '.' + array_name
                     if not array_name.endswith('.fits'):
                         array_name += '.fits'
                     extensions.append(array_name)
-            if not filename.endswith('.fits'):
+
+            if single_file and not filename.endswith('.fits'):
                 filename += '.fits'
 
         elif format == 'hdf5':

@@ -424,6 +424,30 @@ class FileOnDiskMixin:
         # TODO: finish this
         raise NotImplementedError('Downloading files from server is not yet implemented!')
 
+    def remove_data_from_disk(self, remove_folders=True):
+        """
+        Delete the data from disk, if it exists.
+        If remove_folders=True, will also remove any folders
+        if they are empty after the deletion.
+
+        Parameters
+        ----------
+        remove_folders: bool
+            If True, will remove any folders on the path to the files
+            associated to this object, if they are empty.
+        """
+        for f in self.get_fullpath(as_list=True):
+            if os.path.exists(f):
+                os.remove(f)
+                if remove_folders:
+                    folder = f
+                    for i in range(10):
+                        folder = os.path.dirname(folder)
+                        if len(os.listdir(folder)) == 0:
+                            os.rmdir(folder)
+                        else:
+                            break
+
 
 def safe_mkdir(path):
     FileOnDiskMixin.safe_mkdir(path)

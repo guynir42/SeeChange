@@ -296,19 +296,21 @@ def save_fits_image_file(filename, data, header, extname=None, overwrite=True, s
             filename += '.fits'
         safe_mkdir(os.path.dirname(filename))
         with fits.open(filename, memmap=False, mode='append') as hdul:
-            hdul.append(fits.PrimaryHDU())
+            if len(hdul) == 0:
+                hdul.append(fits.PrimaryHDU())
 
             hdu = fits.ImageHDU(data, name=extname)
             for k, v in header.items():
                 hdu.header[k] = v
+
             hdul.append(hdu)
-            hdul.writeto(filename, overwrite=overwrite)
-    else:
+
+    else:  # multiple files
         hdu = fits.PrimaryHDU(data)
         for k, v in header.items():
             hdu.header[k] = v
         hdul = fits.HDUList([hdu])
-        full_name = filename+extname
+        full_name = filename+'.'+extname
         if not full_name.endswith('.fits'):
             full_name += '.fits'
 
