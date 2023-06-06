@@ -7,7 +7,7 @@ import numpy as np
 from astropy.io import fits
 
 import sqlalchemy as sa
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, DataError
 
 import util.config as config
 from models.base import SmartSession
@@ -84,6 +84,43 @@ def test_image_no_null_values(provenance_base):
             if exposure is not None:
                 session.delete(exposure)
                 session.commit()
+
+
+def test_image_enum_values(demo_image, provenance_base):
+    with SmartSession() as session:
+        demo_image.provenance_id = provenance_base.id
+        with pytest.raises(RuntimeError, match='The image data is not loaded. Cannot save.'):
+            demo_image.save()
+        demo_image.data = np.float32(demo_image.raw_data)
+        demo_image.save()
+
+        assert demo_image.combine_method is None
+
+        with pytest.raises(DataError, match='invalid input value for enum image_combine_method: "foo"'):
+            demo_image.combine_method = 'foo'
+            session.add(demo_image)
+            session.commit()
+        session.rollback()
+
+        for method in ['coadd', 'subtraction']:
+            demo_image.combine_method = method
+            session.add(demo_image)
+            session.commit()
+
+        demo_image.combine_method = 'subtraction'
+        session.add(demo_image)
+        session.commit()
+
+        with pytest.raises(DataError, match='invalid input value for enum image_type: "foo"'):
+            demo_image.type = 'foo'
+            session.add(demo_image)
+            session.commit()
+        session.rollback()
+
+        for t in ["science", "reference", "difference", "bias", "dark", "flat"]:
+            demo_image.type = t
+            session.add(demo_image)
+            session.commit()
 
 
 def test_image_coordinates():
@@ -267,7 +304,7 @@ def test_image_filename_conventions(demo_image, provenance_base):
     # use the naming convention in the config file
     demo_image.save()
 
-    assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.fits', demo_image.filepath)
+    assert re.search(r'\d{3}/Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.image\.fits', demo_image.get_fullpath()[0])
     for f in demo_image.get_fullpath(as_list=True):
         assert os.path.isfile(f)
         os.remove(f)
@@ -279,23 +316,23 @@ def test_image_filename_conventions(demo_image, provenance_base):
     try:
         cfg.set_value('storage.images.name_convention', None)
         demo_image.save()
-        assert re.match(r'Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.fits', demo_image.filepath)
+        assert re.search(r'Demo_\d{8}_\d{6}_\d{2}_._\d{3}\.image\.fits', demo_image.get_fullpath()[0])
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)
 
-        new_convention = '{ra_int:3d}/foo_{date}_{time}_{section_id:02d}_{filter}.fits'
+        new_convention = '{ra_int:03d}/foo_{date}_{time}_{section_id:02d}_{filter}'
         cfg.set_value('storage.images.name_convention', new_convention)
         demo_image.save()
-        assert re.match(r'\d{3}/foo_\d{8}_\d{6}_\d{2}_.\.fits', demo_image.filepath)
+        assert re.search(r'\d{3}/foo_\d{8}_\d{6}_\d{2}_.\.image\.fits', demo_image.get_fullpath()[0])
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)
 
-        new_convention = 'bar_{date}_{time}_{section_id:02d}_{ra_int_h:02d}{dec_int:+02d}.fits'
+        new_convention = 'bar_{date}_{time}_{section_id:02d}_{ra_int_h:02d}{dec_int:+02d}'
         cfg.set_value('storage.images.name_convention', new_convention)
         demo_image.save()
-        assert re.match(r'bar_\d{8}_\d{6}_\d{2}_\d{2}[+-]\d{2}\.fits', demo_image.filepath)
+        assert re.search(r'bar_\d{8}_\d{6}_\d{2}_\d{2}[+-]\d{2}\.image\.fits', demo_image.get_fullpath()[0])
         for f in demo_image.get_fullpath(as_list=True):
             assert os.path.isfile(f)
             os.remove(f)

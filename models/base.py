@@ -436,6 +436,8 @@ class FileOnDiskMixin:
             If True, will remove any folders on the path to the files
             associated to this object, if they are empty.
         """
+        if self.filepath is None:
+            return
         for f in self.get_fullpath(as_list=True):
             if os.path.exists(f):
                 os.remove(f)
