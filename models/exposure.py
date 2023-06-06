@@ -236,6 +236,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
     @sa.orm.reconstructor
     def init_on_load(self):
         Base.init_on_load(self)
+        FileOnDiskMixin.init_on_load(self)
         self._data = None
         self._section_headers = None
         self._raw_header = None

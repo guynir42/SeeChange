@@ -11,7 +11,7 @@ from astropy.time import Time
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 
-from models.base import SmartSession
+from models.base import SmartSession, safe_mkdir
 
 
 def get_git_hash():
@@ -294,6 +294,7 @@ def save_fits_image_file(filename, data, header, extname=None, overwrite=True, s
     if single_file:
         if not filename.endswith('.fits'):
             filename += '.fits'
+        safe_mkdir(os.path.dirname(filename))
         with fits.open(filename, memmap=False, mode='append') as hdul:
             hdul.append(fits.PrimaryHDU())
 
@@ -310,5 +311,7 @@ def save_fits_image_file(filename, data, header, extname=None, overwrite=True, s
         full_name = filename+extname
         if not full_name.endswith('.fits'):
             full_name += '.fits'
+
+        safe_mkdir(os.path.dirname(filename))
         hdul.writeto(full_name, overwrite=overwrite)
 

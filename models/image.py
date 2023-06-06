@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from astropy.time import Time
 
-from pipeline.utils import read_fits_image, save_fits_image_file, save_fits_image_file_combined
+from pipeline.utils import read_fits_image, save_fits_image_file
 
 from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed
 from models.exposure import Exposure, im_type_enum
@@ -228,6 +228,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     @orm.reconstructor
     def init_on_load(self):
         Base.init_on_load(self)
+        FileOnDiskMixin.init_on_load(self)
         self.raw_data = None
         self._raw_header = None
         self._data = None
@@ -353,10 +354,44 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         time = t.strftime('%H%M%S')
         filter = self.instrument_object.get_short_filter_name(self.filter)
 
+        ra = self.ra
+        ra_int, ra_frac = str(float(ra)).split('.')
+        ra_int = int(ra_int)
+        ra_int_h = ra_int // 15
+        ra_frac = int(ra_frac)
+
+        dec = self.dec
+        dec_int, dec_frac = str(float(dec)).split('.')
+        dec_int = int(dec_int)
+        dec_int_pm = f'p{dec_int:02d}' if dec_int >= 0 else f'm{dec_int:02d}'
+        dec_frac = int(dec_frac)
+
         section_id = self.section_id
         prov_id = self.provenance_id
-        filename = f"{short_name}_{date}_{time}_{section_id}_{filter}_{prov_id}"
 
+        default_convention = "{short_name}_{date}_{time}_{section_id}_{filter}_{prov_id}"
+
+        cfg = config.Config.get()
+        name_convention = cfg.value('storage.images.name_convention', default=default_convention)
+        if name_convention is None:
+            name_convention = default_convention
+
+        filename = name_convention.format(
+            short_name=short_name,
+            date=date,
+            time=time,
+            filter=filter,
+            ra=ra,
+            ra_int=ra_int,
+            ra_int_h=ra_int_h,
+            ra_frac=ra_frac,
+            dec=dec,
+            dec_int=dec_int,
+            dec_int_pm=dec_int_pm,
+            dec_frac=dec_frac,
+            section_id=section_id,
+            prov_id=prov_id,
+        )
         # TODO: we should probably add some sub-folders to the filename!
 
         return filename
@@ -376,12 +411,15 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         if self.data is None:
             raise RuntimeError("The image data is not loaded. Cannot save.")
 
+        if self.provenance_id is None:
+            raise RuntimeError("The image provenance_id is not set. Cannot save.")
+
         if filename is None:
             filename = self.invent_filename()
 
         cfg = config.Config.get()
-        single_file = cfg.value('storage.images.single_file')
-        format = cfg.value('storage.images.format')
+        single_file = cfg.value('storage.images.single_file', default=False)
+        format = cfg.value('storage.images.format', default='fits')
         extensions = []
 
         full_path = os.path.join(self.local_path, filename)
@@ -399,14 +437,18 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
             for array_name in array_list:
                 array = getattr(self, array_name)
                 if array is not None:
-                    extensions.append(array_name)
                     save_fits_image_file(
                         full_path,
                         array,
                         self.raw_header,
-                        extname=extensions[-1],
+                        extname=array_name,
                         single_file=single_file
                     )
+                    if not array_name.endswith('.fits'):
+                        array_name += '.fits'
+                    extensions.append(array_name)
+            if not filename.endswith('.fits'):
+                filename += '.fits'
 
         elif format == 'hdf5':
             raise RuntimeError("HDF5 format is not yet supported.")

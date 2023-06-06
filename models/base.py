@@ -84,37 +84,6 @@ def SmartSession(input_session=None):
         )
 
 
-def safe_mkdir(path):
-
-    cfg = config.Config.get()
-    allowed_dirs = []
-    if cfg.value('path.data_root') is not None:
-        allowed_dirs.append(cfg.value('path.data_root'))
-    if cfg.value('path.data_temp') is not None:
-        allowed_dirs.append(cfg.value('path.data_temp'))
-    if cfg.value('path.server_data') is not None:
-        allowed_dirs.append(cfg.value('path.server_data'))
-
-    ok = False
-
-    for d in allowed_dirs:
-        parent = os.path.realpath(os.path.abspath(d))
-        child = os.path.realpath(os.path.abspath(path))
-
-        if os.path.commonpath([parent]) == os.path.commonpath([parent, child]):
-            ok = True
-            break
-
-    if not ok:
-        err_str = "Cannot make a new folder not inside the following folders: "
-        err_str += "\n".join(allowed_dirs)
-        err_str += f"\n\nAttempted folder: {path}"
-        raise ValueError(err_str)
-
-    # if the path is ok, also make the subfolders
-    os.makedirs(path, exist_ok=True)
-
-
 class SeeChangeBase:
     """Base class for all SeeChange classes."""
 
@@ -213,14 +182,48 @@ class FileOnDiskMixin:
     when the app starts / when the config file is read.
     """
     cfg = config.Config.get()
-    server_path = cfg.value('path.server_data')
-    local_path = cfg.value('path.data_root')
+    server_path = cfg.value('path.server_data', None)
+    local_path = cfg.value('path.data_root', None)
     if local_path is None:
-        local_path = cfg.value('path.data_temp')
+        local_path = cfg.value('path.data_temp', None)
     if local_path is None:
         local_path = os.path.join(CODE_ROOT, 'data')
     if not os.path.isdir(local_path):
         os.makedirs(local_path, exist_ok=True)
+
+    @classmethod
+    def safe_mkdir(cls, path):
+        if path is None or path == '':
+            return  # ignore empty paths, we don't need to make them!
+        cfg = config.Config.get()
+
+        allowed_dirs = []
+        if cls.local_path is not None:
+            allowed_dirs.append(cls.local_path)
+        temp_path = cfg.value('path.data_temp', None)
+        if temp_path is not None:
+            allowed_dirs.append(temp_path)
+
+        allowed_dirs = list(set(allowed_dirs))
+
+        ok = False
+
+        for d in allowed_dirs:
+            parent = os.path.realpath(os.path.abspath(d))
+            child = os.path.realpath(os.path.abspath(path))
+
+            if os.path.commonpath([parent]) == os.path.commonpath([parent, child]):
+                ok = True
+                break
+
+        if not ok:
+            err_str = "Cannot make a new folder not inside the following folders: "
+            err_str += "\n".join(allowed_dirs)
+            err_str += f"\n\nAttempted folder: {path}"
+            raise ValueError(err_str)
+
+        # if the path is ok, also make the subfolders
+        os.makedirs(path, exist_ok=True)
 
     filepath = sa.Column(
         sa.Text,
@@ -278,6 +281,10 @@ class FileOnDiskMixin:
 
         self.filepath = kwargs.pop('filepath', self.filepath)
         self.nofile = kwargs.pop('nofile', self._do_not_require_file_to_exist())
+
+    @orm.reconstructor
+    def init_on_load(self):
+        self.nofile = self._do_not_require_file_to_exist()
 
     @staticmethod
     def _do_not_require_file_to_exist():
@@ -416,6 +423,10 @@ class FileOnDiskMixin:
 
         # TODO: finish this
         raise NotImplementedError('Downloading files from server is not yet implemented!')
+
+
+def safe_mkdir(path):
+    FileOnDiskMixin.safe_mkdir(path)
 
 
 class SpatiallyIndexed:

@@ -1,3 +1,4 @@
+import os
 import pytest
 import re
 
@@ -5,6 +6,7 @@ import numpy as np
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
+import util.config as config
 from models.base import SmartSession
 from models.exposure import Exposure
 from models.image import Image
@@ -251,6 +253,49 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
                     im = session.scalars(sa.select(Image).where(Image.id == id_)).first()
                     session.delete(im)
                     session.commit()
+
+
+def test_image_filename_conventions(demo_image, provenance_base):
+    demo_image.data = np.float32(demo_image.raw_data)
+    demo_image.provenance_id = provenance_base.id
+
+    # use the naming convention in the config file
+    demo_image.save()
+    assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d_._\d{3}\.fits', demo_image.filepath)
+    for f in demo_image.get_fullpath(as_list=True):
+        assert os.path.isfile(f)
+        os.remove(f)
+
+    cfg = config.Config.get()
+
+    # try to set the name convention to None, to load the default hard-coded one
+    convention = cfg.value('storage.images.name_convention')
+    try:
+        cfg.set_value('storage.images.name_convention', None)
+        demo_image.save()
+        assert re.match(r'Demo_\d{8}_\d{6}_\d_._\d{3}\.fits', demo_image.filepath)
+        for f in demo_image.get_fullpath(as_list=True):
+            assert os.path.isfile(f)
+            os.remove(f)
+
+        new_convention = '{ra_int:3d}/foo_{date}_{time}_{section_id}_{filter}.fits'
+        cfg.set_value('storage.images.name_convention', new_convention)
+        demo_image.save()
+        assert re.match(r'\d{3}/foo_\d{8}_\d{6}_\d_.\.fits', demo_image.filepath)
+        for f in demo_image.get_fullpath(as_list=True):
+            assert os.path.isfile(f)
+            os.remove(f)
+
+        new_convention = 'bar_{date}_{time}_{section_id}_{ra_int_h:02d}{dec_int:+02d}.fits'
+        cfg.set_value('storage.images.name_convention', new_convention)
+        demo_image.save()
+        assert re.match(r'bar_\d{8}_\d{6}_\d_\d{2}[+-]\d{2}\.fits', demo_image.filepath)
+        for f in demo_image.get_fullpath(as_list=True):
+            assert os.path.isfile(f)
+            os.remove(f)
+
+    finally:  # return to the original convention
+        cfg.set_value('storage.images.name_convention', convention)
 
 
 def test_image_from_decam_exposure(decam_example_file, provenance_base):

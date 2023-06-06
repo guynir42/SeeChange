@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from models.base import SmartSession, CODE_ROOT
 from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
-
+from models.image import Image
 
 def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
@@ -144,3 +144,22 @@ def decam_example_file():
         assert response == filename
 
     yield filename
+
+
+@pytest.fixture
+def demo_image(exposure):
+    exposure.update_instrument()
+    im = Image.from_exposure(exposure, section_id=0)
+
+    yield im
+
+    with SmartSession() as session:
+        im = session.merge(im)
+        if im.id is not None:
+            session.execute(sa.delete(Image).where(Image.id == im.id))
+            session.commit()
+
+        if im.filepath is not None:
+            for f in im.get_fullpath(as_list=True):
+                if os.path.isfile(f):
+                    os.remove(f)
