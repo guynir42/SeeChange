@@ -208,20 +208,20 @@ def test_decam_exposure(decam_example_file):
     assert len(e.raw_header) == 150
     assert e.raw_header['NAXIS'] == 0
 
-    with pytest.raises(ValueError, match=re.escape('The section_id must be in the range [1, 62]. Got 0. ')):
+    with pytest.raises(ValueError, match=re.escape('The section_id must be a string. ')):
         _ = e.data[0]
 
-    assert isinstance(e.data[1], np.ndarray)
-    assert e.data[1].shape == (4146, 2160)
-    assert e.data[1].dtype == 'uint16'
+    assert isinstance(e.data['N4'], np.ndarray)
+    assert e.data['N4'].shape == (4146, 2160)
+    assert e.data['N4'].dtype == 'uint16'
 
-    with pytest.raises(ValueError, match=re.escape('The section_id must be in the range [1, 62]. Got 0. ')):
+    with pytest.raises(ValueError, match=re.escape('The section_id must be a string. ')):
         _ = e.section_headers[0]
 
-    assert len(e.section_headers[1]) == 102
-    assert e.section_headers[1]['NAXIS'] == 2
-    assert e.section_headers[1]['NAXIS1'] == 2160
-    assert e.section_headers[1]['NAXIS2'] == 4146
+    assert len(e.section_headers['N4']) == 100
+    assert e.section_headers['N4']['NAXIS'] == 2
+    assert e.section_headers['N4']['NAXIS1'] == 2160
+    assert e.section_headers['N4']['NAXIS2'] == 4146
 
     try:
         exp_id = None

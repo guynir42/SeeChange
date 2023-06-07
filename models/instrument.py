@@ -828,6 +828,41 @@ class Instrument:
 
         return []
 
+    def get_ra_dec_for_section(self, exposure, section_id):
+        """
+        Get the RA and Dec of the center of the section.
+        If there is no clever way to figure out the section
+        coordinates, just leave it to return (None, None).
+        In that case, the RA/Dec will be read out of the
+        individual section headers.
+
+        This function should only be overriden by instruments
+        where (a) the RA/Dec in the individual section headers
+        is not good / does not exist, and (b) there is a clever
+        way to figure out the RA/Dec of the section from the
+        global exposure header, e.g., using the offsets and
+        pixel scale to calculate the center of the section
+        relative to the center of the detector.
+
+        THIS METHOD CAN BE OVERRIDEN BY SUBCLASSES.
+
+        Parameters
+        ----------
+        exposure: Exposure
+            The exposure object.
+        section_id: int or str
+            The identifier of the section.
+
+        Returns
+        -------
+        ra: float or None
+            The RA of the center of the section, in degrees.
+        dec: float or None
+            The Dec of the center of the section, in degrees.
+        """
+        self.check_section_id(section_id)
+        return None, None
+
     @classmethod
     def _get_header_keyword_translations(cls):
         """
@@ -1074,8 +1109,12 @@ class DECam(Instrument):
     def get_section_ids(cls):
         """
         Get a list of SensorSection identifiers for this instrument.
+        We are using the names of the FITS extensions (e.g., N12, S22, etc.).
+        See ref: https://noirlab.edu/science/sites/default/files/media/archives/images/DECamOrientation.png
         """
-        return list(range(1, 63))
+        n_list = [f'N{i}' for i in range(1, 32)]
+        s_list = [f'S{i}' for i in range(1, 32)]
+        return n_list + s_list
 
     @classmethod
     def check_section_id(cls, section_id):
@@ -1083,11 +1122,17 @@ class DECam(Instrument):
         Check that the type and value of the section is compatible with the instrument.
         In this case, it must be an integer in the range [0, 63].
         """
-        if not isinstance(section_id, int):
-            raise ValueError(f"The section_id must be an integer. Got {type(section_id)}. ")
+        if not isinstance(section_id, str):
+            raise ValueError(f"The section_id must be a string. Got {type(section_id)}. ")
 
-        if not 0 < section_id < 63:
-            raise ValueError(f"The section_id must be in the range [1, 62]. Got {section_id}. ")
+        letter = section_id[0]
+        number = int(section_id[1:])
+
+        if letter not in ['N', 'S']:
+            raise ValueError(f"The section_id must start with either 'N' or 'S'. Got {letter}. ")
+
+        if not 1 <= number <= 31:
+            raise ValueError(f"The section_id number must be in the range [1, 31]. Got {number}. ")
 
     @classmethod
     def get_section_offsets(cls, section_id):
@@ -1107,8 +1152,13 @@ class DECam(Instrument):
             The y offset of the section.
         """
         # TODO: this is just a placeholder, we need to put the actual offsets here!
-        dx = section_id % 8
-        dy = section_id // 8
+        cls.check_section_id(section_id)
+        letter = section_id[0]
+        number = int(section_id[1:])
+        dx = number % 8
+        dy = number // 8
+        if letter == 'S':
+            dy = -dy
         return dx * 2048, dy * 4096
 
     def _make_new_section(self, section_id):
@@ -1124,6 +1174,7 @@ class DECam(Instrument):
         # TODO: we must improve this!
         #  E.g., we should add some info on the gain and read noise (etc) for each chip.
         #  Also need to fix the offsets, this is really not correct.
+        self.check_section_id(section_id)
         (dx, dy) = self.get_section_offsets(section_id)
         return SensorSection(section_id, self.name, size_x=2048, size_y=4096, offset_x=dx, offset_y=dy)
 
@@ -1131,12 +1182,11 @@ class DECam(Instrument):
     def _get_fits_hdu_index_from_section_id(cls, section_id):
         """
         Return the index of the HDU in the FITS file for the DECam files.
-        Since the section ids for this instrument are numbered between 1 and 62,
-        the HDU indices (not including the primary HDU that contains no image data)
-        will be exactly equal to the section_id.
+        Since the HDUs have extension names, we can use the section_id directly
+        to index into the HDU list.
         """
         cls.check_section_id(section_id)
-        return int(section_id)
+        return section_id
 
     @classmethod
     def get_filename_regex(cls):

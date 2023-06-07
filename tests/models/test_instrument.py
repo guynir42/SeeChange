@@ -137,12 +137,12 @@ def test_instrument_offsets_and_filter_array_index():
     assert len(inst.sections) > 1
 
     # check that there are default (no zero) offsets for other sections
-    offsets = inst.get_property(1, 'offsets')
+    offsets = inst.get_property('N4', 'offsets')
     assert isinstance(offsets, tuple)
     assert offsets != (0, 0)
 
     # the filter array for DECam is also just 0 for any section
-    idx = inst.get_property(1, 'filter_array_index')
+    idx = inst.get_property('N4', 'filter_array_index')
     assert idx == 0
 
 

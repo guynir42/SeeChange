@@ -425,27 +425,32 @@ def test_image_multifile(demo_image, provenance_base):
 
 def test_image_from_decam_exposure(decam_example_file, provenance_base):
     e = Exposure(decam_example_file)
-    im = Image.from_exposure(e, section_id=1)  # load the first CCD
+    sec_id = 'N4'
+    im = Image.from_exposure(e, section_id=sec_id)  # load the first CCD
 
     assert e.instrument == 'DECam'
     assert e.telescope == 'CTIO 4.0-m telescope'
     assert not im.from_db
-    # TODO: update this with coordinates different for each section
-    assert im.ra == 116.32024583333332
-    assert im.dec == -26.25
+    # should not be the same as the exposure!
+    # assert im.ra == 116.32024583333332
+    # assert im.dec == -26.25
+    assert im.ra != e.ra
+    assert im.dec != e.dec
+    assert im.ra == 116.23984530727733
+    assert im.dec == -26.410038282561345
     assert im.mjd == 59887.32121458
     assert im.end_mjd == 59887.32232569111
     assert im.exp_time == 96.0
     assert im.filter == 'g DECam SDSS c0001 4720.0 1520.0'
     assert im.target == 'DECaPS-West'
     assert im.project == '2022A-724693'
-    assert im.section_id == 1
+    assert im.section_id == sec_id
 
     assert im.id is None  # not yet on the DB
     assert im.filepath is None  # no file yet!
 
     # the header lazy loads alright:
-    assert len(im.raw_header) == 102
+    assert len(im.raw_header) == 100
     assert im.raw_header['NAXIS'] == 2
     assert im.raw_header['NAXIS1'] == 2160
     assert im.raw_header['NAXIS2'] == 4146

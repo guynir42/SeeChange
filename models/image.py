@@ -5,6 +5,8 @@ from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
 
 from astropy.time import Time
+from astropy.wcs import WCS
+import astropy.units as u
 
 from pipeline.utils import read_fits_image, save_fits_image_file
 
@@ -295,10 +297,35 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         # read the header from the exposure file's individual section data
         new._raw_header = exposure.section_headers[section_id]
 
+        names = ['ra', 'dec'] + new.instrument_object.get_auxiliary_exposure_header_keys()
+        header_info = new.instrument_object.extract_header_info(new._raw_header, names)
         # TODO: get the important keywords translated into the searchable header column
-        # TODO: must make a better effort to get the correct RA/Dec (from the header?)
-        new.ra = exposure.ra
-        new.dec = exposure.dec
+
+        # figure out the RA/Dec of each image
+
+        # first see if this instrument has a special method of figuring out the RA/Dec
+        new.ra, new.dec = new.instrument_object.get_ra_dec_for_section(exposure, section_id)
+
+        # if that fails (which is true for most instruments!), get the RA/Dec from the section header
+        if new.ra is None or new.dec is None:
+            new.ra = header_info.pop('ra', None)
+            new.dec = header_info.pop('dec', None)
+
+        # if that doesn't work, maybe we can read the WCS from the header:
+        try:
+            wcs = WCS(new._raw_header)
+            sc = wcs.pixel_to_world(new._raw_header['NAXIS2'] // 2, new._raw_header['NAXIS1'] // 2)
+            new.ra = sc.ra.to(u.deg).value
+            new.dec = sc.dec.to(u.deg).value
+        except:
+            pass  # can't do it, just leave RA/Dec as None
+
+        # just use the RA/Dec of the global exposure
+        if new.ra is None or new.dec is None:
+            new.ra = exposure.ra
+            new.dec = exposure.dec
+
+        new.header = header_info  # save any additional header keys into a JSONB column
 
         # the exposure_id will be set automatically at commit time
         new.exposure = exposure
