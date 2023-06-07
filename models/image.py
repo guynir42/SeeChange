@@ -53,6 +53,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         secondaryjoin='images.c.id == image_sources.c.source_id',
         passive_deletes=True,
         lazy='selectin',  # should be able to get source_images without a session!
+        order_by='images.c.mjd',  # in chronological order (of the exposure beginnings)
         doc=(
             "Images used to produce a multi-image object "
             "(e.g., an images stack, reference, difference, super-flat, etc)."
