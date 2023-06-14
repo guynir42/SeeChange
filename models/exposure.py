@@ -452,6 +452,8 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
 
 if __name__ == '__main__':
-    filename = '/home/guyn/Dropbox/python/SeeChange/data/DECam_examples/c4d_221104_074232_ori.fits.fz'
+    import os
+    ROOT_FOLDER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    filename = os.path.join(ROOT_FOLDER, 'data/DECam_examples/c4d_221104_074232_ori.fits.fz')
     e = Exposure(filename)
     print(e)

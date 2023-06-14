@@ -918,6 +918,9 @@ class Instrument:
         and a section_id=B give an index 2 (so the function will read
         from a dictionary to translate the values).
 
+        THIS METHOD SHOULD BE OVERRIDEN BY SUBCLASSES,
+        in particular when section_id is a string.
+
         Parameters
         ----------
         section_id: int or str
