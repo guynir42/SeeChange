@@ -108,6 +108,11 @@ class Provenance(Base):
                 else:
                     raise ValueError('upstreams must be a list of Provenance objects')
 
+    def __repr__(self):
+        return (
+            f'<Provenance(process={self.process}, code_version={self.code_version.version}, hash= {self.unique_hash})>'
+        )
+
     process = sa.Column(
         sa.String,
         nullable=False,
