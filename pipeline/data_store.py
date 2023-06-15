@@ -16,20 +16,20 @@ from models.measurements import Measurements
 UPSTREAM_NAMES = {
     'preprocessing': [],
     'extraction': ['preprocessing'],
-    'astrometry': ['extraction'],
-    'calibration': ['extraction', 'astrometry'],
-    'subtraction': ['preprocessing', 'extraction', 'astrometry', 'calibration'],
+    'astro_cal': ['extraction'],
+    'photo_cal': ['extraction', 'astro_cal'],
+    'subtraction': ['preprocessing', 'extraction', 'astro_cal', 'photo_cal'],
     'detection': ['subtraction'],
     'cutting': ['detection'],
-    'measurement': ['detection', 'calibration'],
+    'measurement': ['detection', 'photo_cal'],
 }
 
 UPSTREAM_OBJECTS = {
     'preprocessing': 'image',
     'coaddition': 'image',
     'extraction': 'sources',
-    'astrometry': 'wcs',
-    'calibration': 'zp',
+    'astro_cal': 'wcs',
+    'photo_cal': 'zp',
     'subtraction': 'sub_image',
     'detection': 'detections',
     'cutting': 'cutouts',
@@ -60,8 +60,8 @@ class DataStore:
         if len(args) == 1 and isinstance(args[0], DataStore):
             return args[0], None
         if (
-                len(args) == 2 and isinstance(args[0], DataStore)
-                and isinstance(args[1], (sa.orm.session.Session, SmartSession))
+                len(args) == 2 and isinstance(args[0], DataStore) and
+                (isinstance(args[1], sa.orm.session.Session) or args[1] is None)
         ):
             return args[0], args[1]
         else:
@@ -123,15 +123,12 @@ class DataStore:
             the function that received the session as one of the arguments.
             If no session is given, will return None.
         """
-        if len(args) == 0:
-            raise ValueError('Must provide at least one argument to DataStore constructor.')
-
         if len(args) == 1 and isinstance(args[0], DataStore):
             # if the only argument is a DataStore, copy it
             self.__dict__ = args[0].__dict__.copy()
             return
 
-        output_session = parse_session(*args, **kwargs)
+        args, kwargs, output_session = parse_session(*args, **kwargs)
 
         # remove any provenances from the args list
         for arg in args:
@@ -141,7 +138,9 @@ class DataStore:
 
         # parse the args list
         arg_types = [type(arg) for arg in args]
-        if arg_types == [int, int] or arg_types == [int, str]:  # exposure_id, section_id
+        if arg_types == []:  # no arguments, quietly skip
+            pass
+        elif arg_types == [int, int] or arg_types == [int, str]:  # exposure_id, section_id
             self.exposure_id, self.section_id = args
         elif arg_types == [int]:
             self.image_id = args[0]
@@ -179,58 +178,58 @@ class DataStore:
         """
         Check some of the inputs before saving them.
         """
+        if value is not None:
+            if key in ['exposure_id', 'image_id'] and not isinstance(value, int):
+                raise ValueError(f'{key} must be an integer, got {type(value)}')
 
-        if key in ['exposure_id', 'image_id'] and not isinstance(value, int):
-            raise ValueError(f'{key} must be an integer, got {type(value)}')
+            if key in ['section_id'] and not isinstance(value, (int, str)):
+                raise ValueError(f'{key} must be an integer or a string, got {type(value)}')
 
-        if key in ['section_id'] and not isinstance(value, (int, str)):
-            raise ValueError(f'{key} must be an integer or a string, got {type(value)}')
+            if key == 'image' and not isinstance(value, Image):
+                raise ValueError(f'image must be an Image object, got {type(value)}')
 
-        if key == 'image' and not isinstance(value, Image):
-            raise ValueError(f'image must be an Image object, got {type(value)}')
+            if key == 'sources' and not isinstance(value, SourceList):
+                raise ValueError(f'sources must be a SourceList object, got {type(value)}')
 
-        if key == 'sources' and not isinstance(value, SourceList):
-            raise ValueError(f'sources must be a SourceList object, got {type(value)}')
+            if key == 'wcs' and not isinstance(value, WorldCoordinates):
+                raise ValueError(f'WCS must be a WorldCoordinates object, got {type(value)}')
 
-        if key == 'wcs' and not isinstance(value, WorldCoordinates):
-            raise ValueError(f'WCS must be a WorldCoordinates object, got {type(value)}')
+            if key == 'zp' and not isinstance(value, ZeroPoint):
+                raise ValueError(f'ZP must be a ZeroPoint object, got {type(value)}')
 
-        if key == 'zp' and not isinstance(value, ZeroPoint):
-            raise ValueError(f'ZP must be a ZeroPoint object, got {type(value)}')
+            if key == 'ref_image' and not isinstance(value, Image):
+                raise ValueError(f'ref_image must be an Image object, got {type(value)}')
 
-        if key == 'ref_image' and not isinstance(value, Image):
-            raise ValueError(f'ref_image must be an Image object, got {type(value)}')
+            if key == 'sub_image' and not isinstance(value, Image):
+                raise ValueError(f'sub_image must be a Image object, got {type(value)}')
 
-        if key == 'sub_image' and not isinstance(value, Image):
-            raise ValueError(f'sub_image must be a Image object, got {type(value)}')
+            if key == 'detections' and not isinstance(value, SourceList):
+                raise ValueError(f'detections must be a SourceList object, got {type(value)}')
 
-        if key == 'detections' and not isinstance(value, SourceList):
-            raise ValueError(f'detections must be a SourceList object, got {type(value)}')
+            if key == 'cutouts' and not isinstance(value, list):
+                raise ValueError(f'cutouts must be a list of Cutout objects, got {type(value)}')
 
-        if key == 'cutouts' and not isinstance(value, list):
-            raise ValueError(f'cutouts must be a list of Cutout objects, got {type(value)}')
+            if key == 'cutouts' and not all([isinstance(c, Cutouts) for c in value]):
+                raise ValueError(f'cutouts must be a list of Cutouts objects, got list with {[type(c) for c in value]}')
 
-        if key == 'cutouts' and not all([isinstance(c, Cutouts) for c in value]):
-            raise ValueError(f'cutouts must be a list of Cutouts objects, got list with {[type(c) for c in value]}')
+            if key == 'measurements' and not isinstance(value, list):
+                raise ValueError(f'measurements must be a list of Measurements objects, got {type(value)}')
 
-        if key == 'measurements' and not isinstance(value, list):
-            raise ValueError(f'measurements must be a list of Measurements objects, got {type(value)}')
+            if key == 'measurements' and not all([isinstance(m, Measurements) for m in value]):
+                raise ValueError(
+                    f'measurements must be a list of Measurement objects, got list with {[type(m) for m in value]}'
+                )
 
-        if key == 'measurements' and not all([isinstance(m, Measurements) for m in value]):
-            raise ValueError(
-                f'measurements must be a list of Measurement objects, got list with {[type(m) for m in value]}'
-            )
+            if key == 'upstream_provs' and not isinstance(value, list):
+                raise ValueError(f'upstream_provs must be a list of Provenance objects, got {type(value)}')
 
-        if key == 'upstream_provs' and not isinstance(value, list):
-            raise ValueError(f'upstream_provs must be a list of Provenance objects, got {type(value)}')
+            if key == 'upstream_provs' and not all([isinstance(p, Provenance) for p in value]):
+                raise ValueError(
+                    f'upstream_provs must be a list of Provenance objects, got list with {[type(p) for p in value]}'
+                )
 
-        if key == 'upstream_provs' and not all([isinstance(p, Provenance) for p in value]):
-            raise ValueError(
-                f'upstream_provs must be a list of Provenance objects, got list with {[type(p) for p in value]}'
-            )
-
-        if key == 'session' and not isinstance(value, (sa.orm.session.Session, SmartSession)):
-            raise ValueError(f'Session must be a SQLAlchemy session or SmartSession, got {type(value)}')
+            if key == 'session' and not isinstance(value, (sa.orm.session.Session, SmartSession)):
+                raise ValueError(f'Session must be a SQLAlchemy session or SmartSession, got {type(value)}')
 
         super().__setattr__(key, value)
 
@@ -282,18 +281,19 @@ class DataStore:
             upstream_provs = self.upstream_provs
 
         with SmartSession(session) as session:
-            # check if this code version exists
-            code_hash = session.scalars(sa.select(CodeHash).where(CodeHash.hash == get_git_hash())).first()
-            if code_hash is None:
-                raise ValueError('Cannot find code hash!')
+            code_version = Provenance.get_code_version(session=session)
+            if code_version is None:
+                # this "null" version should never be used in production
+                code_version = CodeVersion(version='v0.0.0')
+                code_version.update()  # try to add current git hash to version object
 
             # check if we can find the upstream provenances
             upstreams = []
-            for name in self.UPSTREAM_NAMES[process]:
+            for name in UPSTREAM_NAMES[process]:
                 obj = getattr(self, UPSTREAM_OBJECTS[name], None)
 
                 # first try to load an upstream that was given explicitly:
-                if name in [p.process for p in upstream_provs]:
+                if upstream_provs is not None and name in [p.process for p in upstream_provs]:
                     prov = [p for p in upstream_provs if p.process == name][0]
 
                 # second, try to get a provenance from objects saved to the store:
@@ -314,7 +314,7 @@ class DataStore:
             # we have a code version object and upstreams, we can make a provenance
             prov = Provenance(
                 process=process,
-                code_version=code_hash.code_version,
+                code_version=code_version,
                 parameters=pars_dict,
                 upstreams=upstreams,
             )
@@ -341,12 +341,16 @@ class DataStore:
         This will raise if no provenance can be found.
         """
         # see if it is in the upstream_provs
-        prov_list = [p for p in self.upstream_provs if p.process == process]
-        provenance = prov_list[0] if len(prov_list) > 0 else None
+        if self.upstream_provs is not None:
+            prov_list = [p for p in self.upstream_provs if p.process == process]
+            provenance = prov_list[0] if len(prov_list) > 0 else None
+        else:
+            provenance = None
 
         # try getting the latest from the database
         if provenance is None:  # check latest provenance
             provenance = get_latest_provenance(process, session=session)
+
         if provenance is None:  # still can't find anything!
             raise ValueError(f'Cannot find the "{process}" provenance!')
 
@@ -530,7 +534,7 @@ class DataStore:
         # make sure the wcs has the correct provenance
         if self.wcs is not None:
             if provenance is None:  # check if in upstream_provs/database
-                provenance = self._get_provenance_fallback('astrometry', session=session)
+                provenance = self._get_provenance_fallback('astro_cal', session=session)
 
             if self.wcs.provenance is None:
                 raise ValueError('WorldCoordinates has no provenance!')
@@ -579,7 +583,7 @@ class DataStore:
         # make sure the zp has the correct provenance
         if self.zp is not None:
             if provenance is None:  # check if in upstream_provs/database
-                provenance = self._get_provenance_fallback('calibration', session=session)
+                provenance = self._get_provenance_fallback('photo_cal', session=session)
 
             if self.zp.provenance is None:
                 raise ValueError('ZeroPoint has no provenance!')
@@ -767,7 +771,7 @@ class DataStore:
         # make sure the cutouts have the correct provenance
         if self.cutouts is not None:
             if provenance is None:
-                provenance = self._get_provenance_fallback('measurement', session=session)
+                provenance = self._get_provenance_fallback('cutting', session=session)
 
             if any([c.provenance is None for c in self.cutouts]):
                 raise ValueError('One of the Cutouts has no provenance!')

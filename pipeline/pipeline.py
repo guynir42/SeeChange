@@ -92,7 +92,8 @@ class Pipeline:
         """
 
         ds, session = DataStore.from_args(*args, **kwargs)
-
+        print(f'ds= {ds}')
+        print(f'session= {session}')
         # run dark/flat and sky subtraction tools, save the results as Image objects to DB and disk
         ds = self.preprocessor.run(ds, session)
 

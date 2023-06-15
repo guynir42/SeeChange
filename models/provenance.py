@@ -198,6 +198,33 @@ class Provenance(Base):
         json_string = json.dumps(superdict, sort_keys=True)
         self.unique_hash = hashlib.sha256(json_string.encode("utf-8")).hexdigest()
 
+    @classmethod
+    def get_code_version(cls, session=None):
+        """
+        Get the most relevant or latest code version.
+        Tries to match the current git hash with a CodeHash
+        instance, but if that doesn't work (e.g., if the
+        code is running on a machine without git) then
+        the latest CodeVersion is returned.
+
+        Parameters
+        ----------
+        session: SmartSession
+            SQLAlchemy session object. If None, a new session is created,
+            and closed as soon as the function finishes.
+
+        Returns
+        -------
+        code_version: CodeVersion
+            CodeVersion object
+        """
+        code_hash = session.scalars(sa.select(CodeHash).where(CodeHash.hash == get_git_hash())).first()
+        if code_hash is not None:
+            code_version = code_hash.code_version
+        else:
+            code_version = session.scalars(sa.select(CodeVersion).order_by(CodeVersion.version.desc())).first()
+
+        return code_version
 
 
 @event.listens_for(Provenance, "before_insert")

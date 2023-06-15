@@ -32,7 +32,7 @@ class ParsDetector(Parameters):
 
         self.override(kwargs)
 
-    def _get_process_name(self):
+    def get_process_name(self):
         if self.subtraction:
             return 'detection'
         else:
