@@ -5,7 +5,7 @@ from pipeline.data_store import DataStore
 from models.world_coordinates import WorldCoordinates
 
 
-class ParsAstrometry(Parameters):
+class ParsAstroCalibrator(Parameters):
     def __init__(self, **kwargs):
         super().__init__()
         self.cross_match_catalog = self.add_par(
@@ -24,9 +24,9 @@ class ParsAstrometry(Parameters):
         return 'astro_cal'
 
 
-class Astrometry:
+class AstroCalibrator:
     def __init__(self, **kwargs):
-        self.pars = ParsAstrometry()
+        self.pars = ParsAstroCalibrator()
 
     def run(self, *args, **kwargs):
         """

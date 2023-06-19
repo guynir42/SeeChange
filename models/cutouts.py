@@ -6,6 +6,7 @@ from models.base import Base, FileOnDiskMixin, SpatiallyIndexed
 
 
 class Cutouts(Base, FileOnDiskMixin, SpatiallyIndexed):
+
     __tablename__ = 'cutouts'
 
     source_list_id = sa.Column(
@@ -29,6 +30,7 @@ class Cutouts(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     new_image = orm.relationship(
         'Image',
+        primaryjoin="Cutouts.new_image_id==Image.id",
         doc="The new science image this cutout is associated with. "
     )
 
@@ -41,6 +43,7 @@ class Cutouts(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     ref_image = orm.relationship(
         'Image',
+        primaryjoin="Cutouts.ref_image_id==Image.id",
         doc="The reference image this cutout is associated with. "
     )
 
@@ -53,6 +56,7 @@ class Cutouts(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     sub_image = orm.relationship(
         'Image',
+        primaryjoin="Cutouts.sub_image_id==Image.id",
         doc="The subtraction image this cutout is associated with. "
     )
 

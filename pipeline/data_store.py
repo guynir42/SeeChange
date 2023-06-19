@@ -518,7 +518,7 @@ class DataStore:
 
         # not in memory, look for it on the DB
         if self.sources is None:
-            # this happens when the source are required as an upstream for another process (but isn't in memory)
+            # this happens when the source list is required as an upstream for another process (but isn't in memory)
             if provenance is None:  # check if in upstream_provs/database
                 provenance = self._get_provanance_for_an_upstream('extraction', session=session)
             with SmartSession(session) as session:
