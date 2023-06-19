@@ -135,6 +135,11 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     )
 
     @property
+    def observation_time(self):
+        """Translation of the MJD column to datetime object."""
+        return Time(self.mjd, format='mjd').datetime
+
+    @property
     def start_mjd(self):
         """Time of the beginning of the exposure, or set of exposures (equal to mjd). """
         return self.mjd

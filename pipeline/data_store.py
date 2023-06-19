@@ -9,6 +9,7 @@ from models.image import Image
 from models.source_list import SourceList
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
+from models.references import ReferenceImage
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 
@@ -544,7 +545,7 @@ class DataStore:
             This provenance should be consistent with
             the current code version and critical parameters.
             If none is given, will use the latest provenance
-            for the "astrometry" process.
+            for the "astro_cal" process.
         session: sqlalchemy.orm.session.Session or SmartSession
             An optional session to use for the database query.
             If not given, will open a new session and close it at
@@ -598,7 +599,7 @@ class DataStore:
             This provenance should be consistent with
             the current code version and critical parameters.
             If none is given, will use the latest provenance
-            for the "calibration" process.
+            for the "photo_cal" process.
         session: sqlalchemy.orm.session.Session or SmartSession
             An optional session to use for the database query.
             If not given, will open a new session and close it at
@@ -647,7 +648,7 @@ class DataStore:
         Parameters
         ----------
         provenance: Provenance object
-            The provenance to use for the subtraction.
+            The provenance to use for the coaddition.
             This provenance should be consistent with
             the current code version and critical parameters.
             If none is given, will use the latest provenance
@@ -668,10 +669,17 @@ class DataStore:
             with SmartSession(session) as session:
                 image = self.get_image(session=session)
                 self.ref_image = session.scalars(
-                    sa.select(Image).where(
-                        # TODO: we need to figure out exactly how to match reference to image
+                    sa.select(ReferenceImage).where(
+                        ReferenceImage.validity_start <= image.observation_time,
+                        ReferenceImage.validity_end >= image.observation_time,
+                        ReferenceImage.filter == image.filter,
+                        ReferenceImage.target == image.target,
+                        ReferenceImage.is_bad.is_(False),
                     )
                 ).first()
+
+                if self.ref_image is None:
+                    raise ValueError(f'No reference image found for image {image.id}')
 
         return self.ref_image
 
@@ -744,7 +752,7 @@ class DataStore:
             This provenance should be consistent with
             the current code version and critical parameters.
             If none is given, will use the latest provenance
-            for the "extraction" process.
+            for the "detection" process.
         session: sqlalchemy.orm.session.Session or SmartSession
             An optional session to use for the database query.
             If not given, will open a new session and close it at
@@ -753,7 +761,7 @@ class DataStore:
         Returns
         -------
         sl: SourceList object
-            The list of sources for this image (the catalog),
+            The list of sources for this subtraction image (the catalog),
             or None if no matching source list is found.
 
         """
@@ -773,7 +781,7 @@ class DataStore:
 
         if self.detections is None:
             with SmartSession(session) as session:
-                image = self.get_image(session=session)
+                sub_image = self.get_subtraction(session=session)
 
                 # this happens when the wcs is required as an upstream for another process (but isn't in memory)
                 if provenance is None:  # check if in upstream_provs/database
@@ -781,7 +789,7 @@ class DataStore:
 
                 self.detections = session.scalars(
                     sa.select(SourceList).where(
-                        SourceList.image_id == image.id,
+                        SourceList.image_id == sub_image.id,
                         SourceList.is_sub.is_(True),
                         SourceList.provenance.has(unique_hash=provenance.unique_hash),
                     )
@@ -828,7 +836,7 @@ class DataStore:
         # not in memory, look for it on the DB
         if self.cutouts is None:
             with SmartSession(session) as session:
-                image = self.get_subtraction(session=session)
+                sub_image = self.get_subtraction(session=session)
 
                 # this happens when the cutouts are required as an upstream for another process (but aren't in memory)
                 if provenance is None:
@@ -836,7 +844,7 @@ class DataStore:
 
                 self.cutouts = session.scalars(
                     sa.select(Cutouts).where(
-                        Cutouts.sub_image_id == image.id,
+                        Cutouts.sub_image_id == sub_image.id,
                         Cutouts.provenance.has(unique_hash=provenance.unique_hash),
                     )
                 ).all()
