@@ -64,7 +64,7 @@ class Detector:
                 # or load using the provenance given in the
                 # data store's upstream_provs, or just use
                 # the most recent provenance for "subtraction"
-                image = ds.get_subtraction_image(session=session)
+                image = ds.get_subtraction(session=session)
 
                 if image is None:
                     raise ValueError(
@@ -89,6 +89,7 @@ class Detector:
                     raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
                 sources = self.extract_sources(image)
+                sources.provenance = prov
 
             ds.sources = sources
 
@@ -102,3 +103,11 @@ class Detector:
         sources = SourceList()
 
         return sources
+
+
+if __name__ == '__main__':
+    from models.base import Session
+    from models.provenance import Provenance
+    session = Session()
+    source_lists = session.scalars(sa.select(SourceList)).all()
+    prov = session.scalars(sa.select(Provenance)).all()

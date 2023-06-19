@@ -55,6 +55,7 @@ class PhotCalibrator:
                 raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
 
             wcs = ds.get_wcs(session=session)
+
             if wcs is None:
                 raise ValueError(
                     f'Cannot find an astrometric solution corresponding to the datastore inputs: {ds.get_inputs()}'
@@ -64,6 +65,9 @@ class PhotCalibrator:
             # TODO: cross-match the sources with the catalog
             # TODO: save a ZeroPoint object to database
             # TODO: update the image's FITS header with the zp
+
+            zp = ZeroPoint()
+            zp.provenance = prov
 
             # update the data store with the new ZeroPoint
             ds.zp = zp

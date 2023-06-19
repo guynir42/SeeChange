@@ -61,7 +61,8 @@ class Subtractor:
                     f'Cannot find a reference image corresponding to the datastore inputs: {ds.get_inputs()}'
                 )
 
-            sub_image = image - ref  # TODO: I think there should be a little more to it than this :)
+            sub_image = Image(is_sub=True, combine_method='subtraction', source_images=[image, ref])
+            sub_image.provenance = prov
 
         ds.sub_image = sub_image
 

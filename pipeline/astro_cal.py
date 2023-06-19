@@ -59,6 +59,9 @@ class AstroCalibrator:
             # TODO: save a WorldCoordinates object to database
             # TODO: update the image's FITS header with the wcs
 
+            wcs = WorldCoordinates()
+            wcs.provenance = prov
+
             # add the resulting object to the data store
             ds.wcs = wcs
 

@@ -335,7 +335,7 @@ class DataStore:
 
             if existing_p is not None:
                 prov = existing_p
-        print(f'process: {process}, prov: {prov}')
+        # print(f'process: {process}, prov: {prov}')
         return prov
 
     def _get_provanance_for_an_upstream(self, process, session=None):
@@ -368,9 +368,6 @@ class DataStore:
         # try getting the latest from the database
         if provenance is None:  # check latest provenance
             provenance = get_latest_provenance(process, session=session)
-
-        if provenance is None:  # still can't find anything!
-            raise ValueError(f'Cannot find the "{process}" provenance!')
 
         return provenance
 
@@ -449,11 +446,14 @@ class DataStore:
                 if self.image is not None:
                     if self.image.provenance is None:
                         raise ValueError('Image has no provenance!')
+                    if self.upstream_provs is not None:
+                        provenances = [p for p in self.upstream_provs if p.process == 'preprocessing']
+                    else:
+                        provenances = None
 
-                    provenances = [p for p in self.upstream_provs if p.process == 'preprocessing']
                     if len(provenances) > 1:
                         raise ValueError('More than one preprocessing provenance found!')
-                    if len(provenances) > 0:
+                    if len(provenances) == 1:
                         # a mismatch of provenance and cached image:
                         if self.image.provenance.unique_hash != provenances[0].unique_hash:
                             self.image = None  # this must be an old image, get a new one
@@ -508,10 +508,13 @@ class DataStore:
             if self.sources.provenance is None:
                 raise ValueError('SourceList has no provenance!')
 
-            provenances = [p for p in self.upstream_provs if p.process == 'extraction']
+            if self.upstream_provs is not None:
+                provenances = [p for p in self.upstream_provs if p.process == 'extraction']
+            else:
+                provenances = []
             if len(provenances) > 1:
                 raise ValueError('More than one extraction provenance found!')
-            if len(provenances) > 0:
+            if len(provenances) == 1:
                 # a mismatch of provenance and cached sources:
                 if self.sources.provenance.unique_hash != provenances[0].unique_hash:
                     self.sources = None  # this must be an old source object, get a new one
@@ -561,11 +564,13 @@ class DataStore:
         if self.wcs is not None:
             if self.wcs.provenance is None:
                 raise ValueError('WorldCoordinates has no provenance!')
-
-            provenances = [p for p in self.upstream_provs if p.process == 'astro_cal']
+            if self.upstream_provs is not None:
+                provenances = [p for p in self.upstream_provs if p.process == 'astro_cal']
+            else:
+                provenances = []
             if len(provenances) > 1:
                 raise ValueError('More than one astro_cal provenance found!')
-            if len(provenances) > 0:
+            if len(provenances) == 1:
                 # a mismatch of provenance and cached wcs:
                 if self.wcs.provenance.unique_hash != provenances[0].unique_hash:
                     self.wcs = None  # this must be an old wcs object, get a new one
@@ -577,13 +582,14 @@ class DataStore:
                 if provenance is None:  # check if in upstream_provs/database
                     provenance = self._get_provanance_for_an_upstream('astro_cal', session=session)
 
-                sources = self.get_sources(session=session)
-                self.wcs = session.scalars(
-                    sa.select(WorldCoordinates).where(
-                        WorldCoordinates.source_list_id == sources.id,
-                        WorldCoordinates.provenance.has(unique_hash=provenance.unique_hash),
-                    )
-                ).first()
+                if provenance is not None:  # if None, it means we can't find it on the DB
+                    sources = self.get_sources(session=session)
+                    self.wcs = session.scalars(
+                        sa.select(WorldCoordinates).where(
+                            WorldCoordinates.source_list_id == sources.id,
+                            WorldCoordinates.provenance.has(unique_hash=provenance.unique_hash),
+                        )
+                    ).first()
 
         return self.wcs
 
@@ -616,10 +622,13 @@ class DataStore:
             if self.zp.provenance is None:
                 raise ValueError('ZeroPoint has no provenance!')
 
-            provenances = [p for p in self.upstream_provs if p.process == 'photo_cal']
+            if self.upstream_provs is not None:
+                provenances = [p for p in self.upstream_provs if p.process == 'photo_cal']
+            else:
+                provenances = []
             if len(provenances) > 1:
                 raise ValueError('More than one photo_cal provenance found!')
-            if len(provenances) > 0:
+            if len(provenances) == 1:
                 # a mismatch of provenance and cached zp:
                 if self.zp.provenance.unique_hash != provenances[0].unique_hash:
                     self.zp = None  # this must be an old zp, get a new one
@@ -632,12 +641,13 @@ class DataStore:
                 # this happens when the wcs is required as an upstream for another process (but isn't in memory)
                 if provenance is None:  # check if in upstream_provs/database
                     provenance = self._get_provanance_for_an_upstream('photo_cal', session=session)
-                self.zp = session.scalars(
-                    sa.select(ZeroPoint).where(
-                        ZeroPoint.source_list_id == sources.id,
-                        ZeroPoint.provenance.has(unique_hash=provenance.unique_hash),
-                    )
-                ).first()
+                if provenance is not None:  # if None, it means we can't find it on the DB
+                    self.zp = session.scalars(
+                        sa.select(ZeroPoint).where(
+                            ZeroPoint.source_list_id == sources.id,
+                            ZeroPoint.provenance.has(unique_hash=provenance.unique_hash),
+                        )
+                    ).first()
 
         return self.zp
 
@@ -668,10 +678,17 @@ class DataStore:
 
             with SmartSession(session) as session:
                 image = self.get_image(session=session)
+
                 self.ref_image = session.scalars(
                     sa.select(ReferenceImage).where(
-                        ReferenceImage.validity_start <= image.observation_time,
-                        ReferenceImage.validity_end >= image.observation_time,
+                        sa.or_(
+                            ReferenceImage.validity_start.is_(None),
+                            ReferenceImage.validity_start <= image.observation_time
+                        ),
+                        sa.or_(
+                            ReferenceImage.validity_end.is_(None),
+                            ReferenceImage.validity_end >= image.observation_time
+                        ),
                         ReferenceImage.filter == image.filter,
                         ReferenceImage.target == image.target,
                         ReferenceImage.is_bad.is_(False),
@@ -711,8 +728,10 @@ class DataStore:
         if self.sub_image is not None:
             if self.sub_image.provenance is None:
                 raise ValueError('Subtraction image has no provenance!')
-
-            provenances = [p for p in self.upstream_provs if p.process == 'subtraction']
+            if self.upstream_provs is not None:
+                provenances = [p for p in self.upstream_provs if p.process == 'subtraction']
+            else:
+                provenances = []
             if len(provenances) > 1:
                 raise ValueError('More than one subtraction provenance found!')
             if len(provenances) > 0:
@@ -729,14 +748,14 @@ class DataStore:
                 # this happens when the subtraction is required as an upstream for another process (but isn't in memory)
                 if provenance is None:  # check if in upstream_provs/database
                     provenance = self._get_provanance_for_an_upstream('subtraction', session=session)
-
-                self.sub_image = session.scalars(
-                    sa.select(Image).where(
-                        Image.ref_id == ref.id,
-                        Image.new_id == image.id,
-                        Image.provenance.has(unique_hash=provenance.unique_hash),
-                    )
-                ).first()
+                if provenance is not None:  # if None, it means we can't find it on the DB
+                    self.sub_image = session.scalars(
+                        sa.select(Image).where(
+                            Image.ref_id == ref.id,
+                            Image.new_id == image.id,
+                            Image.provenance.has(unique_hash=provenance.unique_hash),
+                        )
+                    ).first()
 
         return self.sub_image
 
@@ -771,10 +790,13 @@ class DataStore:
             if self.detections.provenance is None:
                 raise ValueError('SourceList has no provenance!')
 
-            provenances = [p for p in self.upstream_provs if p.process == 'extraction']
+            if self.upstream_provs is not None:
+                provenances = [p for p in self.upstream_provs if p.process == 'extraction']
+            else:
+                provenances = []
             if len(provenances) > 1:
                 raise ValueError('More than one extraction provenance found!')
-            if len(provenances) > 0:
+            if len(provenances) == 1:
                 # a mismatch of provenance and cached detections:
                 if self.detections.provenance.unique_hash != provenances[0].unique_hash:
                     self.detections = None  # this must be an old detections object, need to get a new one
@@ -786,14 +808,14 @@ class DataStore:
                 # this happens when the wcs is required as an upstream for another process (but isn't in memory)
                 if provenance is None:  # check if in upstream_provs/database
                     provenance = self._get_provanance_for_an_upstream('detection', session=session)
-
-                self.detections = session.scalars(
-                    sa.select(SourceList).where(
-                        SourceList.image_id == sub_image.id,
-                        SourceList.is_sub.is_(True),
-                        SourceList.provenance.has(unique_hash=provenance.unique_hash),
-                    )
-                ).first()
+                if provenance is not None:  # if None, it means we can't find it on the DB
+                    self.detections = session.scalars(
+                        sa.select(SourceList).where(
+                            SourceList.image_id == sub_image.id,
+                            SourceList.is_sub.is_(True),
+                            SourceList.provenance.has(unique_hash=provenance.unique_hash),
+                        )
+                    ).first()
 
         return self.detections
 
@@ -825,10 +847,13 @@ class DataStore:
             if any([c.provenance is None for c in self.cutouts]):
                 raise ValueError('One of the Cutouts has no provenance!')
 
-            provenances = [p for p in self.upstream_provs if p.process == 'cutting']
+            if self.upstream_provs is not None:
+                provenances = [p for p in self.upstream_provs if p.process == 'cutting']
+            else:
+                provenances = []
             if len(provenances) > 1:
                 raise ValueError('More than one cutting provenance found!')
-            if len(provenances) > 0:
+            if len(provenances) == 1:
                 # a mismatch of provenance and cached cutouts:
                 if any([c.provenance.unique_hash != provenances[0].unique_hash for c in self.cutouts]):
                     self.cutouts = None  # this must be an old cutouts list, need to get a new one
@@ -841,13 +866,13 @@ class DataStore:
                 # this happens when the cutouts are required as an upstream for another process (but aren't in memory)
                 if provenance is None:
                     provenance = self._get_provanance_for_an_upstream('cutting', session=session)
-
-                self.cutouts = session.scalars(
-                    sa.select(Cutouts).where(
-                        Cutouts.sub_image_id == sub_image.id,
-                        Cutouts.provenance.has(unique_hash=provenance.unique_hash),
-                    )
-                ).all()
+                if provenance is not None:  # if None, it means we can't find it on the DB
+                    self.cutouts = session.scalars(
+                        sa.select(Cutouts).where(
+                            Cutouts.sub_image_id == sub_image.id,
+                            Cutouts.provenance.has(unique_hash=provenance.unique_hash),
+                        )
+                    ).all()
 
         return self.cutouts
 
@@ -879,10 +904,13 @@ class DataStore:
             if any([m.provenance is None for m in self.measurements]):
                 raise ValueError('One of the Measurements has no provenance!')
 
-            provenances = [p for p in self.upstream_provs if p.process == 'measurement']
+            if self.upstream_provs is not None:
+                provenances = [p for p in self.upstream_provs if p.process == 'measurement']
+            else:
+                provenances = []
             if len(provenances) > 1:
                 raise ValueError('More than one measurement provenance found!')
-            if len(provenances) > 0:
+            if len(provenances) == 1:
                 # a mismatch of provenance and cached image:
                 if any([m.provenance.unique_hash != provenances[0].unique_hash for m in self.measurements]):
                     self.measurements = None
@@ -896,12 +924,12 @@ class DataStore:
                 # this happens when the measurements are required as an upstream (but aren't in memory)
                 if provenance is None:
                     provenance = self._get_provanance_for_an_upstream('measurement', session=session)
-
-                self.measurements = session.scalars(
-                    sa.select(Measurements).where(
-                        Measurements.cutouts_id.in_(cutout_ids),
-                        Measurements.provenance.has(unique_hash=provenance.unique_hash),
-                    )
-                ).all()
+                if provenance is not None:  # if None, it means we can't find it on the DB
+                    self.measurements = session.scalars(
+                        sa.select(Measurements).where(
+                            Measurements.cutouts_id.in_(cutout_ids),
+                            Measurements.provenance.has(unique_hash=provenance.unique_hash),
+                        )
+                    ).all()
 
         return self.measurements
