@@ -21,13 +21,12 @@ class ParsAstrometry(Parameters):
         self.override(kwargs)
 
     def get_process_name(self):
-        return 'astrometry'
+        return 'astro_cal'
 
 
 class Astrometry:
     def __init__(self, **kwargs):
         self.pars = ParsAstrometry()
-
 
     def run(self, *args, **kwargs):
         """

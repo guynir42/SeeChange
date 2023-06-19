@@ -5,7 +5,7 @@ from pipeline.data_store import DataStore
 from models.zero_point import ZeroPoint
 
 
-class ParsCalibrator(Parameters):
+class ParsPhotCalibrator(Parameters):
     def __init__(self, **kwargs):
         super().__init__()
         self.cross_match_catalog = self.add_par(
@@ -21,12 +21,12 @@ class ParsCalibrator(Parameters):
         self.override(kwargs)
 
     def get_process_name(self):
-        return 'calibration'
+        return 'photo_cal'
 
 
-class Calibrator:
+class PhotCalibrator:
     def __init__(self, **kwargs):
-        self.pars = ParsCalibrator()
+        self.pars = ParsPhotCalibrator()
 
     def run(self, *args, **kwargs):
         """
