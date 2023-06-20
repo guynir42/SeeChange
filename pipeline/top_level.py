@@ -71,6 +71,7 @@ class Pipeline:
         detection_config.update(kwargs.get('detection', {}))
         self.pars.add_defaults_to_dict(detection_config)
         self.detector = Detector(**detection_config)
+        self.detector.pars.subtraction = True
 
         # produce cutouts for detected sources:
         cutting_config = config.get('cutting', {})
@@ -108,11 +109,11 @@ class Pipeline:
         # fetch reference images and subtract them, save SubtractedImage objects to DB and disk
         ds = self.subtractor.run(ds, session)
 
-        # make cutouts of all the sources in the "detections" source list
-        ds = self.cutter.run(ds, session)
-
         # find sources, generate a source list for detections
         ds = self.detector.run(ds, session)
+
+        # make cutouts of all the sources in the "detections" source list
+        ds = self.cutter.run(ds, session)
 
         # extract photometry, analytical cuts, and deep learning models on the Cutouts:
         ds = self.measurer.run(ds, session)

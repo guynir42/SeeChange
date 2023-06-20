@@ -21,6 +21,18 @@ class Measurements(Base, SpatiallyIndexed):
         doc="The cutout this measurement is associated with. "
     )
 
+    provenance_id = sa.Column(
+        sa.ForeignKey('provenances.id', ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        doc="ID of the provenance of this measurement. "
+    )
+
+    provenance = orm.relationship(
+        'Provenance',
+        doc="The provenance of this measurement. "
+    )
+
     # TODO: we need to decide what columns are actually saved.
     #  E.g., should we save a single flux or an array/JSONB of fluxes?
     #  Same thing for scores (e.g., R/B).

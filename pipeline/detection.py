@@ -72,6 +72,7 @@ class Detector:
                     )
 
                 detections = self.extract_sources(image)
+                detections.provenance = prov
 
             ds.detections = detections
 

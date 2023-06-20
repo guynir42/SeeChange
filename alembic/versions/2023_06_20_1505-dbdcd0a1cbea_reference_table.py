@@ -1,16 +1,16 @@
 """reference table
 
-Revision ID: e601c2c7b649
+Revision ID: dbdcd0a1cbea
 Revises: 4114e36a2555
-Create Date: 2023-06-19 15:02:44.653302
+Create Date: 2023-06-20 15:05:58.912393
 
 """
 from alembic import op
 import sqlalchemy as sa
-
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'e601c2c7b649'
+revision = 'dbdcd0a1cbea'
 down_revision = '4114e36a2555'
 branch_labels = None
 depends_on = None
@@ -22,6 +22,7 @@ def upgrade() -> None:
     sa.Column('image_id', sa.BigInteger(), nullable=False),
     sa.Column('target', sa.Text(), nullable=False),
     sa.Column('filter', sa.Text(), nullable=False),
+    sa.Column('section_id', sa.Text(), nullable=False),
     sa.Column('validity_start', sa.DateTime(), nullable=False),
     sa.Column('validity_end', sa.DateTime(), nullable=False),
     sa.Column('is_bad', sa.Boolean(), nullable=False),
@@ -30,13 +31,14 @@ def upgrade() -> None:
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('modified', sa.DateTime(), nullable=False),
-    sa.ForeignKeyConstraint(['image_id'], ['images.id'], ),
+    sa.ForeignKeyConstraint(['image_id'], ['images.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_reference_images_created_at'), 'reference_images', ['created_at'], unique=False)
     op.create_index(op.f('ix_reference_images_filter'), 'reference_images', ['filter'], unique=False)
     op.create_index(op.f('ix_reference_images_id'), 'reference_images', ['id'], unique=False)
     op.create_index(op.f('ix_reference_images_image_id'), 'reference_images', ['image_id'], unique=False)
+    op.create_index(op.f('ix_reference_images_section_id'), 'reference_images', ['section_id'], unique=False)
     op.create_index(op.f('ix_reference_images_target'), 'reference_images', ['target'], unique=False)
     op.create_index(op.f('ix_reference_images_validity_end'), 'reference_images', ['validity_end'], unique=False)
     op.create_index(op.f('ix_reference_images_validity_start'), 'reference_images', ['validity_start'], unique=False)
@@ -65,13 +67,22 @@ def upgrade() -> None:
     op.create_index(op.f('ix_cutouts_ref_image_id'), 'cutouts', ['ref_image_id'], unique=False)
     op.create_index(op.f('ix_cutouts_source_list_id'), 'cutouts', ['source_list_id'], unique=False)
     op.create_index(op.f('ix_cutouts_sub_image_id'), 'cutouts', ['sub_image_id'], unique=False)
-    op.create_foreign_key(None, 'cutouts', 'provenances', ['provenance_id'], ['id'], ondelete='CASCADE')
-    op.create_foreign_key(None, 'cutouts', 'source_lists', ['source_list_id'], ['id'])
-    op.create_foreign_key(None, 'cutouts', 'images', ['sub_image_id'], ['id'])
     op.create_foreign_key(None, 'cutouts', 'images', ['new_image_id'], ['id'])
     op.create_foreign_key(None, 'cutouts', 'images', ['ref_image_id'], ['id'])
+    op.create_foreign_key(None, 'cutouts', 'source_lists', ['source_list_id'], ['id'])
+    op.create_foreign_key(None, 'cutouts', 'images', ['sub_image_id'], ['id'])
+    op.create_foreign_key(None, 'cutouts', 'provenances', ['provenance_id'], ['id'], ondelete='CASCADE')
     op.drop_index('exposure_q3c_ang2ipix_idx', table_name='exposures')
+    op.add_column('images', sa.Column('ref_id', sa.BigInteger(), nullable=True))
+    op.add_column('images', sa.Column('new_id', sa.BigInteger(), nullable=True))
+    op.drop_index('ix_images_combine_method', table_name='images')
+    op.create_index(op.f('ix_images_new_id'), 'images', ['new_id'], unique=False)
+    op.create_index(op.f('ix_images_ref_id'), 'images', ['ref_id'], unique=False)
+    op.create_foreign_key(None, 'images', 'images', ['ref_id'], ['id'], ondelete='CASCADE')
+    op.create_foreign_key(None, 'images', 'images', ['new_id'], ['id'], ondelete='CASCADE')
+    op.drop_column('images', 'combine_method')
     op.add_column('measurements', sa.Column('cutouts_id', sa.BigInteger(), nullable=False))
+    op.add_column('measurements', sa.Column('provenance_id', sa.BigInteger(), nullable=False))
     op.add_column('measurements', sa.Column('ra', sa.Double(), nullable=False))
     op.add_column('measurements', sa.Column('dec', sa.Double(), nullable=False))
     op.add_column('measurements', sa.Column('gallat', sa.Double(), nullable=True))
@@ -81,8 +92,10 @@ def upgrade() -> None:
     op.create_index(op.f('ix_measurements_cutouts_id'), 'measurements', ['cutouts_id'], unique=False)
     op.create_index(op.f('ix_measurements_ecllat'), 'measurements', ['ecllat'], unique=False)
     op.create_index(op.f('ix_measurements_gallat'), 'measurements', ['gallat'], unique=False)
+    op.create_index(op.f('ix_measurements_provenance_id'), 'measurements', ['provenance_id'], unique=False)
     op.create_index('measurements_q3c_ang2ipix_idx', 'measurements', [sa.text('q3c_ang2ipix(ra, dec)')], unique=False)
     op.create_foreign_key(None, 'measurements', 'cutouts', ['cutouts_id'], ['id'])
+    op.create_foreign_key(None, 'measurements', 'provenances', ['provenance_id'], ['id'], ondelete='CASCADE')
     op.add_column('source_lists', sa.Column('image_id', sa.BigInteger(), nullable=False))
     op.add_column('source_lists', sa.Column('is_sub', sa.Boolean(), nullable=False))
     op.add_column('source_lists', sa.Column('provenance_id', sa.BigInteger(), nullable=False))
@@ -92,8 +105,8 @@ def upgrade() -> None:
     op.create_index(op.f('ix_source_lists_filepath'), 'source_lists', ['filepath'], unique=True)
     op.create_index(op.f('ix_source_lists_image_id'), 'source_lists', ['image_id'], unique=False)
     op.create_index(op.f('ix_source_lists_provenance_id'), 'source_lists', ['provenance_id'], unique=False)
-    op.create_foreign_key(None, 'source_lists', 'images', ['image_id'], ['id'])
     op.create_foreign_key(None, 'source_lists', 'provenances', ['provenance_id'], ['id'], ondelete='CASCADE')
+    op.create_foreign_key(None, 'source_lists', 'images', ['image_id'], ['id'])
     op.add_column('world_coordinates', sa.Column('source_list_id', sa.BigInteger(), nullable=False))
     op.add_column('world_coordinates', sa.Column('provenance_id', sa.BigInteger(), nullable=False))
     op.create_index(op.f('ix_world_coordinates_provenance_id'), 'world_coordinates', ['provenance_id'], unique=False)
@@ -104,8 +117,8 @@ def upgrade() -> None:
     op.add_column('zero_points', sa.Column('provenance_id', sa.BigInteger(), nullable=False))
     op.create_index(op.f('ix_zero_points_provenance_id'), 'zero_points', ['provenance_id'], unique=False)
     op.create_index(op.f('ix_zero_points_source_list_id'), 'zero_points', ['source_list_id'], unique=False)
-    op.create_foreign_key(None, 'zero_points', 'provenances', ['provenance_id'], ['id'], ondelete='CASCADE')
     op.create_foreign_key(None, 'zero_points', 'source_lists', ['source_list_id'], ['id'])
+    op.create_foreign_key(None, 'zero_points', 'provenances', ['provenance_id'], ['id'], ondelete='CASCADE')
     # ### end Alembic commands ###
 
 
@@ -135,7 +148,9 @@ def downgrade() -> None:
     op.drop_column('source_lists', 'is_sub')
     op.drop_column('source_lists', 'image_id')
     op.drop_constraint(None, 'measurements', type_='foreignkey')
+    op.drop_constraint(None, 'measurements', type_='foreignkey')
     op.drop_index('measurements_q3c_ang2ipix_idx', table_name='measurements')
+    op.drop_index(op.f('ix_measurements_provenance_id'), table_name='measurements')
     op.drop_index(op.f('ix_measurements_gallat'), table_name='measurements')
     op.drop_index(op.f('ix_measurements_ecllat'), table_name='measurements')
     op.drop_index(op.f('ix_measurements_cutouts_id'), table_name='measurements')
@@ -145,7 +160,16 @@ def downgrade() -> None:
     op.drop_column('measurements', 'gallat')
     op.drop_column('measurements', 'dec')
     op.drop_column('measurements', 'ra')
+    op.drop_column('measurements', 'provenance_id')
     op.drop_column('measurements', 'cutouts_id')
+    op.add_column('images', sa.Column('combine_method', postgresql.ENUM('coadd', 'subtraction', name='image_combine_method'), autoincrement=False, nullable=True))
+    op.drop_constraint(None, 'images', type_='foreignkey')
+    op.drop_constraint(None, 'images', type_='foreignkey')
+    op.drop_index(op.f('ix_images_ref_id'), table_name='images')
+    op.drop_index(op.f('ix_images_new_id'), table_name='images')
+    op.create_index('ix_images_combine_method', 'images', ['combine_method'], unique=False)
+    op.drop_column('images', 'new_id')
+    op.drop_column('images', 'ref_id')
     op.create_index('exposure_q3c_ang2ipix_idx', 'exposures', [sa.text('q3c_ang2ipix(ra, "dec")')], unique=False)
     op.drop_constraint(None, 'cutouts', type_='foreignkey')
     op.drop_constraint(None, 'cutouts', type_='foreignkey')
@@ -180,6 +204,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_reference_images_validity_start'), table_name='reference_images')
     op.drop_index(op.f('ix_reference_images_validity_end'), table_name='reference_images')
     op.drop_index(op.f('ix_reference_images_target'), table_name='reference_images')
+    op.drop_index(op.f('ix_reference_images_section_id'), table_name='reference_images')
     op.drop_index(op.f('ix_reference_images_image_id'), table_name='reference_images')
     op.drop_index(op.f('ix_reference_images_id'), table_name='reference_images')
     op.drop_index(op.f('ix_reference_images_filter'), table_name='reference_images')

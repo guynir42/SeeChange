@@ -62,6 +62,47 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         )
     )
 
+    ref_id = sa.Column(
+        sa.ForeignKey('images.id', ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        doc=(
+            "ID of the reference image used to produce a difference image. "
+            "Only set for difference images. This usually refers to a coadd image. "
+        )
+    )
+
+    ref = orm.relationship(
+        'Image',
+        cascade='save-update, merge, refresh-expire, expunge',
+        primaryjoin='images.c.ref_id == images.c.id',
+        uselist=False,
+        doc=(
+            "Reference image used to produce a difference image. "
+            "Only set for difference images. This usually refers to a coadd image. "
+        )
+    )
+
+    new_id = sa.Column(
+        sa.ForeignKey('images.id', ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        doc=(
+            "ID of the new image used to produce a difference image. "
+            "Only set for difference images. This usually refers to a regular image. "
+        )
+    )
+
+    new = orm.relationship(
+        'Image',
+        cascade='save-update, merge, refresh-expire, expunge',
+        primaryjoin='images.c.new_id == images.c.id',
+        uselist=False,
+        doc=(
+            "New image used to produce a difference image. "
+            "Only set for difference images. This usually refers to a regular image. "
+        )
+    )
 
     @property
     def is_multi_image(self):
@@ -69,18 +110,21 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
             return False
         elif self.source_images is not None and len(self.source_images) > 0:
             return True
+        elif self.ref_id is not None and self.new_id is not None:
+            return True
         else:
             return None  # for new objects that have not defined either exposure or source_images
 
-    combine_method = sa.Column(
-        Enum("coadd", "subtraction", name='image_combine_method'),
-        nullable=True,
-        index=True,
-        doc=(
-            "Type of combination used to produce this multi-image object. "
-            "One of: coadd, subtraction. "
-        )
-    )
+    @property
+    def combine_method(self):
+        if self.ref_id is not None and self.new_id is not None:
+            return "subtraction"
+        elif self.source_images is not None and len(self.source_images) > 0:
+            return "coadd"
+        elif self.exposure is not None:
+            return "single"
+        else:
+            return None  # for new objects that have not defined either exposure or source_images
 
     type = sa.Column(
         im_type_enum,  # defined in models/exposure.py

@@ -4,7 +4,7 @@ from sqlalchemy import orm
 from models.base import Base
 
 
-class ReferenceImage(Base):
+class ReferenceEntry(Base):
     """
     A table that refers to each reference Image object,
     based on the validity time range, and the object/field it is targeting.
@@ -13,7 +13,7 @@ class ReferenceImage(Base):
     __tablename__ = 'reference_images'
 
     image_id = sa.Column(
-        sa.ForeignKey('images.id'),
+        sa.ForeignKey('images.id', ondelete='CASCADE'),
         nullable=False,
         index=True,
         doc="ID of the reference image this object is referring to. "
@@ -21,7 +21,7 @@ class ReferenceImage(Base):
 
     image = orm.relationship(
         'Image',
-        doc="The reference image this object is referring to. "
+        doc="The reference image this entry is referring to. "
     )
 
     target = sa.Column(
@@ -40,6 +40,13 @@ class ReferenceImage(Base):
         nullable=False,
         index=True,
         doc="Filter used to make the images for this reference image. "
+    )
+
+    section_id = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        doc="Section ID of the reference image. "
     )
 
     validity_start = sa.Column(

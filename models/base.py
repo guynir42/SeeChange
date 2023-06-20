@@ -329,7 +329,7 @@ class FileOnDiskMixin:
 
         return filepath
 
-    def get_fullpath(self, download=True, as_list=False):
+    def get_fullpath(self, download=True, as_list=False, nofile=None):
         """
         Get the full path of the file, or list of full paths
         of files if filepath_extensions is not None.
@@ -360,6 +360,9 @@ class FileOnDiskMixin:
         as_list: bool
             Whether to return a list of filepaths, even if filepath_extensions=None.
             Default is False.
+        nofile: bool
+            Whether to check if the file exists on local disk.
+            Default is None, which means use the value of self.nofile.
 
         Returns
         -------
@@ -368,13 +371,16 @@ class FileOnDiskMixin:
         """
         if self.filepath_extensions is None:
             if as_list:
-                return [self._get_fullpath_single(download)]
+                return [self._get_fullpath_single(download=download, nofile=nofile)]
             else:
-                return self._get_fullpath_single(download)
+                return self._get_fullpath_single(download=download, nofile=nofile)
         else:
-            return [self._get_fullpath_single(download, ext) for ext in self.filepath_extensions]
+            return [
+                self._get_fullpath_single(download=download, ext=ext, nofile=nofile)
+                for ext in self.filepath_extensions
+            ]
 
-    def _get_fullpath_single(self, download=True, ext=None):
+    def _get_fullpath_single(self, download=True, ext=None, nofile=None):
         """
         Get the full path of a single file.
         Will follow the same logic as get_fullpath(),
@@ -388,13 +394,17 @@ class FileOnDiskMixin:
             Must have server_path defined. Default is True.
         ext: str
             Extension to add to the filepath. Default is None.
-
+        nofile: bool
+            Whether to check if the file exists on local disk.
+            Default is None, which means use the value of self.nofile.
         Returns
         -------
         str
             Full path to the file on local disk.
         """
-        if not self.nofile and self.local_path is None:
+        if nofile is None:
+            nofile = self.nofile
+        if not nofile and self.local_path is None:
             raise ValueError("Local path not defined!")
 
         fname = self.filepath
@@ -402,10 +412,10 @@ class FileOnDiskMixin:
             fname += ext
 
         fullname = os.path.join(self.local_path, fname)
-        if not self.nofile and not os.path.exists(fullname) and download and self.server_path is not None:
+        if not nofile and not os.path.exists(fullname) and download and self.server_path is not None:
             self._download_file(fname)
 
-        if not self.nofile and not os.path.exists(fullname):
+        if not nofile and not os.path.exists(fullname):
             raise FileNotFoundError(f"File {fullname} not found!")
 
         return fullname
@@ -438,7 +448,8 @@ class FileOnDiskMixin:
         """
         if self.filepath is None:
             return
-        for f in self.get_fullpath(as_list=True):
+        # get the filepath, but don't check if the file exists!
+        for f in self.get_fullpath(as_list=True, nofile=True):
             if os.path.exists(f):
                 os.remove(f)
                 if remove_folders:

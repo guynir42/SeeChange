@@ -9,7 +9,7 @@ from models.image import Image
 from models.source_list import SourceList
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
-from models.references import ReferenceImage
+from models.references import ReferenceEntry
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 
@@ -679,24 +679,26 @@ class DataStore:
             with SmartSession(session) as session:
                 image = self.get_image(session=session)
 
-                self.ref_image = session.scalars(
-                    sa.select(ReferenceImage).where(
+                ref_entry = session.scalars(
+                    sa.select(ReferenceEntry).where(
                         sa.or_(
-                            ReferenceImage.validity_start.is_(None),
-                            ReferenceImage.validity_start <= image.observation_time
+                            ReferenceEntry.validity_start.is_(None),
+                            ReferenceEntry.validity_start <= image.observation_time
                         ),
                         sa.or_(
-                            ReferenceImage.validity_end.is_(None),
-                            ReferenceImage.validity_end >= image.observation_time
+                            ReferenceEntry.validity_end.is_(None),
+                            ReferenceEntry.validity_end >= image.observation_time
                         ),
-                        ReferenceImage.filter == image.filter,
-                        ReferenceImage.target == image.target,
-                        ReferenceImage.is_bad.is_(False),
+                        ReferenceEntry.filter == image.filter,
+                        ReferenceEntry.target == image.target,
+                        ReferenceEntry.is_bad.is_(False),
                     )
                 ).first()
 
-                if self.ref_image is None:
+                if ref_entry is None:
                     raise ValueError(f'No reference image found for image {image.id}')
+
+                self.ref_image = ref_entry.image
 
         return self.ref_image
 
