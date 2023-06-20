@@ -384,6 +384,103 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         return new
 
+    @classmethod
+    def from_images(cls, images):
+        """
+        Create a new Image object from a list of other Image objects.
+        This is the first step in making a multi-image (usually a coadd).
+        The output image doesn't have any data, and is created with
+        nofile=True. It is up to the calling application to fill in the
+        data, flags, weight, etc. using the appropriate preprocessing tools.
+        After that, the data needs to be saved to file, and only then
+        can the new Image be added to the database.
+
+        Parameters
+        ----------
+        images: list of Image objects
+            The images to combine into a new Image object.
+
+        Returns
+        -------
+        output: Image
+            The new Image object. It would not have any data variables or filepath.
+        """
+        if len(images) < 1:
+            raise ValueError("Must provide at least one image to combine.")
+
+        output = Image(nofile=True)
+
+        # for each attribute, check that all the images have the same value
+        for att in ['section_id', 'instrument', 'telescope', 'type', 'filter', 'project', 'target']:
+            values = set([getattr(image, att) for image in images])
+            if len(values) != 1:
+                raise ValueError(f"Cannot combine images with different {att} values: {values}")
+            output.__setattr__(att, values.pop())
+        # TODO: should RA and Dec also be exactly the same??
+        output.ra = images[0].ra
+        output.dec = images[0].dec
+
+        # exposure time is usually added together
+        output.exp_time = sum([image.exp_time for image in images])
+
+        # start MJD and end MJD
+        output.mjd = min([image.mjd for image in images])
+        output.end_mjd = max([image.end_mjd for image in images])
+
+        # TODO: what about the header? should we combine them somehow?
+        output.header = images[0].header
+        output.raw_header = images[0].raw_header
+
+        output.source_images = images
+
+        # Note that "data" is not filled by this method, also the provenance is empty!
+        return output
+
+    @classmethod
+    def from_ref_and_new(cls, ref, new):
+        """
+        Create a new Image object from a reference Image object and a new Image object.
+        This is the first step in making a difference image.
+        The output image doesn't have any data, and is created with
+        nofile=True. It is up to the calling application to fill in the
+        data, flags, weight, etc. using the appropriate preprocessing tools.
+        After that, the data needs to be saved to file, and only then
+        can the new Image be added to the database.
+
+        Parameters
+        ----------
+        ref: Image object
+            The reference image to use.
+        new: Image object
+            The new image to use.
+
+        Returns
+        -------
+        output: Image
+            The new Image object. It would not have any data variables or filepath.
+        """
+        output = Image(nofile=True)
+
+        # for each attribute, check the two images have the same value
+        for att in ['section_id', 'instrument', 'telescope', 'type', 'filter', 'project', 'target']:
+            if getattr(ref, att) != getattr(new, att):
+                raise ValueError(
+                    f"Cannot combine images with different {att} values: "
+                    f"{getattr(ref, att)}, {getattr(new, att)}"
+                )
+            output.__setattr__(att, new)
+        # TODO: should RA and Dec also be exactly the same??
+
+        # get some more attributes from the new image
+        for att in ['exp_time', 'mjd', 'end_mjd', 'header', 'raw_header', 'ra', 'dec']:
+            output.__setattr__(att, getattr(new, att))
+
+        output.ref = ref
+        output.new = new
+
+        # Note that "data" is not filled by this method, also the provenance is empty!
+        return output
+
     @property
     def instrument_object(self):
         if self.instrument is not None:

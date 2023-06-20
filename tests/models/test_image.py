@@ -98,23 +98,6 @@ def test_image_enum_values(demo_image, provenance_base):
         assert os.path.exists(data_filename)
 
         try:
-            assert demo_image.combine_method is None
-
-            with pytest.raises(DataError, match='invalid input value for enum image_combine_method: "foo"'):
-                demo_image.combine_method = 'foo'
-                session.add(demo_image)
-                session.commit()
-            session.rollback()
-
-            for method in ['coadd', 'subtraction']:
-                demo_image.combine_method = method
-                session.add(demo_image)
-                session.commit()
-
-            demo_image.combine_method = 'subtraction'
-            session.add(demo_image)
-            session.commit()
-
             with pytest.raises(DataError, match='invalid input value for enum image_type: "foo"'):
                 demo_image.type = 'foo'
                 session.add(demo_image)
@@ -176,7 +159,7 @@ def test_image_from_exposure(exposure, provenance_base):
     assert im.telescope == exposure.telescope
     assert im.project == exposure.project
     assert im.target == exposure.target
-    assert im.combine_method is None
+    assert im.combine_method == 'single'
     assert not im.is_multi_image
     assert im.id is None  # need to commit to get IDs
     assert im.exposure_id is None  # need to commit to get IDs
@@ -244,6 +227,8 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
     # get a couple of images from exposure objects
     im1 = Image.from_exposure(exposure, section_id=0)
     im2 = Image.from_exposure(exposure2, section_id=0)
+    im2.filter = im1.filter
+    im2.target = im1.target
 
     im1.provenance = provenance_base
     im1.filepath = 'foo1.fits'
@@ -251,22 +236,23 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
     im2.filepath = 'foo2.fits'
 
     # make a new image from the two (we still don't have a coadd method for this)
-    im = Image(
-        exp_time=im1.exp_time + im2.exp_time,
-        mjd=im1.mjd,
-        end_mjd=im2.end_mjd,
-        filter=im1.filter,
-        instrument=im1.instrument,
-        telescope=im1.telescope,
-        project=im1.project,
-        target=im1.target,
-        combine_method='coadd',
-        section_id=im1.section_id,
-        ra=im1.ra,
-        dec=im1.dec,
-        filepath='foo.fits'
-    )
-    im.source_images = [im1, im2]
+    # im = Image(
+    #     exp_time=im1.exp_time + im2.exp_time,
+    #     mjd=im1.mjd,
+    #     end_mjd=im2.end_mjd,
+    #     filter=im1.filter,
+    #     instrument=im1.instrument,
+    #     telescope=im1.telescope,
+    #     project=im1.project,
+    #     target=im1.target,
+    #     section_id=im1.section_id,
+    #     ra=im1.ra,
+    #     dec=im1.dec,
+    #     filepath='foo.fits'
+    # )
+    # im.source_images = [im1, im2]
+    im = Image.from_images([im1, im2])
+    im.filepath = 'foo.fits'
     im.provenance = provenance_base
 
     try:

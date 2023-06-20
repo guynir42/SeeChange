@@ -195,27 +195,11 @@ def reference_image(exposure_factory, provenance_base, provenance_extra):
             images.append(im)
 
         # TODO: replace with a "from_images" method?
-        ref = Image(
-            section_id=0,
-            instrument='DemoInstrument',
-            telescope='DemoTelescope',
-            filter=filter,
-            source_images=images,
-            exp_time=sum([im.exp_time for im in images]),
-            ra=ra,
-            dec=dec,
-            project='coadd_test',
-            target=target,
-            nofile=True,
-        )
+        ref = Image.from_images(images)
         ref.data = np.mean(np.array([im.data for im in images]), axis=0)
-        ref.mjd = np.min(np.array([im.mjd for im in images]))
-        ref.end_mjd = np.max(np.array([im.end_mjd for im in images]))
 
         provenance_extra.process = 'coaddition'
         ref.provenance_id = provenance_extra.id
-        ref.instrument_object.read_header('')  # spoof header
-        ref.raw_header = {}
         ref.save()
 
         ref_entry = ReferenceEntry()
