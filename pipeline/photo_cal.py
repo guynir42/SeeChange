@@ -67,7 +67,12 @@ class PhotCalibrator:
             # TODO: update the image's FITS header with the zp
 
             zp = ZeroPoint()
-            zp.provenance = prov
+            zp.source_list = sources
+            if zp.provenance is None:
+                zp.provenance = prov
+            else:
+                if zp.provenance.unique_hash != prov.unique_hash:
+                    raise ValueError('Provenance mismatch for zp and provenance!')
 
             # update the data store with the new ZeroPoint
             ds.zp = zp

@@ -61,10 +61,13 @@ class Subtractor:
                     f'Cannot find a reference image corresponding to the datastore inputs: {ds.get_inputs()}'
                 )
 
-            sub_image = Image()
-            sub_image.provenance = prov
-            sub_image.ref = ref
-            sub_image.new = image
+            sub_image = Image.from_ref_and_new(ref, image)
+            sub_image.data = image.data - ref.data  # TODO: implement the subtraction algorithm here
+            if sub_image.provenance is None:
+                sub_image.provenance = prov
+            else:
+                if sub_image.provenance.unique_hash != prov.unique_hash:
+                    raise ValueError('Provenance mismatch for sub_image and provenance!')
 
         ds.sub_image = sub_image
 

@@ -60,7 +60,12 @@ class AstroCalibrator:
             # TODO: update the image's FITS header with the wcs
 
             wcs = WorldCoordinates()
-            wcs.provenance = prov
+            wcs.source_list = sources
+            if wcs.provenance is None:
+                wcs.provenance = prov
+            else:
+                if wcs.provenance.unique_hash != prov.unique_hash:
+                    raise ValueError('Provenance mismatch for wcs and provenance!')
 
             # add the resulting object to the data store
             ds.wcs = wcs

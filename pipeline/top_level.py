@@ -128,3 +128,4 @@ class Pipeline:
         """
         with SmartSession() as session:
             self.run(session=session)
+

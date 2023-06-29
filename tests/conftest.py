@@ -22,8 +22,11 @@ def rnd_str(n):
 
 @pytest.fixture(scope="session", autouse=True)
 def code_version():
-    cv = CodeVersion(version="test_v1.0.0")
-    cv.update()
+    with SmartSession() as session:
+        cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.version == 'test_v1.0.0')).first()
+    if cv is None:
+        cv = CodeVersion(version="test_v1.0.0")
+        cv.update()
 
     yield cv
 
@@ -49,7 +52,7 @@ def provenance_base(code_version):
     yield p
 
     with SmartSession() as session:
-        session.execute(sa.delete(Provenance).where(Provenance.id == pid))
+        # session.execute(sa.delete(Provenance).where(Provenance.id == pid))
         session.commit()
 
 
@@ -167,7 +170,7 @@ def demo_image(exposure):
 
 
 @pytest.fixture
-def reference_image(exposure_factory, provenance_base, provenance_extra):
+def reference_entry(exposure_factory, provenance_base, provenance_extra):
     ref_entry = None
     try:  # remove files and DB entries at the end
         filter = np.random.choice(list('grizY'))
@@ -188,7 +191,7 @@ def reference_image(exposure_factory, provenance_base, provenance_extra):
             exp.update_instrument()
             im = Image.from_exposure(exp, section_id=0)
             im.data = im.raw_data - np.median(im.raw_data)
-            im.provenance_id = provenance_base.id
+            im.provenance = provenance_base
             im.ra = ra
             im.dec = dec
             im.save()
@@ -199,7 +202,7 @@ def reference_image(exposure_factory, provenance_base, provenance_extra):
         ref.data = np.mean(np.array([im.data for im in images]), axis=0)
 
         provenance_extra.process = 'coaddition'
-        ref.provenance_id = provenance_extra.id
+        ref.provenance = provenance_extra
         ref.save()
 
         ref_entry = ReferenceEntry()
@@ -231,4 +234,5 @@ def reference_image(exposure_factory, provenance_base, provenance_extra):
                 session.delete(ref)  # should also delete ref_entry
 
                 session.commit()
+
 

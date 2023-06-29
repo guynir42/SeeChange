@@ -3,6 +3,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm.exc import DetachedInstanceError
 
 from astropy.time import Time
 from astropy.wcs import WCS
@@ -30,7 +31,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     __tablename__ = 'images'
 
     exposure_id = sa.Column(
-        sa.ForeignKey('exposures.id'),
+        sa.ForeignKey('exposures.id', ondelete='SET NULL'),
         nullable=True,
         index=True,
         doc=(
@@ -62,7 +63,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         )
     )
 
-    ref_id = sa.Column(
+    ref_image_id = sa.Column(
         sa.ForeignKey('images.id', ondelete="CASCADE"),
         nullable=True,
         index=True,
@@ -72,18 +73,19 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         )
     )
 
-    ref = orm.relationship(
+    ref_image = orm.relationship(
         'Image',
         cascade='save-update, merge, refresh-expire, expunge',
-        primaryjoin='images.c.ref_id == images.c.id',
+        primaryjoin='images.c.ref_image_id == images.c.id',
         uselist=False,
+        remote_side='Image.id',
         doc=(
             "Reference image used to produce a difference image. "
             "Only set for difference images. This usually refers to a coadd image. "
         )
     )
 
-    new_id = sa.Column(
+    new_image_id = sa.Column(
         sa.ForeignKey('images.id', ondelete="CASCADE"),
         nullable=True,
         index=True,
@@ -93,11 +95,12 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         )
     )
 
-    new = orm.relationship(
+    new_image = orm.relationship(
         'Image',
         cascade='save-update, merge, refresh-expire, expunge',
-        primaryjoin='images.c.new_id == images.c.id',
+        primaryjoin='images.c.new_image_id == images.c.id',
         uselist=False,
+        remote_side='Image.id',
         doc=(
             "New image used to produce a difference image. "
             "Only set for difference images. This usually refers to a regular image. "
@@ -105,26 +108,26 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     )
 
     @property
-    def is_multi_image(self):
-        if self.exposure is not None:
-            return False
-        elif self.source_images is not None and len(self.source_images) > 0:
-            return True
-        elif self.ref_id is not None and self.new_id is not None:
-            return True
-        else:
-            return None  # for new objects that have not defined either exposure or source_images
+    def is_coadd(self):
+        try:
+            if self.source_images is not None and len(self.source_images) > 0:
+                return True
+        except DetachedInstanceError:
+            if not self.is_sub and self.exposure_id is None:
+                return True
+
+        return False
 
     @property
-    def combine_method(self):
-        if self.ref_id is not None and self.new_id is not None:
-            return "subtraction"
-        elif self.source_images is not None and len(self.source_images) > 0:
-            return "coadd"
-        elif self.exposure is not None:
-            return "single"
-        else:
-            return None  # for new objects that have not defined either exposure or source_images
+    def is_sub(self):
+        try:
+            if self.ref_image is not None and self.new_image is not None:
+                return True
+        except DetachedInstanceError:
+            if self.ref_image_id is not None and self.new_image_id is not None:
+                return True
+
+        return False
 
     type = sa.Column(
         im_type_enum,  # defined in models/exposure.py
@@ -463,20 +466,26 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         # for each attribute, check the two images have the same value
         for att in ['section_id', 'instrument', 'telescope', 'type', 'filter', 'project', 'target']:
-            if getattr(ref, att) != getattr(new, att):
+            ref_value = getattr(ref, att)
+            new_value = getattr(new, att)
+
+            if att == 'section_id':
+                ref_value = str(ref_value)
+                new_value = str(new_value)
+            if ref_value != new_value:
                 raise ValueError(
                     f"Cannot combine images with different {att} values: "
-                    f"{getattr(ref, att)}, {getattr(new, att)}"
+                    f"{ref_value} and {new_value}. "
                 )
-            output.__setattr__(att, new)
+            output.__setattr__(att, new_value)
         # TODO: should RA and Dec also be exactly the same??
 
         # get some more attributes from the new image
         for att in ['exp_time', 'mjd', 'end_mjd', 'header', 'raw_header', 'ra', 'dec']:
             output.__setattr__(att, getattr(new, att))
 
-        output.ref = ref
-        output.new = new
+        output.ref_image = ref
+        output.new_image = new
 
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
@@ -495,18 +504,20 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     def __repr__(self):
 
+        type_str = self.type
+        if self.is_coadd:
+            type_str += " (coadd)"
+
+        if self.is_sub:
+            type_str += " (sub)"
+
         output = (
             f"Image(id: {self.id}, "
-            f"type: {self.type}, "
+            f"type: {type_str}, "
             f"exp: {self.exp_time}s, "
             f"filt: {self.filter}, "
             f"from: {self.instrument}/{self.telescope}"
         )
-
-        multi_type = str(self.combine_method) if self.is_multi_image else None
-
-        if multi_type is not None:
-            output += f", multi_type: {multi_type}"
 
         output += ")"
 
@@ -523,6 +534,9 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         # TODO: we may want to get the naming convention from the config file
         #  in which case we will need to parse it somehow, e.g., using some blocks
         #  like <instrument>, <filter>, etc.
+
+        if self.provenance is None:
+            raise ValueError("Cannot invent filename for image without provenance.")
 
         t = Time(self.mjd, format='mjd', scale='utc').datetime
 
@@ -544,12 +558,13 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         dec_frac = int(dec_frac)
 
         section_id = self.section_id
-        prov_id = self.provenance_id
+        prov_hash = self.provenance.unique_hash
 
-        default_convention = "{short_name}_{date}_{time}_{section_id:02d}_{filter}_{prov_id:03d}"
+        default_convention = "{short_name}_{date}_{time}_{section_id}_{filter}_{prov_hash:.6s}"
 
         cfg = config.Config.get()
         name_convention = cfg.value('storage.images.name_convention', default=None)
+
         if name_convention is None:
             name_convention = default_convention
 
@@ -567,7 +582,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
             dec_int_pm=dec_int_pm,
             dec_frac=dec_frac,
             section_id=section_id,
-            prov_id=prov_id,
+            prov_hash=prov_hash,
         )
 
         return filename
@@ -587,8 +602,8 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         if self.data is None:
             raise RuntimeError("The image data is not loaded. Cannot save.")
 
-        if self.provenance_id is None:
-            raise RuntimeError("The image provenance_id is not set. Cannot save.")
+        if self.provenance is None:
+            raise RuntimeError("The image provenance is not set. Cannot save.")
 
         if filename is None:
             filename = self.invent_filename()

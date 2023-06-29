@@ -1,4 +1,4 @@
-
+import uuid
 import sqlalchemy as sa
 from sqlalchemy import orm
 
@@ -6,6 +6,7 @@ from models.base import Base, FileOnDiskMixin
 
 
 class SourceList(Base, FileOnDiskMixin):
+
     __tablename__ = 'source_lists'
 
     image_id = sa.Column(
@@ -50,4 +51,11 @@ class SourceList(Base, FileOnDiskMixin):
             "and the parameters used to produce this source list. "
         )
     )
+
+    def save(self):
+        """
+        Save this source list to the database.
+        """
+        # TODO: Must implement this at some point!
+        self.filepath = uuid.uuid4().hex
 

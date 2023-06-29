@@ -72,8 +72,15 @@ class Detector:
                     )
 
                 detections = self.extract_sources(image)
-                detections.provenance = prov
+                detections.image = image
 
+                if detections.provenance is None:
+                    detections.provenance = prov
+                else:
+                    if detections.provenance.unique_hash != prov.unique_hash:
+                        raise ValueError('Provenance mismatch for detections and provenance!')
+
+            detections.is_sub = True
             ds.detections = detections
 
         else:  # regular image
@@ -90,7 +97,12 @@ class Detector:
                     raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
                 sources = self.extract_sources(image)
-                sources.provenance = prov
+                sources.image = image
+                if sources.provenance is None:
+                    sources.provenance = prov
+                else:
+                    if sources.provenance.unique_hash != prov.unique_hash:
+                        raise ValueError('Provenance mismatch for sources and provenance!')
 
             ds.sources = sources
 
