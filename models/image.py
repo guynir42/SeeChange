@@ -153,6 +153,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     provenance = orm.relationship(
         'Provenance',
         cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
         doc=(
             "Provenance of this image. "
             "The provenance will contain a record of the code version"

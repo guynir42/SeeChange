@@ -50,13 +50,14 @@ class Preprocessor:
 
             # get the CCD image from the exposure
             image = Image.from_exposure(exposure, ds.section_id)
+            image.data = image.raw_data - np.median(image.raw_data)  # TODO: replace this!
 
         if image is None:
             raise ValueError('Image cannot be None at this point!')
 
-        # TODO: apply dark/flat/sky subtraction
-        #  right now this is just a placeholder:
-        image.data = image.raw_data - np.median(image.raw_data)  # TODO: replace this!
+            # TODO: apply dark/flat/sky subtraction
+            #  right now this is just a placeholder:
+
 
         if image.provenance is None:
             image.provenance = prov

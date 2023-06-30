@@ -2,7 +2,7 @@ import os
 
 import sqlalchemy as sa
 
-from models.base import SmartSession
+from models.base import SmartSession, FileOnDiskMixin
 from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
@@ -119,17 +119,49 @@ def test_data_flow(exposure, reference_entry):
 
             check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session, ds)
 
-        # feed the pipeline the same data, but without the exposure
-        ds.exposure = None
-        ds = p.run(ds)
+        # feed the pipeline the same data, but missing the upstream data
+        attributes = ['exposure', 'image', 'sources', 'wcs', 'zp', 'sub_image', 'detections']
 
-        # commit to DB using this session
-        with SmartSession() as session:
-            ds.save_and_commit(session=session)
+        for i in range(len(attributes)):
+            for j in range(i):
+                setattr(ds, attributes[j], None)  # get rid of all data up to the current attribute
 
-        # use a new session to query for the results
-        with SmartSession() as session:
-            check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session, ds)
+            ds = p.run(ds)
+
+            # commit to DB using this session
+            with SmartSession() as session:
+                ds.save_and_commit(session=session)
+
+            # use a new session to query for the results
+            with SmartSession() as session:
+                check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session, ds)
+
+        print(ds.image.filepath)
+        print(ds.sub_image.filepath)
+        # make sure we can remove the data from the end to the beginning and recreate it
+        for i in range(len(attributes)):
+            for j in range(i):
+                # print(f'i= {i}, j= {j}. Removing attribute: {attributes[-j-1]}')
+
+                obj = getattr(ds, attributes[-j-1])
+                with SmartSession() as session:
+                    obj = obj.recursive_merge(session=session)
+                    if isinstance(obj, FileOnDiskMixin):
+                        obj.remove_data_from_disk()
+                    session.delete(obj)
+                    session.commit()
+
+                setattr(ds, attributes[-j-1], None)
+
+            ds = p.run(ds)
+
+            # commit to DB using this session
+            with SmartSession() as session:
+                ds.save_and_commit(session=session)
+
+            # use a new session to query for the results
+            with SmartSession() as session:
+                check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session, ds)
 
     finally:
         if ds is not None:

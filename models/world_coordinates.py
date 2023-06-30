@@ -34,6 +34,7 @@ class WorldCoordinates(Base):
     provenance = orm.relationship(
         'Provenance',
         cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
         doc=(
             "Provenance of this world coordinate system. "
             "The provenance will contain a record of the code version"

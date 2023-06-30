@@ -34,6 +34,7 @@ class ZeroPoint(Base):
     provenance = orm.relationship(
         'Provenance',
         cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
         doc=(
             "Provenance of this zero point. "
             "The provenance will contain a record of the code version"

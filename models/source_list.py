@@ -45,6 +45,7 @@ class SourceList(Base, FileOnDiskMixin):
     provenance = orm.relationship(
         'Provenance',
         cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
         doc=(
             "Provenance of this source list. "
             "The provenance will contain a record of the code version"

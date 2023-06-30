@@ -30,6 +30,8 @@ class Measurements(Base, SpatiallyIndexed):
 
     provenance = orm.relationship(
         'Provenance',
+        cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
         doc="The provenance of this measurement. "
     )
 
