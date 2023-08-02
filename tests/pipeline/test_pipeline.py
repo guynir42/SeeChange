@@ -136,8 +136,8 @@ def test_data_flow(exposure, reference_entry):
             with SmartSession() as session:
                 check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session, ds)
 
-        print(ds.image.filepath)
-        print(ds.sub_image.filepath)
+        # print(ds.image.filepath)
+        # print(ds.sub_image.filepath)
         # make sure we can remove the data from the end to the beginning and recreate it
         for i in range(len(attributes)):
             for j in range(i):

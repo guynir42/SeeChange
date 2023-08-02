@@ -503,6 +503,12 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     def instrument_object(self, value):
         self._instrument_object = value
 
+    @property
+    def filter_short(self):
+        if self.filter is None:
+            return None
+        return self.instrument_object.get_short_filter_name(self.filter)
+
     def __repr__(self):
 
         type_str = self.type
@@ -516,7 +522,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
             f"Image(id: {self.id}, "
             f"type: {type_str}, "
             f"exp: {self.exp_time}s, "
-            f"filt: {self.filter}, "
+            f"filt: {self.filter_short}, "
             f"from: {self.instrument}/{self.telescope}"
         )
 
@@ -531,62 +537,11 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         """
         Create a filename for the image based on the metadata.
         This is used when saving the image to disk.
+
+        Calls the FileOnDiskMixin.invent_filename() method,
+        using the config key for storing images.
         """
-        # TODO: we may want to get the naming convention from the config file
-        #  in which case we will need to parse it somehow, e.g., using some blocks
-        #  like <instrument>, <filter>, etc.
-
-        if self.provenance is None:
-            raise ValueError("Cannot invent filename for image without provenance.")
-
-        t = Time(self.mjd, format='mjd', scale='utc').datetime
-
-        short_name = self.instrument_object.get_short_instrument_name()
-        date = t.strftime('%Y%m%d')
-        time = t.strftime('%H%M%S')
-        filter = self.instrument_object.get_short_filter_name(self.filter)
-
-        ra = self.ra
-        ra_int, ra_frac = str(float(ra)).split('.')
-        ra_int = int(ra_int)
-        ra_int_h = ra_int // 15
-        ra_frac = int(ra_frac)
-
-        dec = self.dec
-        dec_int, dec_frac = str(float(dec)).split('.')
-        dec_int = int(dec_int)
-        dec_int_pm = f'p{dec_int:02d}' if dec_int >= 0 else f'm{dec_int:02d}'
-        dec_frac = int(dec_frac)
-
-        section_id = self.section_id
-        prov_hash = self.provenance.unique_hash
-
-        default_convention = "{short_name}_{date}_{time}_{section_id}_{filter}_{prov_hash:.6s}"
-
-        cfg = config.Config.get()
-        name_convention = cfg.value('storage.images.name_convention', default=None)
-
-        if name_convention is None:
-            name_convention = default_convention
-
-        filename = name_convention.format(
-            short_name=short_name,
-            date=date,
-            time=time,
-            filter=filter,
-            ra=ra,
-            ra_int=ra_int,
-            ra_int_h=ra_int_h,
-            ra_frac=ra_frac,
-            dec=dec,
-            dec_int=dec_int,
-            dec_int_pm=dec_int_pm,
-            dec_frac=dec_frac,
-            section_id=section_id,
-            prov_hash=prov_hash,
-        )
-
-        return filename
+        return FileOnDiskMixin.invent_filename(self, 'storage.images.name_convention')
 
     def save(self, filename=None):
         """

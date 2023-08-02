@@ -1,9 +1,9 @@
 import os
-import inspect
 
 from contextlib import contextmanager
 
 from astropy.coordinates import SkyCoord
+from astropy.time import Time
 
 import sqlalchemy as sa
 from sqlalchemy import func, orm
@@ -385,6 +385,125 @@ class FileOnDiskMixin:
 
         super().__setattr__(key, value)
 
+    def invent_filename(self, config_key=None):
+        """
+        Create a filename for the object based on its metadata.
+        This is used when saving the image/source list to disk.
+
+        NOTE: if the object that needs to be saved doesn't have one
+        of the attributes used below, it will be left as empty string
+        (or as 0 for integers). It is up to the user that wants to use
+        this function on an object with missing attributes, to also
+        use a different naming convention (e.g., in the config) that
+        does not make use of missing attributes.
+
+        Parameters
+        ----------
+        config_key: str
+            The key in the config file that contains the naming convention.
+            If not given, it will try to guess the convention from the object type.
+        Returns
+        -------
+        filename: str
+            The filename for the given object (can include folders in the relative path).
+        """
+        if not hasattr(self, 'provenance') or self.provenance is None:
+            prov_hash = ''
+        else:
+            prov_hash = self.provenance.unique_hash
+
+        if not hasattr(self, 'instrument_object') or self.instrument_object is None:
+            inst_name = ''
+        else:
+            inst_name = self.instrument_object.get_short_instrument_name()
+
+        if not hasattr(self, 'mjd') or self.mjd is None:
+            date = ''
+            time = ''
+        else:
+            t = Time(self.mjd, format='mjd', scale='utc').datetime
+
+            date = t.strftime('%Y%m%d')
+            time = t.strftime('%H%M%S')
+
+        if not hasattr(self, 'filter_short') or self.filter_short is None:
+            filter = ''
+        else:
+            filter = self.filter_short
+
+        if not hasattr(self, 'section_id') or self.section_id is None:
+            section_id = ''
+        else:
+            section_id = self.section_id
+
+        if not hasattr(self, 'ra') or self.ra is None:
+            ra = ''
+            ra_int = ra_int_h = ra_frac = 0
+        else:
+            ra = self.ra
+            ra_int, ra_frac = str(float(ra)).split('.')
+            ra_int = int(ra_int)
+            ra_int_h = ra_int // 15
+            ra_frac = int(ra_frac)
+
+        if not hasattr(self, 'dec') or self.dec is None:
+            dec = ''
+            dec_int = dec_frac = 0
+            dec_int_pm = ''
+        else:
+            dec = self.dec
+            dec_int, dec_frac = str(float(dec)).split('.')
+            dec_int = int(dec_int)
+            dec_int_pm = f'p{dec_int:02d}' if dec_int >= 0 else f'm{dec_int:02d}'
+            dec_frac = int(dec_frac)
+
+        if config_key is None:
+            from models.image import Image
+            from models.source_list import SourceList
+            if isinstance(self, Image):
+                config_key = 'storage.images.name_convention'
+            elif isinstance(self, SourceList):
+                config_key = 'storage.source_lists.name_convention'
+            else:
+                raise ValueError(f'Cannot guess the config key for {self}')
+
+        cfg = config.Config.get()
+        name_convention = cfg.value(config_key, default=None)
+
+        if name_convention is None:
+            # right now all conventions are the same, but you can configure the hard-coded defaults here:
+            from models.image import Image
+            from models.source_list import SourceList
+            if isinstance(self, Image):
+                default_convention = "{inst_name}_{date}_{time}_{section_id}_{filter}_{prov_hash:.6s}"
+            elif isinstance(self, SourceList):
+                # note that the SourceList object will append _sources or _detections to the filename
+                # depending on if it is from a normal or subtracted image
+                default_convention = "{inst_name}_{date}_{time}_{section_id}_{filter}_{prov_hash:.6s}"
+            else:
+                default_convention = "{inst_name}_{date}_{time}_{section_id}_{filter}_{prov_hash:.6s}"
+
+            name_convention = default_convention
+
+        filename = name_convention.format(
+            inst_name=inst_name,
+            date=date,
+            time=time,
+            filter=filter,
+            ra=ra,
+            ra_int=ra_int,
+            ra_int_h=ra_int_h,
+            ra_frac=ra_frac,
+            dec=dec,
+            dec_int=dec_int,
+            dec_int_pm=dec_int_pm,
+            dec_frac=dec_frac,
+            section_id=section_id,
+            prov_hash=prov_hash,
+        )
+
+        return filename
+
     def _validate_filepath(self, filepath):
         """
         Make sure the filepath is legitimate.
@@ -481,8 +600,12 @@ class FileOnDiskMixin:
         str
             Full path to the file on local disk.
         """
+        if self.filepath is None:
+            return None
+
         if nofile is None:
             nofile = self.nofile
+
         if not nofile and self.local_path is None:
             raise ValueError("Local path not defined!")
 

@@ -366,7 +366,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     def load(self, section_ids=None):
         if section_ids is None:
-            section_ids = self.instrument.get_section_ids()
+            section_ids = self.instrument_object.get_section_ids()
 
         if not isinstance(section_ids, list):
             section_ids = [section_ids]
