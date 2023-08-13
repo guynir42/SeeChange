@@ -83,7 +83,6 @@ class Detector:
                     if detections.provenance.unique_hash != prov.unique_hash:
                         raise ValueError('Provenance mismatch for detections and provenance!')
 
-            detections.is_sub = True
             ds.detections = detections
 
         else:  # regular image

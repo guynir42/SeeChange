@@ -84,7 +84,7 @@ def check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session
 def test_data_flow(exposure, reference_entry):
     """Test that the pipeline runs end-to-end."""
     sec_id = reference_entry.section_id
-
+    exp_id = None
     ds = None
     try:  # cleanup the file at the end
         # add the exposure to DB and use that ID to run the pipeline
@@ -166,5 +166,11 @@ def test_data_flow(exposure, reference_entry):
     finally:
         if ds is not None:
             ds.delete_everything()
-
+        if exp_id is not None:
+            with SmartSession() as session:
+                exposure = session.scalars(sa.select(Exposure).where(Exposure.id == exp_id)).first()
+                if exposure is not None:
+                    exposure.remove_data_from_disk()
+                    session.delete(exposure)
+                    session.commit()
 

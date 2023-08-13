@@ -4,6 +4,7 @@ from sqlalchemy import orm
 from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm.exc import DetachedInstanceError
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from astropy.time import Time
 from astropy.wcs import WCS
@@ -118,7 +119,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         return False
 
-    @property
+    @hybrid_property
     def is_sub(self):
         try:
             if self.ref_image is not None and self.new_image is not None:
@@ -128,6 +129,10 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
                 return True
 
         return False
+
+    @is_sub.expression
+    def is_sub(cls):
+        return cls.ref_image_id.isnot(None) & cls.new_image_id.isnot(None)
 
     type = sa.Column(
         im_type_enum,  # defined in models/exposure.py

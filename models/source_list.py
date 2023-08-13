@@ -7,8 +7,10 @@ import pandas as pd
 
 import sqlalchemy as sa
 from sqlalchemy import orm
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from models.base import Base, FileOnDiskMixin, SeeChangeBase
+from models.image import Image
 
 
 class SourceList(Base, FileOnDiskMixin):
@@ -28,15 +30,26 @@ class SourceList(Base, FileOnDiskMixin):
         doc="The image this source list was generated from. "
     )
 
-    is_sub = sa.Column(
-        sa.Boolean,
-        nullable=False,
-        default=False,
-        doc=(
-            "Whether this source list is from a subtraction image (detections), "
-            "or from a regular image (sources, the default). "
-        )
-    )
+    # is_sub = sa.Column(
+    #     sa.Boolean,
+    #     nullable=False,
+    #     default=False,
+    #     doc=(
+    #         "Whether this source list is from a subtraction image (detections), "
+    #         "or from a regular image (sources, the default). "
+    #     )
+    # )
+
+    @hybrid_property
+    def is_sub(self):
+        if self.image is None:
+            return None
+        else:
+            return self.image.is_sub
+
+    @is_sub.expression
+    def is_sub(cls):
+        return sa.select(Image.is_sub).where(Image.id == cls.image_id).label('is_sub')
 
     num_sources = sa.Column(
         sa.Integer,
@@ -114,15 +127,6 @@ class SourceList(Base, FileOnDiskMixin):
 
         self._data = value
         self.num_sources = len(value)
-
-    @property
-    def mjd(self):
-        """
-        The MJD of the image this source list was generated from.
-        """
-        if self.image is None:
-            return None
-        return self.image.mjd
 
     def load(self):
         """
