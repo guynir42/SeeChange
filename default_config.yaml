@@ -19,6 +19,7 @@ storage:
     single_file: false
     # The convention for building filenames for images
     # Use any of the following: short_name, date, time, section_id, filter, ra, dec, prov_id
+    # Can also use section_id_int if the section_id is always an integer
     # Can also use ra_int and ra_frac to get the integer number before/after the decimal point
     # (the same can be done for dec). Also use ra_int_h to get the number in hours.
     # to get the declination with "p" or "m" replacing the sign, use dec_int_pm.
@@ -28,7 +29,7 @@ storage:
     # The minimal set of fields to make the filenames unique include:
     # inst_name (short instrument name), date, time, section_id, prov_hash
     # (in this example, the first six characters of the provenance unique hash)
-    name_convention: "{ra_int:03d}/{inst_name}_{date}_{time}_{section_id}_{filter}_{prov_hash:.6s}"
+    name_convention: "{ra_int:03d}/{inst_name}_{date}_{time}_{section_id}_{filter}_{im_type}_{prov_hash:.6s}"
   source_lists:
     format: npy
-    name_convention: "{ra_int:03d}/{inst_name}_{date}_{time}_{section_id}_{filter}_{prov_hash:.6s}"
+    name_convention: "{ra_int:03d}/{inst_name}_{date}_{time}_{section_id}_{filter}_{im_type}_{prov_hash:.6s}"

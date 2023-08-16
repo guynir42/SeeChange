@@ -115,6 +115,31 @@ class SectionHeaders:
 im_type_enum = Enum("science", "reference", "difference", "bias", "dark", "flat", name='image_type')
 
 
+def get_short_image_type(image_type):
+    """
+    Get the short version of the image type.
+    If there is a short version, it will be returned,
+    otherwise returns the image_type unchanged.
+    Generally, longer image types will be shortened,
+    e.g., science -> sci, reference -> ref, difference -> sub.
+
+    Parameters
+    ----------
+    image_type: str or None
+
+    Returns
+    -------
+    str or None:
+         The short version of the image type, or None if the input was None.
+    """
+    short_types = {
+        "science": "sci",
+        "reference": "ref",
+        "difference": "sub",
+    }
+    return short_types.get(image_type, image_type)
+
+
 class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = "exposures"
@@ -212,6 +237,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         self._data = None  # the underlying image data for each section
         self._section_headers = None  # the headers for individual sections, directly from the FITS file
         self._raw_header = None  # the global (exposure level) header, directly from the FITS file
+        self.type = 'science'  # default, can override using kwargs
 
         if self.filepath is None and not self.nofile:
             raise ValueError("Must give a filepath to initialize an Exposure object. ")

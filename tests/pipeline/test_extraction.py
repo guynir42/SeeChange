@@ -62,6 +62,7 @@ def test_find_sources_in_small_image(decam_small_image):
 
 
 def test_save_source_list(decam_small_image, provenance_base, code_version):
+    decam_small_image.provenance = provenance_base
     det = Detector(subtraction=False, threshold=3.0)
     sources = det.extract_sources(decam_small_image)
     prov = Provenance(
@@ -85,7 +86,7 @@ def test_save_source_list(decam_small_image, provenance_base, code_version):
         assert os.path.isfile(filename)
 
         # check the naming convention
-        assert re.search(r'.*/\d{3}/c4d_\d{8}_\d{6}_.+_.+_.{6}_sources\.npy', filename)
+        assert re.search(r'.*/\d{3}/c4d_\d{8}_\d{6}_.+_.+_.+_.{6}_sources\.npy', filename)
 
         # check the file contents can be loaded successfully
         data = np.load(filename)
@@ -93,7 +94,6 @@ def test_save_source_list(decam_small_image, provenance_base, code_version):
 
         with SmartSession() as session:
             decam_small_image.exposure = session.merge(decam_small_image.exposure)
-            decam_small_image.provenance = provenance_base
             decam_small_image.filepath = uuid.uuid4().hex  # pretend to save this file
 
             session.add(sources)

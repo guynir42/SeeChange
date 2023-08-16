@@ -13,7 +13,7 @@ import astropy.units as u
 from pipeline.utils import read_fits_image, save_fits_image_file
 
 from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed
-from models.exposure import Exposure, im_type_enum
+from models.exposure import Exposure, im_type_enum, get_short_image_type
 from models.instrument import get_instrument_instance
 from models.provenance import Provenance
 
@@ -540,13 +540,79 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     def invent_filename(self):
         """
-        Create a filename for the image based on the metadata.
+        Create a filename for the object based on its metadata.
         This is used when saving the image to disk.
-
-        Calls the FileOnDiskMixin.invent_filename() method,
-        using the config key for storing images.
+        Data products that depend on an image and are also
+        saved to disk (e.g., SourceList) will just append
+        another string to the Image filename.
         """
-        return FileOnDiskMixin.invent_filename(self, 'storage.images.name_convention')
+        prov_hash = inst_name = im_type = date = time = filter = ra = dec = dec_int_pm = ''
+        ra_int = ra_int_h = ra_frac = dec_int = dec_frac = 0
+
+        if self.provenance is not None:
+            prov_hash = self.provenance.unique_hash
+        if self.instrument_object is not None:
+            inst_name = self.instrument_object.get_short_instrument_name()
+        if self.type is not None:
+            im_type = get_short_image_type(self.type)
+
+        if self.mjd is not None:
+            t = Time(self.mjd, format='mjd', scale='utc').datetime
+            date = t.strftime('%Y%m%d')
+            time = t.strftime('%H%M%S')
+
+        if self.filter_short is not None:
+            filter = self.filter_short
+
+        if self.section_id is not None:
+            section_id = str(self.section_id)
+            try:
+                section_id_int = int(self.section_id)
+            except ValueError:
+                section_id_int = 0
+
+        if self.ra is not None:
+            ra = self.ra
+            ra_int, ra_frac = str(float(ra)).split('.')
+            ra_int = int(ra_int)
+            ra_int_h = ra_int // 15
+            ra_frac = int(ra_frac)
+
+        if self.dec is not None:
+            dec = self.dec
+            dec_int, dec_frac = str(float(dec)).split('.')
+            dec_int = int(dec_int)
+            dec_int_pm = f'p{dec_int:02d}' if dec_int >= 0 else f'm{dec_int:02d}'
+            dec_frac = int(dec_frac)
+
+        cfg = config.Config.get()
+        default_convention = "{inst_name}_{date}_{time}_{section_id}_{filter}_{im_type}_{prov_hash:.6s}"
+        name_convention = cfg.value('storage.images.name_convention', default=None)
+        if name_convention is None:
+            name_convention = default_convention
+
+        filename = name_convention.format(
+            inst_name=inst_name,
+            im_type=im_type,
+            date=date,
+            time=time,
+            filter=filter,
+            ra=ra,
+            ra_int=ra_int,
+            ra_int_h=ra_int_h,
+            ra_frac=ra_frac,
+            dec=dec,
+            dec_int=dec_int,
+            dec_int_pm=dec_int_pm,
+            dec_frac=dec_frac,
+            section_id=section_id,
+            section_id_int=section_id_int,
+            prov_hash=prov_hash,
+        )
+
+        # TODO: which elements of the naming convention are really necessary?
+        #  and what is a good way to make sure the filename actually depends on them?
+        return filename
 
     def save(self, filename=None):
         """

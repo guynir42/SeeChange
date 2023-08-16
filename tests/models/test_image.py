@@ -373,7 +373,7 @@ def test_image_filename_conventions(demo_image, provenance_base):
             if len(os.listdir(folder)) == 0:
                 os.rmdir(folder)
 
-        new_convention = '{ra_int:03d}/foo_{date}_{time}_{section_id:02d}_{filter}'
+        new_convention = '{ra_int:03d}/foo_{date}_{time}_{section_id_int:02d}_{filter}'
         cfg.set_value('storage.images.name_convention', new_convention)
         demo_image.save()
         assert re.search(r'\d{3}/foo_\d{8}_\d{6}_\d{2}_.\.image\.fits', demo_image.get_fullpath()[0])
@@ -384,7 +384,7 @@ def test_image_filename_conventions(demo_image, provenance_base):
             if len(os.listdir(folder)) == 0:
                 os.rmdir(folder)
 
-        new_convention = 'bar_{date}_{time}_{section_id:02d}_{ra_int_h:02d}{dec_int:+03d}'
+        new_convention = 'bar_{date}_{time}_{section_id_int:02d}_{ra_int_h:02d}{dec_int:+03d}'
         cfg.set_value('storage.images.name_convention', new_convention)
         demo_image.save()
         assert re.search(r'bar_\d{8}_\d{6}_\d{2}_\d{2}[+-]\d{2}\.image\.fits', demo_image.get_fullpath()[0])

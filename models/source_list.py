@@ -145,14 +145,15 @@ class SourceList(Base, FileOnDiskMixin):
         if self.data is None:
             raise ValueError("Cannot save source list without data")
 
-        filename = self.invent_filename()
+        filename = self.image.filepath
+        if filename is None:
+            filename = self.image.invent_filename()
 
-        if self.is_sub:
-            filename += '_detections'
-        else:
-            filename += '_sources'
+        if filename.endswith(('.fits', '.h5', '.hdf5')):
+            filename = os.path.splitext(filename)[0]
 
         # TODO: use FITS and astropy tables instead?
+        filename += '_sources'
         filename += '.npy'
         fullname = os.path.join(self.local_path, filename)
         self.safe_mkdir(os.path.dirname(fullname))
