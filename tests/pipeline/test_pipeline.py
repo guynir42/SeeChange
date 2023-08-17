@@ -103,7 +103,7 @@ def test_parameters( config_test ):
                   'astro_cal': { 'cross_match_catalog': 'override' },
                   'photo_cal': { 'cross_match_catalog': 'override' },
                   'subtraction': { 'method': 'override' },
-                  'detection': { 'threshold': -3.14 },
+                  'detection': { 'threshold': 3.14 },
                   'cutting': { 'cutout_size': 666 },
                   'measurement': { 'photometry_method': 'override' }
                  }
