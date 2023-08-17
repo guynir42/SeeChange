@@ -141,9 +141,6 @@ class Detector:
         data_sub = data - b.back()
 
         print(f'threshold: {self.pars.threshold}')
-        print(f'background mean: {b.globalback}, rms: {b.globalrms}')
-        print(f'data_sub mean: {np.mean(data_sub)}, rms: {np.std(data_sub)}')
-        print(data_sub[0:5, 0:5])
 
         objects = sep.extract(data_sub, self.pars.threshold, err=b.rms())
 

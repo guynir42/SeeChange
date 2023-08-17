@@ -148,6 +148,9 @@ def test_data_flow(exposure, reference_entry):
             ref_id = reference_entry.image.id
 
         p = Pipeline()
+        assert p.extractor.pars.threshold != 3.14
+        assert p.detector.pars.threshold != 3.14
+
         ds = p.run(exp_id, sec_id)
 
         # commit to DB using this session
