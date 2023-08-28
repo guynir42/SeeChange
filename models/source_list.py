@@ -42,6 +42,9 @@ class SourceList(Base, FileOnDiskMixin):
 
     @hybrid_property
     def is_sub(self):
+        """Whether this source list is from a subtraction image (detections),
+        or from a regular image (sources, the default).
+        """
         if self.image is None:
             return None
         else:
