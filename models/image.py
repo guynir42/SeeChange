@@ -477,7 +477,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         output = Image(nofile=True)
 
         # for each attribute, check the two images have the same value
-        for att in ['section_id', 'instrument', 'telescope', 'type', 'filter', 'project', 'target']:
+        for att in ['section_id', 'instrument', 'telescope', 'filter', 'project', 'target']:
             ref_value = getattr(ref, att)
             new_value = getattr(new, att)
 
