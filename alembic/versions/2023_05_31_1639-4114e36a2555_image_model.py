@@ -36,6 +36,8 @@ def upgrade() -> None:
         name='image_type'
     )
     image_type.create(op.get_bind())
+    file_format = postgresql.ENUM('fits', 'hdf5', 'csv', 'npy', name='file_format')
+    file_format.create(op.get_bind())
     image_format = postgresql.ENUM('fits', 'hdf5', name='image_format')
     image_format.create(op.get_bind())
     image_combine_method = postgresql.ENUM('coadd', 'subtraction', name='image_combine_method')
