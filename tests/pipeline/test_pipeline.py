@@ -95,11 +95,11 @@ def test_parameters( config_test ):
     assert pipeline.preprocessor.pars['use_sky_subtraction']
     assert pipeline.astro_cal.pars['cross_match_catalog'] == 'Gaia'
     assert pipeline.astro_cal.pars['catalog'] == 'Gaia'
-    # assert pipeline.subtractor.pars['method'] == 'testing_testing'
+    assert pipeline.subtractor.pars['method'] == 'testing_testing'
 
     # Verify that manual override works for all parts of pipeline
     overrides = { 'preprocessing': { 'use_sky_subtraction': True },
-                  # 'extractin': # Currently has no parameters defined
+                  # 'extraction': # Currently has no parameters defined
                   'astro_cal': { 'cross_match_catalog': 'override' },
                   'photo_cal': { 'cross_match_catalog': 'override' },
                   'subtraction': { 'method': 'override' },

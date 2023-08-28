@@ -271,5 +271,5 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
 @pytest.fixture
 def config_test():
     # Make sure the environment is set as expected for tests
-    # assert os.getenv( "SEECHANGE_CONFIG" ) == "/seechange/tests/seechange_config_test.yaml"
+    assert os.getenv( "SEECHANGE_CONFIG" ) == "/seechange/tests/seechange_config_test.yaml"
     return Config.get( os.getenv("SEECHANGE_CONFIG") )
