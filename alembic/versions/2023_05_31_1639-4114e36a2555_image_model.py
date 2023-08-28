@@ -66,7 +66,7 @@ def upgrade() -> None:
             name='image_type'
         ), nullable=False)
     )
-    op.add_column('exposures', sa.Column('format', sa.Enum('fits', 'hdf5', name='image_format'), nullable=False))
+    op.add_column('exposures', sa.Column('format', sa.Enum('fits', 'hdf5', 'csv', 'npy', name='file_format'), nullable=False))
     op.drop_index('ix_exposures_section_id', table_name='exposures')
     op.create_index(op.f('ix_exposures_type'), 'exposures', ['type'], unique=False)
     op.drop_column('exposures', 'section_id')
@@ -90,7 +90,7 @@ def upgrade() -> None:
             name='image_type'
         ), nullable=False)
     )
-    op.add_column('images', sa.Column('format', sa.Enum('fits', 'hdf5', name='image_format'), nullable=False))
+    op.add_column('images', sa.Column('format', sa.Enum('fits', 'hdf5', 'csv', 'npy', name='file_format'), nullable=False))
     op.add_column('images', sa.Column('provenance_id', sa.BigInteger(), nullable=False))
     op.add_column('images', sa.Column('header', postgresql.JSONB(astext_type=sa.Text()), nullable=False))
     op.add_column('images', sa.Column('mjd', sa.Double(), nullable=False))

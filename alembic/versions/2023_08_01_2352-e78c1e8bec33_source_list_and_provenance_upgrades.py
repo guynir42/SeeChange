@@ -30,6 +30,8 @@ def upgrade() -> None:
     op.add_column('source_lists', sa.Column('num_sources', sa.Integer(), nullable=False))
     op.drop_column('source_lists', 'is_sub')
     op.create_index(op.f('ix_source_lists_num_sources'), 'source_lists', ['num_sources'], unique=False)
+    op.add_column('source_lists', sa.Column('format', sa.Enum('fits', 'hdf5', 'csv', 'npy', name='file_format'), nullable=False))
+
     # ### end Alembic commands ###
 
 
