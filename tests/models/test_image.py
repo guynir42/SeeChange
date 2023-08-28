@@ -242,10 +242,11 @@ def test_image_enum_values(demo_image, provenance_base):
                 session.commit()
             session.rollback()
 
-            for t in ["science", "reference", "difference", "bias", "dark", "flat"]:
-                demo_image.type = t
-                session.add(demo_image)
-                session.commit()
+            for prepend in ["", "Com"]:
+                for t in ["Sci", "Diff", "Bias", "Dark", "DomeFlat"]:
+                    demo_image.type = prepend+t
+                    session.add(demo_image)
+                    session.commit()
 
         finally:
             if data_filename is not None and os.path.exists(data_filename):

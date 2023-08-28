@@ -112,32 +112,23 @@ class SectionHeaders:
         self._header = defaultdict(lambda: None)
 
 
-im_type_enum = Enum("science", "reference", "difference", "bias", "dark", "flat", name='image_type')
-im_format_enum = Enum("fits", "hdf5", name='image_format')
-
-def get_short_image_type(image_type):
-    """
-    Get the short version of the image type.
-    If there is a short version, it will be returned,
-    otherwise returns the image_type unchanged.
-    Generally, longer image types will be shortened,
-    e.g., science -> sci, reference -> ref, difference -> sub.
-
-    Parameters
-    ----------
-    image_type: str or None
-
-    Returns
-    -------
-    str or None:
-         The short version of the image type, or None if the input was None.
-    """
-    short_types = {
-        "science": "sci",
-        "reference": "ref",
-        "difference": "sub",
-    }
-    return short_types.get(image_type, image_type)
+image_type_enum = Enum(
+    "Sci",
+    "ComSci",
+    "Diff",
+    "ComDiff",
+    "Bias",
+    "ComBias",
+    "Dark",
+    "ComDark",
+    "DomeFlat",
+    "ComDomeFlat",
+    "SkyFlat",
+    "ComSkyFlat",
+    "TwiFlat",
+    "ComTwiFlat",
+    name='image_type'
+)
 
 
 class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
@@ -145,18 +136,15 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
     __tablename__ = "exposures"
 
     type = sa.Column(
-        im_type_enum,
+        image_type_enum,
         nullable=False,
-        default="science",
+        default="Sci",
         index=True,
-        doc="Type of image (science, reference, difference, etc)."
-    )
-
-    format = sa.Column(
-        im_format_enum,
-        nullable=False,
-        default='fits',
-        doc="Format of the image on disk. Should be fits or hdf5. "
+        doc=(
+            "Type of image. One of: Sci, Diff, Bias, Dark, DomeFlat, SkyFlat, TwiFlat, "
+            "or any of the above types prepended with 'Com' for combined "
+            "(e.g., a ComSci image is a science image combined from multiple exposures)."
+        )
     )
 
     header = sa.Column(
@@ -244,7 +232,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         self._data = None  # the underlying image data for each section
         self._section_headers = None  # the headers for individual sections, directly from the FITS file
         self._raw_header = None  # the global (exposure level) header, directly from the FITS file
-        self.type = 'science'  # default, can override using kwargs
+        self.type = 'Sci'  # default, can override using kwargs
 
         if self.filepath is None and not self.nofile:
             raise ValueError("Must give a filepath to initialize an Exposure object. ")

@@ -13,8 +13,7 @@ import astropy.units as u
 from pipeline.utils import read_fits_image, save_fits_image_file
 
 from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed
-from models.exposure import Exposure, im_type_enum, im_format_enum, get_short_image_type
-from models.exposure import Exposure, im_type_enum, im_format_enum
+from models.exposure import Exposure, image_type_enum
 from models.instrument import get_instrument_instance
 from models.provenance import Provenance
 
@@ -31,13 +30,6 @@ image_source_self_association_table = sa.Table(
 class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = 'images'
-
-    format = sa.Column(
-        im_format_enum,
-        nullable=False,
-        default='fits',
-        doc="Format of the image on disk. Should be fits or hdf5. "
-    )
 
     exposure_id = sa.Column(
         sa.ForeignKey('exposures.id', ondelete='SET NULL'),
@@ -143,12 +135,14 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         return cls.ref_image_id.isnot(None) & cls.new_image_id.isnot(None)
 
     type = sa.Column(
-        im_type_enum,  # defined in models/exposure.py
+        image_type_enum,  # defined in models/exposure.py
         nullable=False,
-        default="science",
+        default="Sci",
         index=True,
         doc=(
-            "Type of image. One of: science, reference, difference, bias, dark, flat. "
+            "Type of image. One of: Sci, Diff, Bias, Dark, DomeFlat, SkyFlat, TwiFlat, "
+            "or any of the above types prepended with 'Com' for combined "
+            "(e.g., a ComSci image is a science image combined from multiple exposures)."
         )
     )
 
@@ -562,7 +556,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         if self.instrument_object is not None:
             inst_name = self.instrument_object.get_short_instrument_name()
         if self.type is not None:
-            im_type = get_short_image_type(self.type)
+            im_type = self.type
 
         if self.mjd is not None:
             t = Time(self.mjd, format='mjd', scale='utc').datetime

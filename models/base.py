@@ -1,16 +1,13 @@
 import sys
 import os
-import inspect
 import hashlib
 import pathlib
-import shutil
 import logging
 from uuid import UUID
 
 from contextlib import contextmanager
 
 from astropy.coordinates import SkyCoord
-from astropy.time import Time
 
 import sqlalchemy as sa
 from sqlalchemy import func, orm
@@ -26,7 +23,6 @@ from util.archive import Archive
 
 utcnow = func.timezone("UTC", func.current_timestamp())
 
-im_format_enum = Enum("fits", "hdf5", name='image_format')
 file_format_enum = Enum("fits", "hdf5", "csv", "npy", name='file_format')
 
 _logger = logging.getLogger("main")
