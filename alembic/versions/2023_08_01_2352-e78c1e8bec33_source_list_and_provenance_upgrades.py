@@ -38,6 +38,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_source_lists_num_sources'), table_name='source_lists')
     op.drop_column('source_lists', 'num_sources')
     op.add_column('source_lists', sa.Column('is_sub', sa.BOOLEAN(), autoincrement=False, nullable=False))
+    op.drop_column('source_lists', 'format')
     op.drop_constraint(None, 'provenances', type_='foreignkey')
     op.drop_column('provenances', 'is_testing')
     op.drop_column('provenances', 'replaced_by')

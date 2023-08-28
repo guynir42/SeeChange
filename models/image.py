@@ -342,7 +342,8 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
             'telescope',
             'filter',
             'project',
-            'target'
+            'target',
+            'format',
         ]
 
         # copy all the columns that are the same
@@ -443,6 +444,9 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         output.raw_header = images[0].raw_header
 
         output.source_images = images
+        base_type = images[0].type
+        if not base_type.startswith('Com'):
+            output.type = 'Com' + base_type
 
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
@@ -494,6 +498,9 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
         output.ref_image = ref
         output.new_image = new
+        output.type = 'Diff'
+        if new.type.startswith('Com'):
+            output.type = 'ComDiff'
 
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output

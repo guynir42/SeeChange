@@ -281,7 +281,7 @@ def test_image_coordinates():
 
 def test_image_from_exposure(exposure, provenance_base):
     exposure.update_instrument()
-    exposure.type = 'reference'
+    exposure.type = 'ComSci'
 
     # demo instrument only has one section
     with pytest.raises(ValueError, match='section_id must be 0 for this instrument.'):
