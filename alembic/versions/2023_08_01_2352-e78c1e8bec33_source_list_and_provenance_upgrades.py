@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'e78c1e8bec33'
-down_revision = '707ce0827b45'
+down_revision = '2e42e5319395'
 branch_labels = None
 depends_on = None
 
@@ -28,7 +28,6 @@ def upgrade() -> None:
     op.add_column('source_lists', sa.Column('num_sources', sa.Integer(), nullable=False))
     op.drop_column('source_lists', 'is_sub')
     op.create_index(op.f('ix_source_lists_num_sources'), 'source_lists', ['num_sources'], unique=False)
-    op.add_column('source_lists', sa.Column('format', sa.Enum('fits', 'hdf5', 'csv', 'npy', name='file_format'), nullable=False))
 
     # ### end Alembic commands ###
 
@@ -38,7 +37,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_source_lists_num_sources'), table_name='source_lists')
     op.drop_column('source_lists', 'num_sources')
     op.add_column('source_lists', sa.Column('is_sub', sa.BOOLEAN(), autoincrement=False, nullable=False))
-    op.drop_column('source_lists', 'format')
     op.drop_constraint(None, 'provenances', type_='foreignkey')
     op.drop_column('provenances', 'is_testing')
     op.drop_column('provenances', 'replaced_by')

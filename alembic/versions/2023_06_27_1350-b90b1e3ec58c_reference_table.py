@@ -101,7 +101,7 @@ def upgrade() -> None:
     op.add_column('source_lists', sa.Column('provenance_id', sa.BigInteger(), nullable=False))
     op.add_column('source_lists', sa.Column('filepath', sa.Text(), nullable=False))
     op.add_column('source_lists', sa.Column('filepath_extensions', sa.ARRAY(sa.Text()), nullable=True))
-    op.add_column('source_lists', sa.Column('format', sa.Enum('fits', 'hdf5', name='image_format'), nullable=False))
+    op.add_column('source_lists', sa.Column('format', sa.Enum('fits', 'hdf5', 'csv', 'npy', name='file_format'), nullable=False))
     op.create_index(op.f('ix_source_lists_filepath'), 'source_lists', ['filepath'], unique=True)
     op.create_index(op.f('ix_source_lists_image_id'), 'source_lists', ['image_id'], unique=False)
     op.create_index(op.f('ix_source_lists_provenance_id'), 'source_lists', ['provenance_id'], unique=False)
