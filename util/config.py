@@ -115,7 +115,6 @@ class Config:
             An ugly hack for changing the directories of imported files; see the static function dirmap.
 
         """
-
         Config.get( configfile, logger=logger, dirmap=dirmap )
 
     @staticmethod
@@ -322,8 +321,8 @@ class Config:
         if augmentpath.is_file():
             augment = Config( augmentpath, logger=self.logger, dirmap=dirmap )._data
             self._data = Config._merge_trees( self._data, augment, augment=True )
-        # else:
-        #     self.logger.warning( f'Augment file {augmentfile} not found' )
+        elif augmentfile is not None:
+            self.logger.warning( f'Augment file {augmentfile} not found. ' )
 
     def _override( self, overridefile, dirmap=dirmap ):
         """Read file (or path) overridefile and override config data.  Intended for internal use only.
@@ -352,8 +351,8 @@ class Config:
         if overridepath.is_file():
             override = Config( overridepath, logger=self.logger, dirmap=dirmap )._data
             self._data = Config._merge_trees( self._data, override )
-        # else:
-        #     self.logger.warning( f'Override file {overridefile} not found' )
+        elif overridefile is not None:
+            self.logger.warning( f'Override file {overridefile} not found' )
 
     def value( self, field, default=NoValue(), struct=None ):
         """Get a value from the config structure.
