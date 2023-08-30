@@ -18,9 +18,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-default_config_file = str((pathlib.Path(__file__).parent.parent / 'default_config.yaml').resolve())
-import util.config
-util.config.Config.init(os.getenv('SEECHANGE_CONFIG'), default_config_file)
+# default_config_file = str((pathlib.Path(__file__).parent.parent / 'default_config.yaml').resolve())
+# import util.config
+# util.config.Config.init(os.getenv('SEECHANGE_CONFIG'), default_config_file)
 
 from models import *
 
