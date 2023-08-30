@@ -77,8 +77,7 @@ services:
     build:
       context: ../docker/application
     environment:
-      SEECHANGE_CONFIG: /seechange/tests/seechange_config_test.yaml
-      ARCHIVE_DIR: /archive_storage/base
+      SEECHANGE_TEST_ARCHIVE_DIR: /archive_storage/base
     depends_on:
       setuptables:
         condition: service_completed_successfully
@@ -100,8 +99,7 @@ services:
     build:
       context: ../docker/application
     environment:
-      SEECHANGE_CONFIG: /seechange/tests/seechange_config_test.yaml
-      ARCHIVE_DIR: /archive_storage/base
+      SEECHANGE_TEST_ARCHIVE_DIR: /archive_storage/base
     depends_on:
       setuptables:
         condition: service_completed_successfully

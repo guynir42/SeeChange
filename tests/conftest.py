@@ -3,6 +3,7 @@ import pytest
 import uuid
 import wget
 import shutil
+import pathlib
 
 import numpy as np
 
@@ -10,6 +11,7 @@ import sqlalchemy as sa
 
 from astropy.time import Time
 
+from util.config import Config
 from models.base import SmartSession, CODE_ROOT
 from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
@@ -17,6 +19,26 @@ from models.image import Image
 from models.references import ReferenceEntry
 from util import config
 from util.archive import Archive
+
+
+# idea taken from: https://shay-palachy.medium.com/temp-environment-variables-for-pytest-7253230bd777
+# this fixture should be the first thing loaded by the test suite
+@pytest.fixture(scope="session", autouse=True)
+def tests_setup_and_teardown():
+    # Will be executed before the first test
+    # print('Initial setup fixture loaded! ')
+
+    # first make sure the default config is what would be loaded if there was no explicit test config
+    assert Config._default_default == str((pathlib.Path(__file__).parent.parent / 'default_config.yaml').resolve())
+
+    # now make sure to load the test config
+    test_config_file = str((pathlib.Path(__file__).parent.parent / 'tests' / 'seechange_config_test.yaml').resolve())
+
+    Config.get(configfile=test_config_file, setdefault=True)
+
+    yield
+    # Will be executed after the last test
+    # print('Final teardown fixture executed! ')
 
 def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
@@ -271,15 +293,10 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
 @pytest.fixture
 def archive():
     cfg = config.Config.get()
-    if cfg.value('archive') is None:
+    archive_specs = cfg.value('archive')
+    if archive_specs is None:
         raise ValueError( "archive in config is None" )
-    archive = Archive( archive_url=cfg.value('archive.url'),
-                       verify_cert=cfg.value('archive.verify_cert'),
-                       path_base=cfg.value('archive.path_base'),
-                       local_read_dir=cfg.value('archive.read_dir'),
-                       local_write_dir=cfg.value('archive.write_dir'),
-                       token=cfg.value('archive.token')
-                      )
+    archive = Archive( **archive_specs )
     yield archive
 
     # To tear down, we need to blow away the archive server's directory.
@@ -291,9 +308,4 @@ def archive():
     except FileNotFoundError:
         pass
 
-@pytest.fixture
-def config_test():
-    # Make sure the environment is set as expected for tests
-    assert os.getenv( "SEECHANGE_CONFIG" ) == "/seechange/tests/seechange_config_test.yaml"
-    return config.Config.get( os.getenv("SEECHANGE_CONFIG") )
 
