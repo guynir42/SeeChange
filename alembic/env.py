@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -18,7 +19,7 @@ if config.config_file_name is not None:
 
 from models import *
 import util.config
-util.config.Config.init()
+util.config.Config.init(os.getenv('SEECHANGE_CONFIG', 'default_config.yaml'))
 
 # add your model's MetaData object here
 # for 'autogenerate' support
