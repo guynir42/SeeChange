@@ -323,7 +323,7 @@ class Config:
             augment = Config( augmentpath, logger=self.logger, dirmap=dirmap )._data
             self._data = Config._merge_trees( self._data, augment, augment=True )
         elif augmentfile is not None:
-            self.logger.warning( f'Augment file {augmentfile} not found. ' )
+            self.logger.info( f'Augment file {augmentfile} not found. ' )
 
     def _override( self, overridefile, dirmap=dirmap ):
         """Read file (or path) overridefile and override config data.  Intended for internal use only.
