@@ -8,7 +8,7 @@ from sqlalchemy.orm.session import object_session
 
 from pipeline.utils import read_fits_image, parse_ra_hms_to_deg, parse_dec_dms_to_deg
 
-from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession
+from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession, file_format_enum
 from models.instrument import Instrument, guess_instrument, get_instrument_instance
 
 
@@ -145,6 +145,13 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
             "or any of the above types prepended with 'Com' for combined "
             "(e.g., a ComSci image is a science image combined from multiple exposures)."
         )
+    )
+
+    format = sa.Column(
+        file_format_enum,
+        nullable=False,
+        default='fits',
+        doc="Format of the file on disk. Should be fits, hdf5, csv or npy. "
     )
 
     header = sa.Column(

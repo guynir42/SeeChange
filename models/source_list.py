@@ -9,13 +9,20 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from models.base import Base, FileOnDiskMixin, SeeChangeBase
+from models.base import Base, FileOnDiskMixin, SeeChangeBase, file_format_enum
 from models.image import Image
 
 
 class SourceList(Base, FileOnDiskMixin):
 
     __tablename__ = 'source_lists'
+
+    format = sa.Column(
+        file_format_enum,
+        nullable=False,
+        default='fits',
+        doc="Format of the file on disk. Should be fits, hdf5, csv or npy. "
+    )
 
     image_id = sa.Column(
         sa.ForeignKey('images.id'),

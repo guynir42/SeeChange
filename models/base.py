@@ -23,6 +23,7 @@ from util.archive import Archive
 
 utcnow = func.timezone("UTC", func.current_timestamp())
 
+# TODO: should we replace all enums with integers and a lookup table?
 file_format_enum = Enum("fits", "hdf5", "csv", "npy", name='file_format', create_type=False)
 
 _logger = logging.getLogger("main")
@@ -371,12 +372,12 @@ class FileOnDiskMixin:
         doc="If non-null, array of text appended to filepath to get actual saved filenames."
     )
 
-    format = sa.Column(
-        file_format_enum,
-        nullable=False,
-        default='fits',
-        doc="Format of the file on disk. Should be fits, hdf5, csv or npy. "
-    )
+    # format = sa.Column(
+    #     file_format_enum,
+    #     nullable=False,
+    #     default='fits',
+    #     doc="Format of the file on disk. Should be fits, hdf5, csv or npy. "
+    # )
 
     md5sum = sa.Column(
         sqlUUID(as_uuid=True),

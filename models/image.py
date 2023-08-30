@@ -12,7 +12,7 @@ import astropy.units as u
 
 from pipeline.utils import read_fits_image, save_fits_image_file
 
-from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed
+from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed, file_format_enum
 from models.exposure import Exposure, image_type_enum
 from models.instrument import get_instrument_instance
 from models.provenance import Provenance
@@ -30,6 +30,13 @@ image_source_self_association_table = sa.Table(
 class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = 'images'
+
+    format = sa.Column(
+        file_format_enum,
+        nullable=False,
+        default='fits',
+        doc="Format of the file on disk. Should be fits, hdf5, csv or npy. "
+    )
 
     exposure_id = sa.Column(
         sa.ForeignKey('exposures.id', ondelete='SET NULL'),
