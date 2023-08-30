@@ -1,5 +1,7 @@
 overrides:
-  - local_config.yaml
+  - local_overrides.yaml
+augments:
+  - local_augments.yaml
 
 path:
   data_root: null
