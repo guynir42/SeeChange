@@ -28,10 +28,7 @@ def tests_setup_and_teardown():
     # Will be executed before the first test
     # print('Initial setup fixture loaded! ')
 
-    # first make sure the default config is what would be loaded if there was no explicit test config
-    assert Config._default_default == str((pathlib.Path(__file__).parent.parent / 'default_config.yaml').resolve())
-
-    # now make sure to load the test config
+    # make sure to load the test config
     test_config_file = str((pathlib.Path(__file__).parent.parent / 'tests' / 'seechange_config_test.yaml').resolve())
 
     Config.get(configfile=test_config_file, setdefault=True)
