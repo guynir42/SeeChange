@@ -319,6 +319,7 @@ class Config:
         if not augmentpath.is_absolute():
             augmentpath = ( self._path.parent / augmentfile ).resolve()
         if augmentpath.is_file():
+            self.logger.info( f'Reading file {augmentfile} as an augment. ' )
             augment = Config( augmentpath, logger=self.logger, dirmap=dirmap )._data
             self._data = Config._merge_trees( self._data, augment, augment=True )
         elif augmentfile is not None:
@@ -349,10 +350,11 @@ class Config:
         if not overridepath.is_absolute():
             overridepath = ( self._path.parent / overridefile ).resolve()
         if overridepath.is_file():
+            self.logger.info(f'Reading file {overridepath} as an override. ')
             override = Config( overridepath, logger=self.logger, dirmap=dirmap )._data
             self._data = Config._merge_trees( self._data, override )
         elif overridefile is not None:
-            self.logger.warning( f'Override file {overridefile} not found' )
+            self.logger.info( f'Override file {overridefile} not found. ' )
 
     def value( self, field, default=NoValue(), struct=None ):
         """Get a value from the config structure.
