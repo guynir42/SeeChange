@@ -439,7 +439,7 @@ class FileOnDiskMixin():
 
     @property
     def archive(self):
-        if self._archive is None:
+        if getattr(self, '_archive', None) is None:
             self._archive = get_archive_object()
         return self._archive
 

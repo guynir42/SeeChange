@@ -18,7 +18,7 @@ class TestConfig:
     @pytest.fixture(scope='class')
     def cfg(self):
         # print('setting up a config object with a spoof yaml file just for testing the config mechanism. ')
-        return config.Config.get(_rundir / 'test.yaml', setdefault=True)
+        return config.Config.get(_rundir / 'test.yaml', setdefault=False)  # retain the default for other tests
 
     def test_default_default( self ):
         # make sure that when we load a config without parameters,
@@ -26,8 +26,7 @@ class TestConfig:
         default_config_path = (_rundir.parent.parent / 'default_config.yaml').resolve()
         assert config.Config._default_default == str(default_config_path)
 
-    def test_default( self, cfg ):
-        assert config.Config._default == str((_rundir / "test.yaml").resolve())
+    def test_config_path( self, cfg ):
         assert cfg._path == (_rundir / "test.yaml").resolve()
 
     def test_preload(self, cfg):

@@ -40,8 +40,14 @@ def tests_setup_and_teardown():
     # Will be executed after the last test
     # print('Final teardown fixture executed! ')
 
+
 def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
+
+
+@pytest.fixture
+def config_test():
+    return Config.get()
 
 
 @pytest.fixture(scope="session", autouse=True)
