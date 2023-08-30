@@ -24,6 +24,7 @@ class TestConfig:
         # make sure that when we load a config without parameters,
         # it uses the default config file
         default_config_path = (_rundir.parent.parent / 'default_config.yaml').resolve()
+        default_config_path = os.getenv('SEECHANGE_CONFIG', default_config_path)
         assert config.Config._default_default == str(default_config_path)
 
     def test_config_path( self, cfg ):
