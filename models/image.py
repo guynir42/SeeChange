@@ -742,7 +742,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
                 raise FileNotFoundError(f"Could not find the image file: {filename}")
             self._data, self._raw_header = read_fits_image(filename, ext='image', output='both')
             self._flags = read_fits_image(filename, ext='flags')
-            self._weight = read_fits_image(filename, ext='weigh')
+            self._weight = read_fits_image(filename, ext='weight')
             self._background = read_fits_image(filename, ext='background')
             self._score = read_fits_image(filename, ext='score')
             # TODO: add more if needed!
