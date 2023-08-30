@@ -52,7 +52,6 @@ def provenance_base(code_version):
         session.commit()
         session.refresh(p)
         pid = p.id
-        # print(p.upstreams)
 
     yield p
 

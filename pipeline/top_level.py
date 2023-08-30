@@ -68,7 +68,6 @@ class Pipeline:
 
         # source detection ("detection" for the subtracted image!)
         detection_config = self.config.value('detection', {})
-        print(detection_config)
         detection_config.update(kwargs.get('detection', {}))
         self.pars.add_defaults_to_dict(detection_config)
         self.detector = Detector(**detection_config)

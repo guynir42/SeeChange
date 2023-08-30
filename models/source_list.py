@@ -30,16 +30,6 @@ class SourceList(Base, FileOnDiskMixin):
         doc="The image this source list was generated from. "
     )
 
-    # is_sub = sa.Column(
-    #     sa.Boolean,
-    #     nullable=False,
-    #     default=False,
-    #     doc=(
-    #         "Whether this source list is from a subtraction image (detections), "
-    #         "or from a regular image (sources, the default). "
-    #     )
-    # )
-
     @hybrid_property
     def is_sub(self):
         """Whether this source list is from a subtraction image (detections),

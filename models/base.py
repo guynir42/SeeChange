@@ -23,7 +23,7 @@ from util.archive import Archive
 
 utcnow = func.timezone("UTC", func.current_timestamp())
 
-file_format_enum = Enum("fits", "hdf5", "csv", "npy", name='file_format')
+file_format_enum = Enum("fits", "hdf5", "csv", "npy", name='file_format', create_type=False)
 
 _logger = logging.getLogger("main")
 if len(_logger.handlers) == 0:
