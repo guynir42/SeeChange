@@ -92,7 +92,8 @@ class Config:
 
     """
 
-    _default_default = str((pathlib.Path(__file__).parent.parent / "default_config.yaml").resolve())
+    top_level_config = str((pathlib.Path(__file__).parent.parent / "default_config.yaml").resolve())
+    _default_default = os.getenv('SEECHANGE_CONFIG', top_level_config)
 
     _default = None
     _configs = {}
