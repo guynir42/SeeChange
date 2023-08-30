@@ -17,7 +17,7 @@ from util import config
 class TestConfig:
     @pytest.fixture(scope='class')
     def cfg(self):
-        print('setting up a config object with a spoof yaml file just for testing the config mechanism. ')
+        # print('setting up a config object with a spoof yaml file just for testing the config mechanism. ')
         return config.Config.get(_rundir / 'test.yaml', setdefault=True)
 
     def test_default_default( self ):

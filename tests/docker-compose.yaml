@@ -59,8 +59,6 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-c3-time-domain}/seechange
     build:
       context: ../docker/application
-    environment:
-      SEECHANGE_CONFIG: /seechange/tests/seechange_config_test.yaml
     depends_on:
       seechange_postgres:
          condition: service_healthy
