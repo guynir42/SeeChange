@@ -105,8 +105,9 @@ class Config:
         Parameters
         ----------
         configfile : str or pathlib.Path, default None
-            If None, will set the config file to default_config.yaml in
-            the top level of the project.
+            If None, will set the config file to the environmental
+            variable SEECHANGE_CONFIG, and if that is not defined,
+            will set to default_config.yaml in the top level of the project.
 
         logger: logging object, default: getLogger("main")
         
