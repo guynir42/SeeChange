@@ -12,8 +12,8 @@ import astropy.units as u
 
 from pipeline.utils import read_fits_image, save_fits_image_file
 
-from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed, file_format_enum
-from models.exposure import Exposure, image_type_enum
+from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed
+from models.exposure import Exposure
 from models.instrument import get_instrument_instance
 from models.enums_and_bitflags import image_format_converter, image_format_dict, image_type_converter, image_type_dict
 from models.provenance import Provenance

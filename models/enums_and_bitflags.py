@@ -30,16 +30,16 @@ image_format_inverse = {v: k for k, v in image_format_dict.items()}
 def image_format_converter(value):
     if isinstance(value, str):
         if value not in image_format_inverse:
-            raise ValueError(f'Image type must be one of {image_format_inverse.keys()}, not {value}')
+            raise ValueError(f'Image format must be one of {image_format_inverse.keys()}, not {value}')
         return image_format_inverse[value]
     elif isinstance(value, (int, float)):
         if value not in image_format_dict:
-            raise ValueError(f'Image type integer key must be one of {image_format_dict.keys()}, not {value}')
+            raise ValueError(f'Image format integer key must be one of {image_format_dict.keys()}, not {value}')
         return image_format_dict[value]
     elif value is None:
         return None
     else:
-        raise ValueError(f'Image type must be integer/float key or string value, not {type(value)}')
+        raise ValueError(f'Image format must be integer/float key or string value, not {type(value)}')
 
 
 allowed_cutout_formats = ['fits', 'hdf5', 'jpg', 'png']
@@ -50,16 +50,16 @@ cutouts_format_inverse = {v: k for k, v in cutouts_format_dict.items()}
 def cutouts_format_converter(value):
     if isinstance(value, str):
         if value not in cutouts_format_inverse:
-            raise ValueError(f'Cutout type must be one of {cutouts_format_inverse.keys()}, not {value}')
+            raise ValueError(f'Cutouts format must be one of {cutouts_format_inverse.keys()}, not {value}')
         return cutouts_format_inverse[value]
     elif isinstance(value, (int, float)):
         if value not in cutouts_format_dict:
-            raise ValueError(f'Cutout type integer key must be one of {cutouts_format_dict.keys()}, not {value}')
+            raise ValueError(f'Cutouts format integer key must be one of {cutouts_format_dict.keys()}, not {value}')
         return cutouts_format_dict[value]
     elif value is None:
         return None
     else:
-        raise ValueError(f'Cutout type must be integer/float key or string value, not {type(value)}')
+        raise ValueError(f'Cutouts format must be integer/float key or string value, not {type(value)}')
 
 
 allowed_source_list_formats = ['npy', 'csv', 'hdf5', 'parquet', 'fits']
@@ -70,16 +70,16 @@ source_list_format_inverse = {v: k for k, v in source_list_format_dict.items()}
 def source_list_format_converter(value):
     if isinstance(value, str):
         if value not in source_list_format_inverse:
-            raise ValueError(f'Source list type must be one of {source_list_format_inverse.keys()}, not {value}')
+            raise ValueError(f'Source list format must be one of {source_list_format_inverse.keys()}, not {value}')
         return source_list_format_inverse[value]
     elif isinstance(value, (int, float)):
         if value not in source_list_format_dict:
-            raise ValueError(f'Source list type integer key must be one of {source_list_format_dict.keys()}, not {value}')
+            raise ValueError(f'Source list format integer key must be one of {source_list_format_dict.keys()}, not {value}')
         return source_list_format_dict[value]
     elif value is None:
         return None
     else:
-        raise ValueError(f'Source list type must be integer/float key or string value, not {type(value)}')
+        raise ValueError(f'Source list format must be integer/float key or string value, not {type(value)}')
 
 
 image_type_dict = {

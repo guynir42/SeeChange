@@ -224,7 +224,6 @@ def test_image_archive_multifile(demo_image, provenance_base, archive):
 
                 
 def test_image_enum_values(demo_image, provenance_base):
-    data_filename = None
     with SmartSession() as session:
         demo_image.provenance = provenance_base
         with pytest.raises(RuntimeError, match='The image data is not loaded. Cannot save.'):
@@ -242,11 +241,45 @@ def test_image_enum_values(demo_image, provenance_base):
                 session.commit()
             session.rollback()
 
+            # these should work
             for prepend in ["", "Com"]:
                 for t in ["Sci", "Diff", "Bias", "Dark", "DomeFlat"]:
                     demo_image.type = prepend+t
                     session.add(demo_image)
                     session.commit()
+
+            # should have an image with ComDomeFlat type
+            assert demo_image._type == 10  # see image_type_dict
+
+            # make sure we can also select on this:
+            images = session.scalars(sa.select(Image).where(Image.type == "ComDomeFlat")).all()
+            assert demo_image.id in [i.id for i in images]
+
+            images = session.scalars(sa.select(Image).where(Image.type == "Sci")).all()
+            assert demo_image.id not in [i.id for i in images]
+
+            # check the image format enum works as expected:
+            with pytest.raises(ValueError, match='Image format must be one of .* not foo'):
+                demo_image.format = 'foo'
+                session.add(demo_image)
+                session.commit()
+            session.rollback()
+
+            # these should work
+            for f in ['fits', 'hdf5']:
+                demo_image.format = f
+                session.add(demo_image)
+                session.commit()
+
+            # should have an image with ComDomeFlat type
+            assert demo_image._format == 2  # see image_type_dict
+
+            # make sure we can also select on this:
+            images = session.scalars(sa.select(Image).where(Image.format == "hdf5")).all()
+            assert demo_image.id in [i.id for i in images]
+
+            images = session.scalars(sa.select(Image).where(Image.format == "fits")).all()
+            assert demo_image.id not in [i.id for i in images]
 
         finally:
             if data_filename is not None and os.path.exists(data_filename):

@@ -1,7 +1,6 @@
 from collections import defaultdict
 
 import sqlalchemy as sa
-from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.orm.session import object_session
@@ -9,9 +8,9 @@ from sqlalchemy.ext.hybrid import hybrid_property
 
 from pipeline.utils import read_fits_image, parse_ra_hms_to_deg, parse_dec_dms_to_deg
 
-from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession, file_format_enum
+from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession
 from models.instrument import Instrument, guess_instrument, get_instrument_instance
-from models.enums_and_bitflags import image_type_dict, image_type_converter
+from models.enums_and_bitflags import image_format_dict, image_format_converter, image_type_dict, image_type_converter
 
 
 # columns key names that must be loaded from the header for each Exposure
@@ -114,25 +113,6 @@ class SectionHeaders:
         self._header = defaultdict(lambda: None)
 
 
-image_type_enum = Enum(
-    "Sci",
-    "ComSci",
-    "Diff",
-    "ComDiff",
-    "Bias",
-    "ComBias",
-    "Dark",
-    "ComDark",
-    "DomeFlat",
-    "ComDomeFlat",
-    "SkyFlat",
-    "ComSkyFlat",
-    "TwiFlat",
-    "ComTwiFlat",
-    name='image_type'
-)
-
-
 class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = "exposures"
@@ -162,12 +142,26 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
     def type(self, value):
         self._type = image_type_converter(value)
 
-    format = sa.Column(
-        file_format_enum,
+    _format = sa.Column(
+        sa.SMALLINT,
         nullable=False,
-        default='fits',
-        doc="Format of the file on disk. Should be fits, hdf5, csv or npy. "
+        default=image_format_converter('fits'),
+        doc="Format of the file on disk. Should be fits or hdf5. "
+            "The value is saved as SMALLINT but translated to a string when read. "
     )
+
+    @hybrid_property
+    def format(self):
+        return image_format_converter(self._format)
+
+    @format.expression
+    def format(cls):
+        # ref: https://stackoverflow.com/a/25272425
+        return sa.case(image_format_dict, value=cls._format)
+
+    @format.setter
+    def format(self, value):
+        self._format = image_format_converter(value)
 
     header = sa.Column(
         JSONB,
