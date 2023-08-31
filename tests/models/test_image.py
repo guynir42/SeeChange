@@ -9,7 +9,7 @@ import numpy as np
 from astropy.io import fits
 
 import sqlalchemy as sa
-from sqlalchemy.exc import IntegrityError, DataError
+from sqlalchemy.exc import IntegrityError
 
 import util.config as config
 from models.base import SmartSession
@@ -236,7 +236,7 @@ def test_image_enum_values(demo_image, provenance_base):
         assert os.path.exists(data_filename)
 
         try:
-            with pytest.raises(DataError, match='invalid input value for enum image_type: "foo"'):
+            with pytest.raises(ValueError, match='Image type must be one of .* not foo'):
                 demo_image.type = 'foo'
                 session.add(demo_image)
                 session.commit()

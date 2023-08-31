@@ -5,11 +5,13 @@ from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.orm.session import object_session
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from pipeline.utils import read_fits_image, parse_ra_hms_to_deg, parse_dec_dms_to_deg
 
 from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession, file_format_enum
 from models.instrument import Instrument, guess_instrument, get_instrument_instance
+from models.enums_and_bitflags import image_type_dict, image_type_converter
 
 
 # columns key names that must be loaded from the header for each Exposure
@@ -135,17 +137,30 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = "exposures"
 
-    type = sa.Column(
-        image_type_enum,
+    _type = sa.Column(
+        sa.SMALLINT,
         nullable=False,
-        default="Sci",
+        default=image_type_converter('Sci'),
         index=True,
         doc=(
             "Type of image. One of: Sci, Diff, Bias, Dark, DomeFlat, SkyFlat, TwiFlat, "
             "or any of the above types prepended with 'Com' for combined "
             "(e.g., a ComSci image is a science image combined from multiple exposures)."
+            "The value is saved as SMALLINT but translated to a string when read. "
         )
     )
+
+    @hybrid_property
+    def type(self):
+        return image_type_converter(self._type)
+
+    @type.expression
+    def type(cls):
+        return sa.case(image_type_dict, value=cls._type)
+
+    @type.setter
+    def type(self, value):
+        self._type = image_type_converter(value)
 
     format = sa.Column(
         file_format_enum,

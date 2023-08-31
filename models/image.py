@@ -15,6 +15,7 @@ from pipeline.utils import read_fits_image, save_fits_image_file
 from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed, file_format_enum
 from models.exposure import Exposure, image_type_enum
 from models.instrument import get_instrument_instance
+from models.enums_and_bitflags import image_format_converter, image_format_dict, image_type_converter, image_type_dict
 from models.provenance import Provenance
 
 import util.config as config
@@ -31,12 +32,25 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = 'images'
 
-    format = sa.Column(
-        file_format_enum,
+    _format = sa.Column(
+        sa.SMALLINT,
         nullable=False,
-        default='fits',
-        doc="Format of the file on disk. Should be fits, hdf5, csv or npy. "
+        default=image_format_converter('fits'),
+        doc="Format of the file on disk. Should be fits or hdf5. "
     )
+
+    @hybrid_property
+    def format(self):
+        return image_format_converter(self._format)
+
+    @format.expression
+    def format(cls):
+        # ref: https://stackoverflow.com/a/25272425
+        return sa.case(image_format_dict, value=cls._format)
+
+    @format.setter
+    def format(self, value):
+        self._format = image_format_converter(value)
 
     exposure_id = sa.Column(
         sa.ForeignKey('exposures.id', ondelete='SET NULL'),
@@ -141,17 +155,30 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     def is_sub(cls):
         return cls.ref_image_id.isnot(None) & cls.new_image_id.isnot(None)
 
-    type = sa.Column(
-        image_type_enum,  # defined in models/exposure.py
+    _type = sa.Column(
+        sa.SMALLINT,
         nullable=False,
-        default="Sci",
+        default=image_type_converter('Sci'),
         index=True,
         doc=(
             "Type of image. One of: Sci, Diff, Bias, Dark, DomeFlat, SkyFlat, TwiFlat, "
             "or any of the above types prepended with 'Com' for combined "
             "(e.g., a ComSci image is a science image combined from multiple exposures)."
+            "Saved as an integer in the database, but converted to a string when read. "
         )
     )
+
+    @hybrid_property
+    def type(self):
+        return image_type_converter(self._type)
+
+    @type.expression
+    def type(cls):
+        return sa.case(image_type_dict, value=cls._type)
+
+    @type.setter
+    def type(self, value):
+        self._type = image_type_converter(value)
 
     provenance_id = sa.Column(
         sa.ForeignKey('provenances.id', ondelete="CASCADE"),
