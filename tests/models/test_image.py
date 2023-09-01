@@ -289,6 +289,92 @@ def test_image_enum_values(demo_image, provenance_base):
                     os.rmdir(folder)
 
 
+def test_image_badness(demo_image):
+
+        # this is not a legit "badness" keyword...
+        with pytest.raises(ValueError, match='Keyword "foo" not recognized'):
+            demo_image.badness = 'foo'
+
+        # this is a legit keyword, but for cutouts, not for images
+        with pytest.raises(ValueError, match='Keyword "Cosmic Ray" not recognized'):
+            demo_image.badness = 'Cosmic Ray'
+
+        # this is a legit keyword, but for images, using no space and no capitalization
+        demo_image.badness = 'brightsky'
+
+        # retrieving this keyword, we do get it capitalized and with a space:
+        assert demo_image.badness == 'Bright Sky'
+        assert demo_image.bitflag == 2 ** 5  # the bright sky bit is number 5
+
+        # what happens when we add a second keyword?
+        demo_image.badness = 'brightsky, banding'
+        assert demo_image.bitflag == 2 ** 5 + 2 ** 1  # the bright sky bit is number 5, banding is number 1
+        assert demo_image.badness == 'Banding, Bright Sky'
+
+        # now add a third keyword, but on the Exposure
+        demo_image.exposure.badness = 'saturation'
+        assert demo_image.bitflag == 2 ** 5 + 2 ** 3 + 2 ** 1  # saturation bit is 3
+        assert demo_image.badness == 'Banding, Saturation, Bright Sky'
+
+        # adding the same keyword on the exposure and the image makes no difference
+        demo_image.exposure.badness = 'banding'
+        assert demo_image.bitflag == 2 ** 5 + 2 ** 1
+        assert demo_image.badness == 'Banding, Bright Sky'
+
+        # try appending keywords to the image
+        demo_image.append_badness('shaking')
+        assert demo_image.bitflag == 2 ** 5 + 2 ** 2 + 2 ** 1  # shaking bit is 2
+        assert demo_image.badness == 'Banding, Shaking, Bright Sky'
+
+
+def test_multiple_images_badness(demo_image, demo_image2, demo_image3, provenance_base):
+    demo_image2.badness = 'brightsky'
+    assert demo_image2.badness == 'Bright Sky'
+    assert demo_image2.bitflag == 2 ** 5
+
+    # note that this image is not directly bad, but the exposure is
+    demo_image3.exposure.badness = 'banding'
+    assert demo_image3.badness == 'Banding'
+    assert demo_image._bitflag == 0  # the exposure is bad!
+    assert demo_image3.bitflag == 2 ** 1
+
+    # add these to the DB
+    images = [demo_image, demo_image2, demo_image3]
+    filenames = []
+    try:
+        with SmartSession() as session:
+            for im in images:
+                im.provenance = provenance_base
+                im.data = np.float32(im.raw_data)
+                im.save(no_archive=True)
+                filenames.append(im.get_fullpath(as_list=True)[0])
+                assert os.path.exists(filenames[-1])
+                session.add(im)
+            session.commit()
+
+            # find the images that are good vs bad
+            stmt = sa.select(Image).where(Image.bitflag == 0)
+            print(stmt)
+            good_images = session.scalars(stmt).all()
+            assert demo_image.id in [i.id for i in good_images]
+
+            bad_images = session.scalars(sa.select(Image).where(Image.bitflag != 0)).all()
+            assert demo_image2.id in [i.id for i in bad_images]
+            assert demo_image3.id in [i.id for i in bad_images]
+
+    finally:  # cleanup
+        with SmartSession() as session:
+            for im in images:
+                im.remove_data_from_disk(purge_archive=False, session=session)
+                if im.id is not None:
+                    session.delete(im)
+            session.commit()
+
+        for filename in filenames:
+            assert not os.path.exists(filename)
+
+
+
 def test_image_coordinates():
     image = Image('coordinates.fits', ra=None, dec=None, nofile=True)
     assert image.ecllat is None

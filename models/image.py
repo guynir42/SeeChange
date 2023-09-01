@@ -15,7 +15,16 @@ from pipeline.utils import read_fits_image, save_fits_image_file
 from models.base import SeeChangeBase, Base, FileOnDiskMixin, SpatiallyIndexed
 from models.exposure import Exposure
 from models.instrument import get_instrument_instance
-from models.enums_and_bitflags import image_format_converter, image_format_dict, image_type_converter, image_type_dict
+from models.enums_and_bitflags import (
+    image_format_converter,
+    image_format_dict,
+    image_type_converter,
+    image_type_dict,
+    image_badness_inverse,
+    data_badness_dict,
+    string_to_bitflag,
+    bitflag_to_string,
+)
 from models.provenance import Provenance
 
 import util.config as config
@@ -302,6 +311,132 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         doc='Name of the target object or field id. '
     )
 
+    _bitflag = sa.Column(
+        sa.BIGINT,
+        nullable=False,
+        default=0,
+        index=True,
+        doc='Bitflag for this image. Good images have a bitflag of 0. '
+            'Bad images are each bad in their own way (i.e., have different bits set). '
+            'The bitflag will include this value, bit-wise-or-ed with the bitflags of the '
+            'exposure or images used to make this image. '
+    )
+
+    @hybrid_property
+    def bitflag(self):
+        bf = self._bitflag
+        if self.source_images is not None and len(self.source_images) > 0:
+            for img in self.source_images:
+                if img.bitflag is not None:
+                    bf |= img.bitflag
+        elif self.ref_image is not None and self.new_image is not None:
+            if self.ref_image.bitflag is not None:
+                bf |= self.ref_image.bitflag
+            if self.new_image.bitflag is not None:
+                bf |= self.new_image.bitflag
+        elif self.exposure is not None:
+            if self.exposure.bitflag is not None:
+                bf |= self.exposure.bitflag
+        else:
+            raise RuntimeError('Cannot get bitflag without source images, ref_image, new_image, or exposure.')
+
+        return bf
+
+    @bitflag.inplace.expression
+    def bitflag(cls):
+        from sqlalchemy.orm import aliased
+        im_alias = aliased(Image)
+        ref_images = aliased(Image)
+        new_images = aliased(Image)
+        source_images = aliased(Image)
+
+        return sa.case(
+            (
+                cls.exposure_id != None,
+                sa.select(Exposure._bitflag.op('|')(Image._bitflag)).select_from(Exposure, Image).where(
+                    Image.exposure_id == Exposure.id
+                ).label('exposure_bitflag')
+            ),
+            # (
+            #     sa.and_(cls.ref_image_id != None, cls.new_image_id != None),
+            #     sa.select(ref_images.bitflag.op('|')(new_images._bitflag).op('|')(Image._bitflag)).select_from(ref_images, new_images).where(
+            #         sa.and_(ref_images.id == cls.ref_image_id, new_images.id == cls.new_image_id)
+            #     ).label('ref_new_bitflag')
+            # ),
+            # (sa.and_(source_images.id == image_source_self_association_table.source_id, cls.id == image_source_self_association_table.combined_id, source_images.bitflag > 0), 1),
+            else_=0,
+        )
+
+        # return (
+        #     sa.select(Image.id)
+        #     .where(
+        #         sa.or_(
+        #             # Image._bitflag > 0,
+        #             # Image.ref_image.has(Image.bitflag),
+        #             # Image.new_image.has(Image.bitflag),
+        #             # Image.source_images.any(Image.bitflag),
+        #             sa.and_(cls.exposure_id == Exposure.id, Exposure.bitflag > 0),
+        #         )
+        #     ).label('bitflag')
+        # )
+        #
+        # return sa.select(Image.id).where((
+        #     # sa.or_(
+        #     #     Image._bitflag > 0,
+        #         sa.and_(Exposure.id == cls.exposure_id, Exposure.bitflag > 0),
+        #     # )
+        # ).label('bitflag')).where(Image.id == cls.id).exists().label('bitflag')
+        #
+        # return sa.select([Exposure._bitflag]).where(Exposure.id == cls.exposure_id).label('bitflag')
+        #     sa.or_(
+        #         Image._bitflag > 0,
+        #         Image.ref_image.any(Image.bitflag),
+        #         Image.new_image.any(Image.bitflag),
+        #         Image.source_images.any(Image.bitflag),
+        #         sa.and_(cls.exposure_id == Exposure.id, Exposure.bitflag > 0),
+        #     )
+        # ).label('bitflag')
+
+    @bitflag.inplace.setter
+    def bitflag(self, value):
+        allowed_bits = 0
+        for i in image_badness_inverse.values():
+            allowed_bits += 2 ** i
+        if value & ~allowed_bits != 0:
+            raise ValueError(f'Bitflag value {bin(value)} has bits set that are not allowed.')
+        self._bitflag = value
+
+    @property
+    def badness(self):
+        """
+        A comma separated string of keywords describing
+        why this data is not good, based on the bitflag.
+        This includes all the reasons this data is bad,
+        including the parent data models that were used
+        to create this data (e.g., the Exposure underlying
+        the Image).
+        """
+        return bitflag_to_string(self.bitflag, data_badness_dict)
+
+    @badness.setter
+    def badness(self, value):
+        """Set the badness for this image using a comma separated string. """
+        self.bitflag = string_to_bitflag(value, image_badness_inverse)
+
+    def append_badness(self, value):
+        """Add some keywords (in a comma separated string)
+        describing what is bad about this image.
+        The keywords will be added to the list "badness"
+        and the bitflag for this image will be updated accordingly.
+        """
+        self.bitflag |= string_to_bitflag(value, image_badness_inverse)
+
+    description = sa.Column(
+        sa.Text,
+        nullable=True,
+        doc='Free text comment about this image, e.g., why it is bad. '
+    )
+
     def __init__(self, *args, **kwargs):
         FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
@@ -316,6 +451,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         self._psf = None  # a small point-spread-function image (2D float array)
 
         self._instrument_object = None
+        self._bitflag = 0
 
         # manually set all properties (columns or not)
         for key, value in kwargs.items():

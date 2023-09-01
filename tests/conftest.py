@@ -17,6 +17,7 @@ from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.references import ReferenceEntry
+from models.source_list import SourceList
 from util import config
 from util.archive import Archive
 
@@ -163,6 +164,13 @@ def exposure2(exposure_factory):
 
 
 @pytest.fixture
+def exposure3(exposure_factory):
+    e = exposure_factory()
+    make_exposure_file(e)
+    yield e
+
+
+@pytest.fixture
 def exposure_filter_array(exposure_factory):
     e = exposure_factory()
     e.filter = None
@@ -215,6 +223,36 @@ def decam_small_image(decam_example_image):
 def demo_image(exposure):
     exposure.update_instrument()
     im = Image.from_exposure(exposure, section_id=0)
+
+    yield im
+
+    with SmartSession() as session:
+        im = session.merge(im)
+        if im.id is not None:
+            session.execute(sa.delete(Image).where(Image.id == im.id))
+            session.commit()
+        im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+
+
+@pytest.fixture
+def demo_image2(exposure2):
+    exposure2.update_instrument()
+    im = Image.from_exposure(exposure2, section_id=0)
+
+    yield im
+
+    with SmartSession() as session:
+        im = session.merge(im)
+        if im.id is not None:
+            session.execute(sa.delete(Image).where(Image.id == im.id))
+            session.commit()
+        im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+
+
+@pytest.fixture
+def demo_image3(exposure3):
+    exposure3.update_instrument()
+    im = Image.from_exposure(exposure3, section_id=0)
 
     yield im
 
@@ -291,6 +329,30 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
                 session.delete(ref)  # should also delete ref_entry
 
                 session.commit()
+
+
+def sources(demo_image):
+    num = 100
+    x = np.random.uniform(0, demo_image.data.shape[1], num)
+    y = np.random.uniform(0, demo_image.data.shape[0], num)
+    flux = np.random.uniform(0, 1000, num)
+    flux_err = np.random.uniform(0, 100, num)
+    rhalf = np.abs(np.random.normal(0, 3, num))
+
+    data = np.array(
+        [x, y, flux, flux_err, rhalf],
+        dtype=([('x', 'f4'), ('y', 'f4'), ('flux', 'f4'), ('flux_err', 'f4'), ('rhalf', 'f4')])
+    )
+    s = SourceList(image=demo_image, data=data)
+
+    yield s
+
+    with SmartSession() as session:
+        s = session.merge(s)
+        if s.id is not None:
+            session.execute(sa.delete(SourceList).where(SourceList.id == s.id))
+            session.commit()
+        s.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
 
 
 @pytest.fixture

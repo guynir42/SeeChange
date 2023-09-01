@@ -3,7 +3,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from models.base import Base, FileOnDiskMixin, SpatiallyIndexed
+from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed
 from models.enums_and_bitflags import cutouts_format_dict, cutouts_format_converter
 
 
@@ -117,3 +117,49 @@ class Cutouts(Base, FileOnDiskMixin, SpatiallyIndexed):
         )
     )
 
+    _bitflag = sa.Column(
+        sa.BIGINT,
+        nullable=False,
+        default=0,
+        index=True,
+        doc='Bitflag for these cutouts. Good cutouts have a bitflag of 0. '
+            'Bad cutouts are each bad in their own way (i.e., have different bits set). '
+            'Will include all the bits from data used to make these cutouts '
+            '(e.g., the exposure it is based on). '
+    )
+
+    @hybrid_property
+    def bitflag(self):
+        return self._bitflag | self.image.bitflag
+
+    @bitflag.expression
+    def bitflag(cls):
+        sa.select(Cutouts).where(
+            Cutouts._bitflag,
+            Cutouts.ref_image.bitflag,
+            Cutouts.new_image.bitflag,
+            Cutouts.sub_image.bitflag,
+            Cutouts.source_list.bitflag,
+        ).label('bitflag')
+
+    @bitflag.setter
+    def bitflag(self, value):
+        self._bitflag = value
+
+    description = sa.Column(
+        sa.Text,
+        nullable=True,
+        doc='Free text comment about this source list, e.g., why it is bad. '
+    )
+
+    def __init__(self, *args, **kwargs):
+        FileOnDiskMixin.__init__(self, *args, **kwargs)
+        SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
+
+        self._data = None
+        self._bitflag = 0
+
+        # manually set all properties (columns or not)
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)

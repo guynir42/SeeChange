@@ -10,8 +10,16 @@ from pipeline.utils import read_fits_image, parse_ra_hms_to_deg, parse_dec_dms_t
 
 from models.base import Base, SeeChangeBase, FileOnDiskMixin, SpatiallyIndexed, SmartSession
 from models.instrument import Instrument, guess_instrument, get_instrument_instance
-from models.enums_and_bitflags import image_format_dict, image_format_converter, image_type_dict, image_type_converter
-
+from models.enums_and_bitflags import (
+    image_format_converter,
+    image_format_dict,
+    image_type_converter,
+    image_type_dict,
+    image_badness_inverse,
+    data_badness_dict,
+    string_to_bitflag,
+    bitflag_to_string,
+)
 
 # columns key names that must be loaded from the header for each Exposure
 EXPOSURE_COLUMN_NAMES = [
@@ -229,6 +237,59 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         doc='Name of the target object or field id. '
     )
 
+    _bitflag = sa.Column(
+        sa.BIGINT,
+        nullable=False,
+        default=0,
+        index=True,
+        doc='Bitflag for this exposure. Good exposures have a bitflag of 0. '
+            'Bad exposures are each bad in their own way (i.e., have different bits set). '
+    )
+
+    @hybrid_property
+    def bitflag(self):
+        return self._bitflag
+
+    @bitflag.inplace.expression
+    def bitflag(cls):
+        return cls._bitflag
+
+    @bitflag.inplace.setter
+    def bitflag(self, value):
+        allowed_bits = 0
+        for i in image_badness_inverse.values():
+            allowed_bits += 2 ** i
+        if value & ~allowed_bits != 0:
+            raise ValueError(f'Bitflag value {bin(value)} has bits set that are not allowed.')
+        self._bitflag = value
+
+    @property
+    def badness(self):
+        """
+        A comma separated string of keywords describing
+        why this data is not good, based on the bitflag.
+        """
+        return bitflag_to_string(self.bitflag, data_badness_dict)
+
+    @badness.setter
+    def badness(self, value):
+        """Set the badness for this exposure using a comma separated string. """
+        self.bitflag = string_to_bitflag(value, image_badness_inverse)
+
+    def append_badness(self, value):
+        """Add some keywords (in a comma separated string)
+        describing what is bad about this exposure.
+        The keywords will be added to the list "badness"
+        and the bitflag for this exposure will be updated accordingly.
+        """
+        self.bitflag = self.bitflag | string_to_bitflag(value, image_badness_inverse)
+
+    description = sa.Column(
+        sa.Text,
+        nullable=True,
+        doc='Free text comment about this exposure, e.g., why it is bad. '
+    )
+
     def __init__(self, *args, **kwargs):
         """
         Initialize the exposure object.
@@ -257,6 +318,7 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
             self.instrument = guess_instrument(self.filepath)
 
         self._instrument_object = None
+        self._bitflag = 0
 
         # instrument_obj is lazy loaded when first getting it
         if self.instrument_object is not None:

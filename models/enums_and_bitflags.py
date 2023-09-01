@@ -116,4 +116,122 @@ def image_type_converter(value):
         raise ValueError(f'Image type must be integer/float key or string value, not {type(value)}')
 
 
+def bitflag_to_string(value, dictionary):
+    """
+    Takes a 64 bit integer bit-flag and converts it to a comma separated string,
+    using the given dictionary.
+    If any of the bits are not recognized, will raise a ValueError.
+
+    To use this function, you must first define a dictionary with the bit-flag values as keys,
+    and the corresponding strings as values. This should include all the possible bits that could
+    be encountered. For example, the badness bitflag will include the general data badness dictionary,
+    as that bitflag is usually a combination of the badness of all the data models.
+
+    If given None, will return None.
+
+    Parameters
+    ----------
+    value: int or None.
+        64 bit integer bit-flag.
+    dictionary: dict
+        Dictionary with the bit-flag values as keys, and the corresponding strings as values.
+
+    Returns
+    -------
+    output: str or None
+        Comma separated string with all the different ways the data is bad.
+        If given None, will return None.
+        If given zero, will return an empty string.
+    """
+    if value is None:
+        return None
+    elif value == 0:
+        return ''
+    elif isinstance(value, (int, float)):
+        output = []
+        for i in range(64):
+            if value >> i & 1:
+                if i not in dictionary:
+                    raise ValueError(f'Bitflag {i} not recognized in dictionary')
+                output.append(dictionary[i])
+        return ', '.join(output)
+    else:
+        raise ValueError(f'Bitflag must be integer/float, not {type(value)}')
+
+
+def string_to_bitflag(value, dictionary):
+    """
+    Takes a comma separated string, and converts it to a 64 bit integer bit-flag,
+    using the given dictionary (the inverse dictionary).
+    If any of the keywords are not recognized, will raise a ValueError.
+
+    To use this function, you must first define a dictionary with the keywords as keys,
+    and the corresponding bit-flag values as values. This should include all the possible keywords that could
+    be appended to this specific data model. For example, the badness bitflag for cutouts will not include
+    the keywords for images, as those will be set on the image model, not on the cutouts model.
+
+    If given an empty string, will return zero.
+    If given None, will return None.
+
+    Parameters
+    ----------
+    value: str or None
+        Comma separated string with all the different ways the data is bad.
+    dictionary: dict
+        Dictionary with the keywords as keys, and the corresponding bit-flag values as values.
+
+    Returns
+    -------
+    output: int or None
+        64 bit integer bit-flag.
+        If given None, will return None.
+        If given zero, will return an empty string.
+    """
+
+    if isinstance(value, str):
+        if value == '':
+            return 0
+        output = 0
+        for keyword in value.split(','):
+            original_keyword = keyword
+            keyword = keyword.lower().replace(' ', '')
+            if keyword not in dictionary:
+                raise ValueError(f'Keyword "{original_keyword}" not recognized in dictionary')
+            output += 2 ** dictionary[keyword]
+        return output
+
+
+image_badness_dict = {
+    1: 'Banding',
+    2: 'Shaking',
+    3: 'Saturation',
+    4: 'Bad Subtraction',
+    5: 'Bright Sky',
+}
+image_badness_inverse = {v.lower().replace(' ', ''): k for k, v in image_badness_dict.items()}
+
+cutouts_badness_dict = {
+    21: 'Cosmic Ray',
+    22: 'Ghost',
+    23: 'Satellite',
+    24: 'Offset',
+    25: 'Bad Pixel',
+    26: 'Bleed Trail',
+}
+cutouts_badness_inverse = {v.lower().replace(' ', ''): k for k, v in cutouts_badness_dict.items()}
+
+source_list_badness_dict = {
+    41: 'X-Match Failed',
+    42: 'Big Residuals',
+    43: 'Few Stars',
+    44: 'Many Stars',
+}
+source_list_badness_inverse = {v.lower().replace(' ', ''): k for k, v in source_list_badness_dict.items()}
+
+# join the badness:
+data_badness_dict = {0: 'Good'}
+data_badness_dict.update(image_badness_dict)
+data_badness_dict.update(cutouts_badness_dict)
+data_badness_dict.update(source_list_badness_dict)
+data_badness_inverse = {v.lower().replace(' ', ''): k for k, v in data_badness_dict.items()}
 
