@@ -5,6 +5,8 @@ from sqlalchemy.types import Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import aliased
+from sqlalchemy.sql.functions import coalesce
 
 from astropy.time import Time
 from astropy.wcs import WCS
@@ -323,6 +325,23 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
     )
 
     @hybrid_property
+    def __bitflag_for_parent_images_1(self):
+        return self.bitflag
+
+    @__bitflag_for_parent_images_1.expression
+    def __bitflag_for_parent_images_1(cls):
+
+        return sa.case(
+            (
+                cls.exposure_id.isnot(None),
+                sa.select(Exposure._bitflag.op('|')(cls._bitflag)).select_from(Exposure, Image).where(
+                    cls.exposure_id == Exposure.id
+                ).distinct().label('bitflag')
+            ),
+            else_=0,
+        )
+
+    @hybrid_property
     def bitflag(self):
         bf = self._bitflag
         if self.source_images is not None and len(self.source_images) > 0:
@@ -344,28 +363,157 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     @bitflag.inplace.expression
     def bitflag(cls):
-        from sqlalchemy.orm import aliased
-        im_alias = aliased(Image)
-        ref_images = aliased(Image)
-        new_images = aliased(Image)
-        source_images = aliased(Image)
+        # this is a helper class that...
+        class ImTable:
+            def __init__(self, role):
+                self.role = role
+                if role == 'first':
+                    self.img = cls
+                    self.exp = Exposure
+                else:
+                    self.img = aliased(Image)
+                    self.exp = aliased(Exposure)
+                self.dad = None
+                self.ref = None
+                self.new = None
+                self.src = None
+                if role == 'src':
+                    self.association_table = aliased(image_source_self_association_table)
 
-        return sa.case(
-            (
-                cls.exposure_id != None,
-                sa.select(Exposure._bitflag.op('|')(Image._bitflag)).select_from(Exposure, Image).where(
-                    Image.exposure_id == Exposure.id
-                ).label('exposure_bitflag')
-            ),
-            # (
-            #     sa.and_(cls.ref_image_id != None, cls.new_image_id != None),
-            #     sa.select(ref_images.bitflag.op('|')(new_images._bitflag).op('|')(Image._bitflag)).select_from(ref_images, new_images).where(
-            #         sa.and_(ref_images.id == cls.ref_image_id, new_images.id == cls.new_image_id)
-            #     ).label('ref_new_bitflag')
-            # ),
-            # (sa.and_(source_images.id == image_source_self_association_table.source_id, cls.id == image_source_self_association_table.combined_id, source_images.bitflag > 0), 1),
-            else_=0,
+            def make_children(self, iterations=3):
+                if iterations < 1:
+                    return
+
+                self.ref = ImTable(role='ref')
+                self.ref.dad = self
+                self.ref.make_children(iterations=iterations-1)
+
+                self.new = ImTable(role='new')
+                self.new.dad = self
+                self.new.make_children(iterations=iterations-1)
+
+                self.src = ImTable(role='src')
+                self.src.dad = self
+                self.src.make_children(iterations=iterations-1)
+
+            def add_to_columns(self, col):
+                if self.role == 'src':
+                    return col.op('|')(
+                        coalesce(sa.func.bit_or(self.img._bitflag), 0).op('|')(
+                            coalesce(sa.func.bit_or(self.exp._bitflag))
+                        )
+                    )
+                else:
+                    return col.op('|')(
+                        coalesce(self.img._bitflag, 0).op('|')(coalesce(self.exp._bitflag, 0))
+                    )
+
+            def add_children_to_columns(self, col):
+                if self.ref is None or self.new is None or self.src is None:
+                    return col
+
+                col = self.ref.add_to_columns(col)
+                col = self.new.add_to_columns(col)
+                col = self.src.add_to_columns(col)
+
+                col = self.ref.add_children_to_columns(col)
+                col = self.new.add_children_to_columns(col)
+                col = self.src.add_children_to_columns(col)
+
+                return col
+
+            def add_to_joins(self, stmt):
+                if self.role == 'first':
+                    stmt = stmt.select_from(self.img)
+                elif self.role == 'ref':
+                    stmt = stmt.outerjoin(
+                        self.img, self.dad.img.ref_image_id == self.img.id
+                    )
+
+                elif self.role == 'new':
+                    stmt = stmt.outerjoin(
+                        self.img, self.dad.img.new_image_id == self.img.id
+                    )
+                elif self.role == 'src':
+                    stmt = stmt.outerjoin(
+                        self.association_table, self.association_table.c.combined_id == self.dad.img.id
+                    ).outerjoin(
+                        self.img, self.association_table.c.source_id == self.img.id
+                    )
+
+                # also add the exposures for each image
+                stmt = stmt.outerjoin(
+                        self.exp, self.img.exposure_id == self.exp.id
+                    )
+
+                # also add group_by on Image._bitflag, Exposure._bitflag, etc
+                if self.role == 'src':
+                    stmt = stmt.group_by(
+                        self.dad.img.id,
+                        self.dad.exp.id,
+                        self.dad.ref.img.id,
+                        self.dad.ref.exp.id,
+                        self.dad.new.img.id,
+                        self.dad.new.exp.id,
+                    )
+                return stmt
+
+            def add_children_to_joins(self, stmt):
+                if self.ref is None or self.new is None or self.src is None:
+                    return stmt
+
+                stmt = self.ref.add_to_joins(stmt)
+                stmt = self.new.add_to_joins(stmt)
+                stmt = self.src.add_to_joins(stmt)
+
+                stmt = self.ref.add_children_to_joins(stmt)
+                stmt = self.new.add_children_to_joins(stmt)
+                stmt = self.src.add_children_to_joins(stmt)
+
+                return stmt
+
+        first_table = ImTable(role='first')
+        first_table.make_children(iterations=1)  # recursively add three layers of children
+
+        columns = first_table.add_to_columns(cls._bitflag)
+        columns = first_table.add_children_to_columns(columns)
+
+        stmt = sa.select(
+            columns
         )
+        stmt = first_table.add_to_joins(stmt)
+        stmt = first_table.add_children_to_joins(stmt)
+        stmt = stmt.distinct().label('bitflag')
+
+        print(stmt)
+
+        return stmt
+
+        # im_alias = aliased(Image)
+        # ref_images = aliased(Image)
+        # new_images = aliased(Image)
+        # source_images = aliased(Image)
+        #
+        # return sa.case(
+        #     (
+        #         cls.exposure_id.isnot(None),
+        #         sa.select(Exposure._bitflag.op('|')(cls._bitflag)).select_from(Exposure, Image).where(
+        #             cls.exposure_id == Exposure.id
+        #         ).label('bitflag')
+        #     ),
+        #     (
+        #         sa.and_(cls.ref_image_id.isnot(None), cls.new_image_id.isnot(None)),
+        #         sa.select(
+        #             ref_images.__bitflag_for_parent_images_1.op('|')(new_images.__bitflag_for_parent_images_1).op('|')(Image._bitflag)
+        #         ).select_from(Image).join(
+        #             ref_images, ref_images.id == Image.ref_image_id
+        #         ).join(
+        #             new_images, new_images.id == Image.new_image_id
+        #         ).distinct().label('bitflag')
+        #     ),
+        #     # (sa.and_(source_images.id == image_source_self_association_table.source_id, cls.id == image_source_self_association_table.combined_id, source_images.bitflag > 0), 1),
+        #     else_=0,
+        # )
 
         # return (
         #     sa.select(Image.id)
@@ -695,16 +843,9 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
 
     def __repr__(self):
 
-        type_str = self.type
-        if self.is_coadd:
-            type_str += " (coadd)"
-
-        if self.is_sub:
-            type_str += " (sub)"
-
         output = (
             f"Image(id: {self.id}, "
-            f"type: {type_str}, "
+            f"type: {self.type}, "
             f"exp: {self.exp_time}s, "
             f"filt: {self.filter_short}, "
             f"from: {self.instrument}/{self.telescope}"
@@ -726,7 +867,7 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         another string to the Image filename.
         """
         prov_hash = inst_name = im_type = date = time = filter = ra = dec = dec_int_pm = ''
-        ra_int = ra_int_h = ra_frac = dec_int = dec_frac = 0
+        section_id = section_id_int = ra_int = ra_int_h = ra_frac = dec_int = dec_frac = 0
 
         if self.provenance is not None:
             prov_hash = self.provenance.unique_hash

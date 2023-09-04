@@ -234,4 +234,5 @@ data_badness_dict.update(image_badness_dict)
 data_badness_dict.update(cutouts_badness_dict)
 data_badness_dict.update(source_list_badness_dict)
 data_badness_inverse = {v.lower().replace(' ', ''): k for k, v in data_badness_dict.items()}
-
+if 0 in data_badness_inverse:
+    raise ValueError('Cannot have a badness bitflag of zero. This is reserved for good data.')

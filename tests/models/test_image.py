@@ -327,12 +327,21 @@ def test_image_badness(demo_image):
         assert demo_image.badness == 'Banding, Shaking, Bright Sky'
 
 
-def test_multiple_images_badness(demo_image, demo_image2, demo_image3, provenance_base):
+def test_multiple_images_badness(
+        demo_image,
+        demo_image2,
+        demo_image3,
+        demo_image5,
+        demo_image6,
+        provenance_base,
+        provenance_extra
+):
+    # the image itself is marked bad because of bright sky
     demo_image2.badness = 'brightsky'
     assert demo_image2.badness == 'Bright Sky'
     assert demo_image2.bitflag == 2 ** 5
 
-    # note that this image is not directly bad, but the exposure is
+    # note that this image is not directly bad, but the exposure has banding
     demo_image3.exposure.badness = 'banding'
     assert demo_image3.badness == 'Banding'
     assert demo_image._bitflag == 0  # the exposure is bad!
@@ -340,10 +349,14 @@ def test_multiple_images_badness(demo_image, demo_image2, demo_image3, provenanc
 
     # add these to the DB
     images = [demo_image, demo_image2, demo_image3]
+    target = uuid.uuid4().hex
+    filter = demo_image.filter
     filenames = []
     try:
         with SmartSession() as session:
             for im in images:
+                im.target = target
+                im.filter = filter
                 im.provenance = provenance_base
                 im.data = np.float32(im.raw_data)
                 im.save(no_archive=True)
@@ -353,14 +366,156 @@ def test_multiple_images_badness(demo_image, demo_image2, demo_image3, provenanc
             session.commit()
 
             # find the images that are good vs bad
-            stmt = sa.select(Image).where(Image.bitflag == 0)
-            print(stmt)
-            good_images = session.scalars(stmt).all()
+            good_images = session.scalars(sa.select(Image).where(Image.bitflag == 0)).all()
             assert demo_image.id in [i.id for i in good_images]
 
             bad_images = session.scalars(sa.select(Image).where(Image.bitflag != 0)).all()
             assert demo_image2.id in [i.id for i in bad_images]
             assert demo_image3.id in [i.id for i in bad_images]
+
+            # make an image from the two bad exposures using subtraction
+            demo_image4 = Image.from_ref_and_new(demo_image2, demo_image3)
+            demo_image4.provenance = provenance_extra
+            demo_image4.data = np.random.normal(0, 10, size=(100, 100)).astype(np.float32)
+            demo_image4.save(no_archive=True)
+            images.append(demo_image4)
+            filenames.append(demo_image4.get_fullpath(as_list=True)[0])
+            session.add(demo_image4)
+            session.commit()
+            assert demo_image4.id is not None
+            assert demo_image4.ref_image_id == demo_image2.id
+            assert demo_image4.new_image_id == demo_image3.id
+
+            # check that badness is loaded correctly from both parents
+            assert demo_image4.badness == 'Banding, Bright Sky'
+            assert demo_image4._bitflag == 0  # the image itself is not flagged
+            assert demo_image4.bitflag == 2 ** 1 + 2 ** 5
+
+            # check that filtering on this value gives the right bitflag
+            bad_images = session.scalars(sa.select(Image).where(Image.bitflag == 2 ** 1 + 2 ** 5)).all()
+            assert demo_image4.id in [i.id for i in bad_images]
+            assert demo_image3.id not in [i.id for i in bad_images]
+            assert demo_image2.id not in [i.id for i in bad_images]
+
+            # check that adding a badness on the image itself is added to the total badness
+            demo_image4.badness = 'saturation'
+            session.add(demo_image4)
+            session.commit()
+            assert demo_image4.badness == 'Banding, Saturation, Bright Sky'
+            assert demo_image4._bitflag == 2 ** 3  # only this bit is from the image itself
+
+            # make a few good images and make sure they don't get flagged
+            more_images = [demo_image5, demo_image6]
+
+            for im in more_images:
+                im.target = target
+                im.filter = filter
+                im.provenance = provenance_base
+                im.data = np.float32(im.raw_data)
+                im.save(no_archive=True)
+                filenames.append(im.get_fullpath(as_list=True)[0])
+                images.append(im)
+                session.add(im)
+            session.commit()
+
+            # make a new subtraction:
+            demo_image7 = Image.from_ref_and_new(demo_image5, demo_image6)
+            demo_image7.provenance = provenance_extra
+            demo_image7.data = np.random.normal(0, 10, size=(100, 100)).astype(np.float32)
+            demo_image7.save(no_archive=True)
+            images.append(demo_image7)
+            filenames.append(demo_image7.get_fullpath(as_list=True)[0])
+            session.add(demo_image7)
+            session.commit()
+
+            # make a coadded image:
+            demo_image8 = Image.from_images([demo_image, demo_image2, demo_image3, demo_image5, demo_image6])
+            demo_image8.provenance = provenance_extra
+            demo_image8.data = np.random.normal(0, 10, size=(100, 100)).astype(np.float32)
+            demo_image8.save(no_archive=True)
+            images.append(demo_image8)
+            filenames.append(demo_image8.get_fullpath(as_list=True)[0])
+            session.add(demo_image8)
+            session.commit()
+
+            demo_image.description = 'demo_image'
+            demo_image2.description = 'demo_image2'
+            demo_image3.description = 'demo_image3'
+            demo_image4.description = 'demo_image4'
+            demo_image5.description = 'demo_image5'
+            demo_image6.description = 'demo_image6'
+            demo_image7.description = 'demo_image7'
+            demo_image8.description = 'demo_image8'
+
+            for im in images:
+                print(f'{im.description}: {im.bitflag}')
+
+            from sqlalchemy.sql.functions import coalesce
+            ref_images = sa.orm.aliased(Image)
+            ref_exposures = sa.orm.aliased(Exposure)
+            new_images = sa.orm.aliased(Image)
+            new_exposures = sa.orm.aliased(Exposure)
+            source_images = sa.orm.aliased(Image)
+            source_exposures = sa.orm.aliased(Exposure)
+            from models.image import image_source_self_association_table
+
+            stmt = sa.select(
+                Exposure.id, Image.id, Image.description, ref_images.description, new_images.description,
+                coalesce(Image._bitflag, 0).op('|')(
+                    coalesce(Exposure._bitflag, 0)
+                ).op('|')(
+                    coalesce(ref_images._bitflag, 0)
+                ).op('|')(
+                    coalesce(ref_exposures._bitflag, 0)
+                ).op('|')(
+                    coalesce(new_images._bitflag, 0)
+                ).op('|')(
+                    coalesce(new_exposures._bitflag, 0)
+                ).op('|')(
+                    coalesce(sa.func.bit_or(source_images._bitflag), 0)
+                ).op('|')(
+                    coalesce(sa.func.bit_or(source_exposures._bitflag), 0)
+                )
+            ).select_from(Image).outerjoin(
+                Exposure, Exposure.id == Image.exposure_id
+            ).outerjoin(
+                ref_images, ref_images.id == Image.ref_image_id
+            ).outerjoin(
+                ref_exposures, ref_exposures.id == ref_images.exposure_id
+            ).outerjoin(
+                new_images, new_images.id == Image.new_image_id
+            ).outerjoin(
+                new_exposures, new_exposures.id == new_images.exposure_id
+            ).outerjoin(
+                image_source_self_association_table, image_source_self_association_table.c.combined_id == Image.id,
+            ).outerjoin(
+                source_images, sa.and_(image_source_self_association_table.c.source_id == source_images.id)
+            ).outerjoin(
+                source_exposures, source_exposures.id == source_images.exposure_id
+            ).group_by(
+                Image.id, Exposure.id, Image.description, ref_images.description, new_images.description,
+                Image._bitflag, Exposure._bitflag, ref_images._bitflag, new_images._bitflag, ref_exposures._bitflag, new_exposures._bitflag,
+            ).distinct().order_by(Image.id)
+
+            print(session.execute(stmt).all())
+            return
+            # check that the new subtraction is not flagged
+            assert demo_image7.badness == ''
+            assert demo_image7._bitflag == 0
+            assert demo_image7.bitflag == 0
+
+            good_images = session.scalars(sa.select(Image).where(Image.bitflag == 0)).all()
+            assert demo_image5.id in [i.id for i in good_images]
+            assert demo_image6.id in [i.id for i in good_images]
+            assert demo_image7.id in [i.id for i in good_images]
+
+            bad_images = session.scalars(sa.select(Image).where(Image.bitflag != 0)).all()
+            assert demo_image5.id not in [i.id for i in bad_images]
+            assert demo_image6.id not in [i.id for i in bad_images]
+            assert demo_image7.id not in [i.id for i in bad_images]
+
+
+
 
     finally:  # cleanup
         with SmartSession() as session:
