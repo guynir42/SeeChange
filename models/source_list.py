@@ -8,10 +8,18 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.sql.functions import coalesce
 
 from models.base import Base, FileOnDiskMixin, SeeChangeBase
 from models.image import Image
-from models.enums_and_bitflags import source_list_format_dict, source_list_format_converter
+from models.enums_and_bitflags import (
+    source_list_format_dict,
+    source_list_format_converter,
+    bitflag_to_string,
+    string_to_bitflag,
+    data_badness_dict,
+    source_list_badness_inverse,
+)
 
 
 class SourceList(Base, FileOnDiskMixin):
@@ -110,16 +118,42 @@ class SourceList(Base, FileOnDiskMixin):
     def bitflag(self):
         return self._bitflag | self.image.bitflag
 
-    @bitflag.expression
+    @bitflag.inplace.expression
+    @classmethod
     def bitflag(cls):
-        sa.select(SourceList).where(
-            SourceList._bitflag,
-            SourceList.image.bitflag,
-        ).label('bitflag')
+        stmt = sa.select(coalesce(cls._bitflag, 0).op('|')(Image.bitflag))
+        stmt = stmt.where(cls.image_id == Image.id)
+        stmt = stmt.scalar_subquery()
+        return stmt
 
     @bitflag.setter
     def bitflag(self, value):
         self._bitflag = value
+
+    @property
+    def badness(self):
+        """
+        A comma separated string of keywords describing
+        why this data is not good, based on the bitflag.
+        This includes all the reasons this data is bad,
+        including the parent data models that were used
+        to create this data (e.g., the Exposure underlying
+        the Image).
+        """
+        return bitflag_to_string(self.bitflag, data_badness_dict)
+
+    @badness.setter
+    def badness(self, value):
+        """Set the badness for this image using a comma separated string. """
+        self.bitflag = string_to_bitflag(value, source_list_badness_inverse)
+
+    def append_badness(self, value):
+        """Add some keywords (in a comma separated string)
+        describing what is bad about this image.
+        The keywords will be added to the list "badness"
+        and the bitflag for this image will be updated accordingly.
+        """
+        self.bitflag |= string_to_bitflag(value, source_list_badness_inverse)
 
     description = sa.Column(
         sa.Text,
@@ -183,7 +217,7 @@ class SourceList(Base, FileOnDiskMixin):
         # TODO: should we replace this with FITS and astropy tables?
         return np.load(self.get_fullpath())  # this should always be a single file, right?
 
-    def save(self):
+    def save(self, **kwargs):
         """
         Save the data table to a file on disk.
         """
@@ -208,7 +242,7 @@ class SourceList(Base, FileOnDiskMixin):
         np.save(fullname, self.data)
 
         self.filepath = filename
-
+        super().save(fullname, **kwargs)
 
 # add "property" attributes to SourceList referencing the image for convenience
 for att in [
