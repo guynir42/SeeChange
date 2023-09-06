@@ -365,6 +365,7 @@ def test_multiple_images_badness(
                 session.add(im)
             session.commit()
 
+            # leaving this commented code for debugging of bitflag:
             # for im in images:
             #     print(f'im.id= {im.id}, im.bitflag= {im.bitflag}')
             # stmt = sa.select(Image.id, Image.bitflag).where(Image.bitflag>0).order_by(Image.id)
@@ -434,16 +435,6 @@ def test_multiple_images_badness(
             session.add(demo_image7)
             session.commit()
 
-            # make a coadded image:
-            demo_image8 = Image.from_images([demo_image, demo_image2, demo_image3, demo_image5, demo_image6])
-            demo_image8.provenance = provenance_extra
-            demo_image8.data = np.random.normal(0, 10, size=(100, 100)).astype(np.float32)
-            demo_image8.save(no_archive=True)
-            images.append(demo_image8)
-            filenames.append(demo_image8.get_fullpath(as_list=True)[0])
-            session.add(demo_image8)
-            session.commit()
-
             # check that the new subtraction is not flagged
             assert demo_image7.badness == ''
             assert demo_image7._bitflag == 0
@@ -458,6 +449,44 @@ def test_multiple_images_badness(
             assert demo_image5.id not in [i.id for i in bad_images]
             assert demo_image6.id not in [i.id for i in bad_images]
             assert demo_image7.id not in [i.id for i in bad_images]
+
+            # let's try to coadd an image based on some good and bad images
+            # as a reminder, demo_image2 has Bright Sky (5),
+            # demo_image3's exposure has banding (1), while
+            # demo_image4 has Saturation (3).
+
+            # make a coadded image (without including the subtraction demo_image4):
+            demo_image8 = Image.from_images([demo_image, demo_image2, demo_image3, demo_image5, demo_image6])
+            demo_image8.provenance = provenance_extra
+            demo_image8.data = np.random.normal(0, 10, size=(100, 100)).astype(np.float32)
+            demo_image8.save(no_archive=True)
+            images.append(demo_image8)
+            filenames.append(demo_image8.get_fullpath(as_list=True)[0])
+            session.add(demo_image8)
+            session.commit()
+            assert demo_image8.badness == 'Banding, Bright Sky'
+            assert demo_image8.bitflag == 2 ** 1 + 2 ** 5
+
+            # does this work in queries (i.e., using the bitflag hybrid expression)?
+            bad_images = session.scalars(sa.select(Image).where(Image.bitflag != 0)).all()
+            assert demo_image8.id in [i.id for i in bad_images]
+            bad_coadd = session.scalars(sa.select(Image).where(Image.bitflag == 2 ** 1 + 2 ** 5)).all()
+            assert demo_image8.id in [i.id for i in bad_coadd]
+
+            # now let's add the subtraction image to the coadd:
+            demo_image8.source_images = demo_image8.source_images + [demo_image4]  # we re-assign to trigger SQLA
+            session.add(demo_image8)
+            session.commit()
+
+            assert demo_image8.badness == 'Banding, Saturation, Bright Sky'
+            assert demo_image8.bitflag == 2 ** 1 + 2 ** 3 + 2 ** 5  # this should be 42
+
+            # does this work in queries (i.e., using the bitflag hybrid expression)?
+            bad_images = session.scalars(sa.select(Image).where(Image.bitflag != 0)).all()
+            assert demo_image8.id in [i.id for i in bad_images]
+            bad_coadd = session.scalars(sa.select(Image).where(Image.bitflag == 42)).all()
+            assert demo_image8.id in [i.id for i in bad_coadd]
+
 
     finally:  # cleanup
         with SmartSession() as session:
