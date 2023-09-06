@@ -367,6 +367,9 @@ def test_multiple_images_badness(
 
             # for im in images:
             #     print(f'im.id= {im.id}, im.bitflag= {im.bitflag}')
+            # stmt = sa.select(Image.id, Image.bitflag).where(Image.bitflag>0).order_by(Image.id)
+            # print(stmt)
+            # print(session.execute(stmt).all())
 
             # find the images that are good vs bad
             good_images = session.scalars(sa.select(Image).where(Image.bitflag == 0)).all()
@@ -456,20 +459,16 @@ def test_multiple_images_badness(
             assert demo_image6.id not in [i.id for i in bad_images]
             assert demo_image7.id not in [i.id for i in bad_images]
 
-
-
-
     finally:  # cleanup
-        pass
-        # with SmartSession() as session:
-            # for im in images:
-                # im.remove_data_from_disk(purge_archive=False, session=session)
-                # if im.id is not None:
-                #     session.delete(im)
-            # session.commit()
+        with SmartSession() as session:
+            for im in images:
+                im.remove_data_from_disk(purge_archive=False, session=session)
+                if im.id is not None:
+                    session.delete(im)
+            session.commit()
 
-        # for filename in filenames:
-        #     assert not os.path.exists(filename)
+        for filename in filenames:
+            assert not os.path.exists(filename)
 
 
 

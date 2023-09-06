@@ -81,9 +81,9 @@ def provenance_base(code_version):
 
     yield p
 
-    # with SmartSession() as session:
-    #     session.execute(sa.delete(Provenance).where(Provenance.id == pid))
-    #     session.commit()
+    with SmartSession() as session:
+        session.execute(sa.delete(Provenance).where(Provenance.id == pid))
+        session.commit()
 
 
 @pytest.fixture
@@ -104,9 +104,9 @@ def provenance_extra(code_version, provenance_base):
 
     yield p
 
-    # with SmartSession() as session:
-    #     session.execute(sa.delete(Provenance).where(Provenance.id == pid))
-    #     session.commit()
+    with SmartSession() as session:
+        session.execute(sa.delete(Provenance).where(Provenance.id == pid))
+        session.commit()
 
 
 @pytest.fixture
@@ -141,9 +141,9 @@ def make_exposure_file(exposure):
     finally:
         with SmartSession() as session:
             exposure = session.merge(exposure)
-            # if exposure.id is not None:
-            #     session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
-            #     session.commit()
+            if exposure.id is not None:
+                session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
+                session.commit()
 
         if fullname is not None and os.path.isfile(fullname):
             os.remove(fullname)
@@ -232,10 +232,10 @@ def demo_image(exposure):
 
     with SmartSession() as session:
         im = session.merge(im)
-        # if im.id is not None:
-        #     session.execute(sa.delete(Image).where(Image.id == im.id))
-        #     session.commit()
-        # im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+        if im.id is not None:
+            session.execute(sa.delete(Image).where(Image.id == im.id))
+            session.commit()
+        im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
 
 
 # idea taken from: https://github.com/pytest-dev/pytest/issues/2424#issuecomment-333387206
@@ -250,12 +250,12 @@ def generate_image():
 
         yield im
 
-        # with SmartSession() as session:
-        #     im = session.merge(im)
-        #     if im.id is not None:
-        #         session.execute(sa.delete(Image).where(Image.id == im.id))
-        #         session.commit()
-        #     im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+        with SmartSession() as session:
+            im = session.merge(im)
+            if im.id is not None:
+                session.execute(sa.delete(Image).where(Image.id == im.id))
+                session.commit()
+            im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
 
     return new_image
 
