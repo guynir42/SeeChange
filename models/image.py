@@ -367,12 +367,12 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         class ImTable:
             def __init__(self, role):
                 self.role = role
-                if role == 'first':
-                    self.img = cls
-                    self.exp = Exposure
-                else:
-                    self.img = aliased(Image)
-                    self.exp = aliased(Exposure)
+                # if role == 'first':
+                #     self.img = cls
+                #     self.exp = Exposure
+                # else:
+                self.img = aliased(Image)
+                self.exp = aliased(Exposure)
                 self.dad = None
                 self.ref = None
                 self.new = None
@@ -396,17 +396,21 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
                 self.src.dad = self
                 self.src.make_children(iterations=iterations-1)
 
-            def add_to_columns(self, col):
-                if self.role == 'src':
-                    return col.op('|')(
-                        coalesce(sa.func.bit_or(self.img._bitflag), 0).op('|')(
-                            coalesce(sa.func.bit_or(self.exp._bitflag))
-                        )
-                    )
+            def add_to_columns(self, col=None):
+                if self.role == 'first':
+                    return self.img._bitflag.op('|')(coalesce(self.exp._bitflag, 0))
                 else:
                     return col.op('|')(
-                        coalesce(self.img._bitflag, 0).op('|')(coalesce(self.exp._bitflag, 0))
+                        coalesce(sa.func.bit_or(self.img._bitflag), 0).op('|')(
+                            coalesce(sa.func.bit_or(self.exp._bitflag), 0)
+                        )
                     )
+                # if self.role == 'src':
+                #
+                # else:
+                #     return col.op('|')(
+                #         coalesce(self.img._bitflag, 0).op('|')(coalesce(self.exp._bitflag, 0))
+                #     )
 
             def add_children_to_columns(self, col):
                 if self.ref is None or self.new is None or self.src is None:
@@ -429,7 +433,6 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
                     stmt = stmt.outerjoin(
                         self.img, self.dad.img.ref_image_id == self.img.id
                     )
-
                 elif self.role == 'new':
                     stmt = stmt.outerjoin(
                         self.img, self.dad.img.new_image_id == self.img.id
@@ -447,15 +450,16 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
                     )
 
                 # also add group_by on Image._bitflag, Exposure._bitflag, etc
-                if self.role == 'src':
-                    stmt = stmt.group_by(
-                        self.dad.img.id,
-                        self.dad.exp.id,
-                        self.dad.ref.img.id,
-                        self.dad.ref.exp.id,
-                        self.dad.new.img.id,
-                        self.dad.new.exp.id,
-                    )
+                # if self.role == 'src':
+                #     stmt = stmt.group_by(
+                        # self.dad.img.id,
+                        # self.dad.exp.id,
+                        # self.dad.ref.img.id,
+                        # self.dad.ref.exp.id,
+                        # self.dad.new.img.id,
+                        # self.dad.new.exp.id,
+                        # self.dad.src.exp.id,
+                    # )
                 return stmt
 
             def add_children_to_joins(self, stmt):
@@ -475,18 +479,17 @@ class Image(Base, FileOnDiskMixin, SpatiallyIndexed):
         first_table = ImTable(role='first')
         first_table.make_children(iterations=1)  # recursively add three layers of children
 
-        columns = first_table.add_to_columns(cls._bitflag)
+        columns = first_table.add_to_columns()
         columns = first_table.add_children_to_columns(columns)
 
-        stmt = sa.select(
-            columns
-        )
+        stmt = sa.select(columns)
         stmt = first_table.add_to_joins(stmt)
         stmt = first_table.add_children_to_joins(stmt)
-        stmt = stmt.distinct().label('bitflag')
-
-        print(stmt)
-
+        stmt = stmt.group_by(first_table.img.id, first_table.exp.id)
+        stmt = stmt.where(cls.id == first_table.img.id).scalar_subquery()
+        # print(type(stmt))
+        # print(stmt)
+        # print(stmt.scalar_subquery())
         return stmt
 
         # im_alias = aliased(Image)
@@ -1152,3 +1155,49 @@ if __name__ == '__main__':
     filename = '/home/guyn/Dropbox/python/SeeChange/data/DECam_examples/c4d_221104_074232_ori.fits.fz'
     e = Exposure(filename)
     im = Image.from_exposure(e, section_id=1)
+
+# this is an example for...
+# ref_images = sa.orm.aliased(Image)
+# ref_exposures = sa.orm.aliased(Exposure)
+# new_images = sa.orm.aliased(Image)
+# new_exposures = sa.orm.aliased(Exposure)
+# source_images = sa.orm.aliased(Image)
+# source_exposures = sa.orm.aliased(Exposure)
+#
+# stmt = sa.select(
+#     Exposure.id, Image.id, Image.description, ref_images.description, new_images.description,
+#     coalesce(Image._bitflag, 0).op('|')(
+#         coalesce(Exposure._bitflag, 0)
+#     ).op('|')(
+#         coalesce(ref_images._bitflag, 0)
+#     ).op('|')(
+#         coalesce(ref_exposures._bitflag, 0)
+#     ).op('|')(
+#         coalesce(new_images._bitflag, 0)
+#     ).op('|')(
+#         coalesce(new_exposures._bitflag, 0)
+#     ).op('|')(
+#         coalesce(sa.func.bit_or(source_images._bitflag), 0)
+#     ).op('|')(
+#         coalesce(sa.func.bit_or(source_exposures._bitflag), 0)
+#     )
+# ).select_from(Image).outerjoin(
+#     Exposure, Exposure.id == Image.exposure_id
+# ).outerjoin(
+#     ref_images, ref_images.id == Image.ref_image_id
+# ).outerjoin(
+#     ref_exposures, ref_exposures.id == ref_images.exposure_id
+# ).outerjoin(
+#     new_images, new_images.id == Image.new_image_id
+# ).outerjoin(
+#     new_exposures, new_exposures.id == new_images.exposure_id
+# ).outerjoin(
+#     image_source_self_association_table, image_source_self_association_table.c.combined_id == Image.id,
+# ).outerjoin(
+#     source_images, sa.and_(image_source_self_association_table.c.source_id == source_images.id)
+# ).outerjoin(
+#     source_exposures, source_exposures.id == source_images.exposure_id
+# ).group_by(
+#     Image.id, Exposure.id, Image.description, ref_images.description, new_images.description,
+#     Image._bitflag, Exposure._bitflag, ref_images._bitflag, new_images._bitflag, ref_exposures._bitflag, new_exposures._bitflag,
+# ).distinct().order_by(Image.id)

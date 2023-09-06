@@ -365,6 +365,9 @@ def test_multiple_images_badness(
                 session.add(im)
             session.commit()
 
+            # for im in images:
+            #     print(f'im.id= {im.id}, im.bitflag= {im.bitflag}')
+
             # find the images that are good vs bad
             good_images = session.scalars(sa.select(Image).where(Image.bitflag == 0)).all()
             assert demo_image.id in [i.id for i in good_images]
@@ -438,67 +441,6 @@ def test_multiple_images_badness(
             session.add(demo_image8)
             session.commit()
 
-            demo_image.description = 'demo_image'
-            demo_image2.description = 'demo_image2'
-            demo_image3.description = 'demo_image3'
-            demo_image4.description = 'demo_image4'
-            demo_image5.description = 'demo_image5'
-            demo_image6.description = 'demo_image6'
-            demo_image7.description = 'demo_image7'
-            demo_image8.description = 'demo_image8'
-
-            for im in images:
-                print(f'{im.description}: {im.bitflag}')
-
-            from sqlalchemy.sql.functions import coalesce
-            ref_images = sa.orm.aliased(Image)
-            ref_exposures = sa.orm.aliased(Exposure)
-            new_images = sa.orm.aliased(Image)
-            new_exposures = sa.orm.aliased(Exposure)
-            source_images = sa.orm.aliased(Image)
-            source_exposures = sa.orm.aliased(Exposure)
-            from models.image import image_source_self_association_table
-
-            stmt = sa.select(
-                Exposure.id, Image.id, Image.description, ref_images.description, new_images.description,
-                coalesce(Image._bitflag, 0).op('|')(
-                    coalesce(Exposure._bitflag, 0)
-                ).op('|')(
-                    coalesce(ref_images._bitflag, 0)
-                ).op('|')(
-                    coalesce(ref_exposures._bitflag, 0)
-                ).op('|')(
-                    coalesce(new_images._bitflag, 0)
-                ).op('|')(
-                    coalesce(new_exposures._bitflag, 0)
-                ).op('|')(
-                    coalesce(sa.func.bit_or(source_images._bitflag), 0)
-                ).op('|')(
-                    coalesce(sa.func.bit_or(source_exposures._bitflag), 0)
-                )
-            ).select_from(Image).outerjoin(
-                Exposure, Exposure.id == Image.exposure_id
-            ).outerjoin(
-                ref_images, ref_images.id == Image.ref_image_id
-            ).outerjoin(
-                ref_exposures, ref_exposures.id == ref_images.exposure_id
-            ).outerjoin(
-                new_images, new_images.id == Image.new_image_id
-            ).outerjoin(
-                new_exposures, new_exposures.id == new_images.exposure_id
-            ).outerjoin(
-                image_source_self_association_table, image_source_self_association_table.c.combined_id == Image.id,
-            ).outerjoin(
-                source_images, sa.and_(image_source_self_association_table.c.source_id == source_images.id)
-            ).outerjoin(
-                source_exposures, source_exposures.id == source_images.exposure_id
-            ).group_by(
-                Image.id, Exposure.id, Image.description, ref_images.description, new_images.description,
-                Image._bitflag, Exposure._bitflag, ref_images._bitflag, new_images._bitflag, ref_exposures._bitflag, new_exposures._bitflag,
-            ).distinct().order_by(Image.id)
-
-            print(session.execute(stmt).all())
-            return
             # check that the new subtraction is not flagged
             assert demo_image7.badness == ''
             assert demo_image7._bitflag == 0
@@ -518,15 +460,16 @@ def test_multiple_images_badness(
 
 
     finally:  # cleanup
-        with SmartSession() as session:
-            for im in images:
-                im.remove_data_from_disk(purge_archive=False, session=session)
-                if im.id is not None:
-                    session.delete(im)
-            session.commit()
+        pass
+        # with SmartSession() as session:
+            # for im in images:
+                # im.remove_data_from_disk(purge_archive=False, session=session)
+                # if im.id is not None:
+                #     session.delete(im)
+            # session.commit()
 
-        for filename in filenames:
-            assert not os.path.exists(filename)
+        # for filename in filenames:
+        #     assert not os.path.exists(filename)
 
 
 

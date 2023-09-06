@@ -39,9 +39,6 @@ def tests_setup_and_teardown():
     # print('Final teardown fixture executed! ')
 
 
-def inject_fixture(name, someparam):
-    globals()[name] = generate_fixture(someparam)
-
 def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
 
@@ -84,9 +81,9 @@ def provenance_base(code_version):
 
     yield p
 
-    with SmartSession() as session:
-        session.execute(sa.delete(Provenance).where(Provenance.id == pid))
-        session.commit()
+    # with SmartSession() as session:
+    #     session.execute(sa.delete(Provenance).where(Provenance.id == pid))
+    #     session.commit()
 
 
 @pytest.fixture
@@ -107,9 +104,9 @@ def provenance_extra(code_version, provenance_base):
 
     yield p
 
-    with SmartSession() as session:
-        session.execute(sa.delete(Provenance).where(Provenance.id == pid))
-        session.commit()
+    # with SmartSession() as session:
+    #     session.execute(sa.delete(Provenance).where(Provenance.id == pid))
+    #     session.commit()
 
 
 @pytest.fixture
@@ -144,9 +141,9 @@ def make_exposure_file(exposure):
     finally:
         with SmartSession() as session:
             exposure = session.merge(exposure)
-            if exposure.id is not None:
-                session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
-                session.commit()
+            # if exposure.id is not None:
+            #     session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
+            #     session.commit()
 
         if fullname is not None and os.path.isfile(fullname):
             os.remove(fullname)
@@ -235,14 +232,14 @@ def demo_image(exposure):
 
     with SmartSession() as session:
         im = session.merge(im)
-        if im.id is not None:
-            session.execute(sa.delete(Image).where(Image.id == im.id))
-            session.commit()
-        im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+        # if im.id is not None:
+        #     session.execute(sa.delete(Image).where(Image.id == im.id))
+        #     session.commit()
+        # im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
 
 
 # idea taken from: https://github.com/pytest-dev/pytest/issues/2424#issuecomment-333387206
-def generate_exposure():
+def generate_image():
 
     @pytest.fixture
     def new_image(exposure_factory):
@@ -253,18 +250,18 @@ def generate_exposure():
 
         yield im
 
-        with SmartSession() as session:
-            im = session.merge(im)
-            if im.id is not None:
-                session.execute(sa.delete(Image).where(Image.id == im.id))
-                session.commit()
-            im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+        # with SmartSession() as session:
+        #     im = session.merge(im)
+        #     if im.id is not None:
+        #         session.execute(sa.delete(Image).where(Image.id == im.id))
+        #         session.commit()
+        #     im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
 
     return new_image
 
 
 def inject_demo_image_fixture(image_name):
-    globals()[image_name] = generate_exposure()
+    globals()[image_name] = generate_image()
 
 
 for i in range(2, 10):
