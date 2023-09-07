@@ -2,6 +2,12 @@
 Here we put all the dictionaries and conversion functions for getting/setting enums and bitflags.
 """
 
+
+def c(keyword):
+    """Convert the key to something more compatible. """
+    return keyword.lower().replace(' ', '')
+
+
 # This is the master format dictionary, that contains all file types for
 # all data models. Each model will get a subset of this dictionary.
 file_format_dict = {
@@ -24,7 +30,7 @@ file_format_dict = {
 
 allowed_image_formats = ['fits', 'hdf5']
 image_format_dict = {k: v for k, v in file_format_dict.items() if v in allowed_image_formats}
-image_format_inverse = {v.lower().replace(' ', ''): k for k, v in image_format_dict.items()}
+image_format_inverse = {c(v): k for k, v in image_format_dict.items()}
 
 
 def image_format_converter(value):
@@ -38,9 +44,9 @@ def image_format_converter(value):
     If given None, will return None.
     """
     if isinstance(value, str):
-        if value.lower().replace(' ', '') not in image_format_inverse:
+        if c(value) not in image_format_inverse:
             raise ValueError(f'Image format must be one of {image_format_inverse.keys()}, not {value}')
-        return image_format_inverse[value]
+        return image_format_inverse[c(value)]
     elif isinstance(value, (int, float)):
         if value not in image_format_dict:
             raise ValueError(f'Image format integer key must be one of {image_format_dict.keys()}, not {value}')
@@ -53,7 +59,7 @@ def image_format_converter(value):
 
 allowed_cutout_formats = ['fits', 'hdf5', 'jpg', 'png']
 cutouts_format_dict = {k: v for k, v in file_format_dict.items() if v in allowed_cutout_formats}
-cutouts_format_inverse = {v.lower().replace(' ', ''): k for k, v in cutouts_format_dict.items()}
+cutouts_format_inverse = {c(v): k for k, v in cutouts_format_dict.items()}
 
 
 def cutouts_format_converter(value):
@@ -67,9 +73,9 @@ def cutouts_format_converter(value):
     If given None, will return None.
     """
     if isinstance(value, str):
-        if value.lower().replace(' ', '') not in cutouts_format_inverse:
+        if c(value) not in cutouts_format_inverse:
             raise ValueError(f'Cutouts format must be one of {cutouts_format_inverse.keys()}, not {value}')
-        return cutouts_format_inverse[value]
+        return cutouts_format_inverse[c(value)]
     elif isinstance(value, (int, float)):
         if value not in cutouts_format_dict:
             raise ValueError(f'Cutouts format integer key must be one of {cutouts_format_dict.keys()}, not {value}')
@@ -82,7 +88,7 @@ def cutouts_format_converter(value):
 
 allowed_source_list_formats = ['npy', 'csv', 'hdf5', 'parquet', 'fits']
 source_list_format_dict = {k: v for k, v in file_format_dict.items() if v in allowed_source_list_formats}
-source_list_format_inverse = {v.lower().replace(' ', ''): k for k, v in source_list_format_dict.items()}
+source_list_format_inverse = {c(v): k for k, v in source_list_format_dict.items()}
 
 
 def source_list_format_converter(value):
@@ -97,9 +103,9 @@ def source_list_format_converter(value):
     """
 
     if isinstance(value, str):
-        if value.lower().replace(' ', '') not in source_list_format_inverse:
+        if c(value) not in source_list_format_inverse:
             raise ValueError(f'Source list format must be one of {source_list_format_inverse.keys()}, not {value}')
-        return source_list_format_inverse[value]
+        return source_list_format_inverse[c(value)]
     elif isinstance(value, (int, float)):
         if value not in source_list_format_dict:
             raise ValueError(f'Source list format integer key must be one of {source_list_format_dict.keys()}, not {value}')
@@ -126,7 +132,7 @@ image_type_dict = {
     13: 'TwiFlat',
     14: 'ComTwiFlat',
 }
-image_type_inverse = {v.lower().replace(' ', ''): k for k, v in image_type_dict.items()}
+image_type_inverse = {c(v): k for k, v in image_type_dict.items()}
 
 
 def image_type_converter(value):
@@ -140,9 +146,9 @@ def image_type_converter(value):
     If given None, will return None.
     """
     if isinstance(value, str):
-        if value.lower().replace(' ', '') not in image_type_inverse:
+        if c(value) not in image_type_inverse:
             raise ValueError(f'Image type must be one of {image_type_inverse.keys()}, not {value}')
-        return image_type_inverse[value]
+        return image_type_inverse[c(value)]
     elif isinstance(value, (int, float)):
         if value not in image_type_dict:
             raise ValueError(f'Image type integer key must be one of {image_type_dict.keys()}, not {value}')
@@ -231,7 +237,7 @@ def string_to_bitflag(value, dictionary):
         output = 0
         for keyword in value.split(','):
             original_keyword = keyword
-            keyword = keyword.lower().replace(' ', '')
+            keyword = c(keyword)
             if keyword not in dictionary:
                 raise ValueError(f'Keyword "{original_keyword}" not recognized in dictionary')
             output += 2 ** dictionary[keyword]
@@ -246,7 +252,7 @@ image_badness_dict = {
     4: 'Bad Subtraction',
     5: 'Bright Sky',
 }
-image_badness_inverse = {v.lower().replace(' ', ''): k for k, v in image_badness_dict.items()}
+image_badness_inverse = {c(v): k for k, v in image_badness_dict.items()}
 
 # these are the ways a Cutouts object is allowed to be bad
 cutouts_badness_dict = {
@@ -257,7 +263,7 @@ cutouts_badness_dict = {
     25: 'Bad Pixel',
     26: 'Bleed Trail',
 }
-cutouts_badness_inverse = {v.lower().replace(' ', ''): k for k, v in cutouts_badness_dict.items()}
+cutouts_badness_inverse = {c(v): k for k, v in cutouts_badness_dict.items()}
 
 # these are the ways a SourceList object is allowed to be bad
 source_list_badness_dict = {
@@ -266,13 +272,13 @@ source_list_badness_dict = {
     43: 'Few Stars',
     44: 'Many Stars',
 }
-source_list_badness_inverse = {v.lower().replace(' ', ''): k for k, v in source_list_badness_dict.items()}
+source_list_badness_inverse = {c(v): k for k, v in source_list_badness_dict.items()}
 
 # join the badness:
 data_badness_dict = {0: 'Good'}
 data_badness_dict.update(image_badness_dict)
 data_badness_dict.update(cutouts_badness_dict)
 data_badness_dict.update(source_list_badness_dict)
-data_badness_inverse = {v.lower().replace(' ', ''): k for k, v in data_badness_dict.items()}
+data_badness_inverse = {c(v): k for k, v in data_badness_dict.items()}
 if 0 in data_badness_inverse:
     raise ValueError('Cannot have a badness bitflag of zero. This is reserved for good data.')
