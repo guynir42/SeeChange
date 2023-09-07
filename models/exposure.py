@@ -220,6 +220,43 @@ class Exposure(Base, FileOnDiskMixin, SpatiallyIndexed):
         doc='Name of the target object or field id. '
     )
 
+    sky_bkg = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc="Sky background level in counts per second per pixel. "
+    )
+
+    sky_rms = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc="Sky background RMS in counts per second per pixel. "
+    )
+
+    was_sky_sub = sa.Column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        doc="Whether this exposure was sky subtracted. "
+    )
+
+    psf_fwhm = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc="FWHM of the PSF in arcseconds. I.e., the seeing of this image. "
+    )
+
+    zero_point = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc="Zero point of the image. "
+    )
+
+    lim_mag = sa.Column(
+        sa.Float,
+        nullable=True,
+        doc="Limiting magnitude of the image. "
+    )
+
     def __init__(self, *args, **kwargs):
         """
         Initialize the exposure object.
