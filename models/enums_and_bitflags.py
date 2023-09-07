@@ -1,5 +1,5 @@
 """
-Here we put all the dictionaries and convertion functions for getting/setting enums and bitflags.
+Here we put all the dictionaries and conversion functions for getting/setting enums and bitflags.
 """
 
 # This is the master format dictionary, that contains all file types for
@@ -24,12 +24,21 @@ file_format_dict = {
 
 allowed_image_formats = ['fits', 'hdf5']
 image_format_dict = {k: v for k, v in file_format_dict.items() if v in allowed_image_formats}
-image_format_inverse = {v: k for k, v in image_format_dict.items()}
+image_format_inverse = {v.lower().replace(' ', ''): k for k, v in image_format_dict.items()}
 
 
 def image_format_converter(value):
+    """
+    Convert between an image format string (e.g., "fits" or "hdf5")
+    to the corresponding integer key (e.g., 1 or 2). If given a string,
+    will return the integer key, and if given a number (float or int)
+    will return the corresponding string.
+    String identification is case insensitive and ignores spaces.
+
+    If given None, will return None.
+    """
     if isinstance(value, str):
-        if value not in image_format_inverse:
+        if value.lower().replace(' ', '') not in image_format_inverse:
             raise ValueError(f'Image format must be one of {image_format_inverse.keys()}, not {value}')
         return image_format_inverse[value]
     elif isinstance(value, (int, float)):
@@ -44,12 +53,21 @@ def image_format_converter(value):
 
 allowed_cutout_formats = ['fits', 'hdf5', 'jpg', 'png']
 cutouts_format_dict = {k: v for k, v in file_format_dict.items() if v in allowed_cutout_formats}
-cutouts_format_inverse = {v: k for k, v in cutouts_format_dict.items()}
+cutouts_format_inverse = {v.lower().replace(' ', ''): k for k, v in cutouts_format_dict.items()}
 
 
 def cutouts_format_converter(value):
+    """
+    Convert between a cutouts format string (e.g., "fits" or "hdf5")
+    to the corresponding integer key (e.g., 1 or 2). If given a string,
+    will return the integer key, and if given a number (float or int)
+    will return the corresponding string.
+    String identification is case insensitive and ignores spaces.
+
+    If given None, will return None.
+    """
     if isinstance(value, str):
-        if value not in cutouts_format_inverse:
+        if value.lower().replace(' ', '') not in cutouts_format_inverse:
             raise ValueError(f'Cutouts format must be one of {cutouts_format_inverse.keys()}, not {value}')
         return cutouts_format_inverse[value]
     elif isinstance(value, (int, float)):
@@ -64,12 +82,22 @@ def cutouts_format_converter(value):
 
 allowed_source_list_formats = ['npy', 'csv', 'hdf5', 'parquet', 'fits']
 source_list_format_dict = {k: v for k, v in file_format_dict.items() if v in allowed_source_list_formats}
-source_list_format_inverse = {v: k for k, v in source_list_format_dict.items()}
+source_list_format_inverse = {v.lower().replace(' ', ''): k for k, v in source_list_format_dict.items()}
 
 
 def source_list_format_converter(value):
+    """
+    Convert between a source list format string (e.g., "fits" or "npy")
+    to the corresponding integer key (e.g., 1 or 9). If given a string,
+    will return the integer key, and if given a number (float or int)
+    will return the corresponding string.
+    String identification is case insensitive and ignores spaces.
+
+    If given None, will return None.
+    """
+
     if isinstance(value, str):
-        if value not in source_list_format_inverse:
+        if value.lower().replace(' ', '') not in source_list_format_inverse:
             raise ValueError(f'Source list format must be one of {source_list_format_inverse.keys()}, not {value}')
         return source_list_format_inverse[value]
     elif isinstance(value, (int, float)):
@@ -98,12 +126,21 @@ image_type_dict = {
     13: 'TwiFlat',
     14: 'ComTwiFlat',
 }
-image_type_inverse = {v: k for k, v in image_type_dict.items()}
+image_type_inverse = {v.lower().replace(' ', ''): k for k, v in image_type_dict.items()}
 
 
 def image_type_converter(value):
+    """
+    Convert between an image type string (e.g., "Sci" or "Diff")
+    to the corresponding integer key (e.g., 1 or 3). If given a string,
+    will return the integer key, and if given a number (float or int)
+    will return the corresponding string.
+    String identification is case insensitive, and ignores spaces.
+
+    If given None, will return None.
+    """
     if isinstance(value, str):
-        if value not in image_type_inverse:
+        if value.lower().replace(' ', '') not in image_type_inverse:
             raise ValueError(f'Image type must be one of {image_type_inverse.keys()}, not {value}')
         return image_type_inverse[value]
     elif isinstance(value, (int, float)):
@@ -201,6 +238,7 @@ def string_to_bitflag(value, dictionary):
         return output
 
 
+# these are the ways an Image or Exposure are allowed to be bad
 image_badness_dict = {
     1: 'Banding',
     2: 'Shaking',
@@ -210,6 +248,7 @@ image_badness_dict = {
 }
 image_badness_inverse = {v.lower().replace(' ', ''): k for k, v in image_badness_dict.items()}
 
+# these are the ways a Cutouts object is allowed to be bad
 cutouts_badness_dict = {
     21: 'Cosmic Ray',
     22: 'Ghost',
@@ -220,6 +259,7 @@ cutouts_badness_dict = {
 }
 cutouts_badness_inverse = {v.lower().replace(' ', ''): k for k, v in cutouts_badness_dict.items()}
 
+# these are the ways a SourceList object is allowed to be bad
 source_list_badness_dict = {
     41: 'X-Match Failed',
     42: 'Big Residuals',
