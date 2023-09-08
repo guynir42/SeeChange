@@ -124,6 +124,15 @@ using:
 git submodule update
 ```
 
+Note that you can just do 
+
+```bash
+git submodule update --init
+```
+
+from the root directory, which will also initialize any 
+submodules that have not been initialized yet.
+
 #### Setting up environment variables
 
 Some environmental variables are used by SeeChange.
