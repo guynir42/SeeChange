@@ -60,12 +60,12 @@ def test_source_list_bitflag(sources, demo_image, provenance_base, provenance_ex
             sources.badness = 'Banding'
 
         # add badness that works with source lists (e.g., cross-match failures)
-        sources.badness = 'few stars'
+        sources.badness = 'few sources'
         session.add(sources)
         session.commit()
 
         assert sources.bitflag == 2 ** 1 + 2 ** 3 + 2 ** 43
-        assert sources.badness == 'Banding, Saturation, Few Stars'
+        assert sources.badness == 'Banding, Saturation, Few Sources'
 
         # try to find this using the bitflag hybrid property
         sources4 = session.scalars(sa.select(SourceList).where(SourceList.bitflag == 2 ** 1 + 2 ** 3 + 2 ** 43)).all()
@@ -79,7 +79,7 @@ def test_source_list_bitflag(sources, demo_image, provenance_base, provenance_ex
         session.commit()
 
         assert demo_image.badness == 'Saturation'
-        assert sources.badness == 'Saturation, Few Stars'
+        assert sources.badness == 'Saturation, Few Sources'
 
         # check the database queries still work
         sources5 = session.scalars(sa.select(SourceList).where(SourceList.bitflag == 2 ** 3 + 2 ** 43)).all()

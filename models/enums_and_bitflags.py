@@ -269,8 +269,8 @@ cutouts_badness_inverse = {c(v): k for k, v in cutouts_badness_dict.items()}
 source_list_badness_dict = {
     41: 'X-Match Failed',
     42: 'Big Residuals',
-    43: 'Few Stars',
-    44: 'Many Stars',
+    43: 'Few Sources',
+    44: 'Many Sources',
 }
 source_list_badness_inverse = {c(v): k for k, v in source_list_badness_dict.items()}
 
