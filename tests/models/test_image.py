@@ -2,6 +2,7 @@ import os
 import pytest
 import re
 import hashlib
+import pathlib
 import uuid
 
 import numpy as np
@@ -30,6 +31,14 @@ def test_image_no_null_values(provenance_base):
         'filter': 'r',
         'ra': np.random.uniform(0, 360),
         'dec': np.random.uniform(-90, 90),
+        'ra_corner_00': 0,
+        'ra_corner_01': 0,
+        'ra_corner_10': 0,
+        'ra_corner_11': 0,
+        'dec_corner_00': 0,
+        'dec_corner_01': 0,
+        'dec_corner_10': 0,
+        'dec_corner_11': 0,
         'instrument': 'DemoInstrument',
         'telescope': 'DemoTelescope',
         'project': 'foo',
@@ -132,7 +141,7 @@ def test_image_archive_singlefile(demo_image, provenance_base, archive):
             with open( demo_image.get_fullpath( nofile=False ), 'rb' ) as ifp:
                 localmd5.update( ifp.read() )
             assert localmd5.hexdigest() == demo_image.md5sum.hex
-            
+
             # Make sure that the md5sum is properly saved to the database
             session.add( demo_image )
             session.commit()
@@ -180,7 +189,7 @@ def test_image_archive_multifile(demo_image, provenance_base, archive):
             assert demo_image.md5sum is None
             assert demo_image.md5sum_extensions == [ None, None ]
             demo_image.remove_data_from_disk( session=session )
-                    
+
             # Save to the archive
             demo_image.save()
             for ext, fullpath, md5sum in zip( demo_image.filepath_extensions,
@@ -222,7 +231,7 @@ def test_image_archive_multifile(demo_image, provenance_base, archive):
     finally:
         cfg.set_value( 'storage.images.single_file', single_fileness )
 
-                
+
 def test_image_enum_values(demo_image, provenance_base):
     with SmartSession() as session:
         demo_image.provenance = provenance_base
@@ -522,6 +531,183 @@ def test_image_coordinates():
     assert abs(image.ecllon - 111.838) < 0.01
     assert abs(image.gallat - 33.542) < 0.01
     assert abs(image.gallon - 160.922) < 0.01
+
+def test_image_cone_search( provenance_base ):
+    with SmartSession() as session:
+        image1 = None
+        image2 = None
+        image3 = None
+        image4 = None
+        try:
+            mjd = 60000.
+            endmjd = 60000.0007
+            kwargs = { 'mjd': 60000.,
+                       'end_mjd': 60000.0007,
+                       'format': 'fits',
+                       'exp_time': 60.48,
+                       'section_id': 'x',
+                       'project': 'x',
+                       'target': 'x',
+                       'instrument': 'x',
+                       'telescope': 'x',
+                       'filter': 'r',
+                       'ra_corner_00': 0,
+                       'ra_corner_01': 0,
+                       'ra_corner_10': 0,
+                       'ra_corner_11': 0,
+                       'dec_corner_00': 0,
+                       'dec_corner_01': 0,
+                       'dec_corner_10': 0,
+                       'dec_corner_11': 0,
+                      }
+            image1 = Image( 'one.fits', ra=120., dec=10., provenance=provenance_base, nofile=True, **kwargs )
+            image2 = Image( 'two.fits', ra=120.0002, dec=9.9998, provenance=provenance_base, nofile=True, **kwargs )
+            image3 = Image( 'three.fits', ra=120.0005, dec=10., provenance=provenance_base, nofile=True, **kwargs )
+            image4 = Image( 'four.fits', ra=60., dec=0., provenance=provenance_base, nofile=True, **kwargs )
+            session.add( image1 )
+            session.add( image2 )
+            session.add( image3 )
+            session.add( image4 )
+
+            sought = session.query( Image ).filter( Image.cone_search(120., 10., rad=1.02) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id, image2.id }.issubset( soughtids )
+            assert len( { image3.id, image4.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.cone_search(120., 10., rad=2.) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id, image2.id, image3.id }.issubset( soughtids )
+            assert len( { image4.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.cone_search(120., 10., 0.017, radunit='arcmin') ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id, image2.id }.issubset( soughtids )
+            assert len( { image3.id, image4.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.cone_search(120., 10., 0.0002833, radunit='degrees') ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id, image2.id }.issubset( soughtids )
+            assert len( { image3.id, image4.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.cone_search(120., 10., 4.9451e-6, radunit='radians') ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id, image2.id }.issubset( soughtids )
+            assert len( { image3.id, image4.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.cone_search(60, -10, 1.) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert len( { image1.id, image2.id, image3.id, image4.id } & soughtids ) == 0
+
+            with pytest.raises( ValueError, match='.*unknown radius unit' ):
+                sought = Image.cone_search( 0., 0., 1., 'undefined_unit' )
+        finally:
+            for i in [ image1, image2, image3, image4 ]:
+                if ( i is not None ) and sa.inspect( i ).persistent:
+                    session.delete( i )
+            session.commit()
+
+# Really, we should also do some speed tests, but that
+# is outside of the scope of the always-run tests.
+def test_four_corners( provenance_base ):
+
+    with SmartSession() as session:
+        image1 = None
+        image2 = None
+        image3 = None
+        image4 = None
+        try:
+            mjd = 60000.
+            endmjd = 60000.0007
+            kwargs = { 'mjd': 60000.,
+                       'end_mjd': 60000.0007,
+                       'format': 'fits',
+                       'exp_time': 60.48,
+                       'section_id': 'x',
+                       'project': 'x',
+                       'target': 'x',
+                       'instrument': 'x',
+                       'telescope': 'x',
+                       'filter': 'r',
+                      }
+            # RA numbers are made ugly from cos(dec).
+            # image1: centered on 120, 40, square to the sky
+            image1 = Image( 'one.fits', ra=120, dec=40.,
+                            ra_corner_00=119.86945927, ra_corner_01=119.86945927,
+                            ra_corner_10=120.13054073, ra_corner_11=120.13054073,
+                            dec_corner_00=39.9, dec_corner_01=40.1, dec_corner_10=39.9, dec_corner_11=40.1,
+                            provenance=provenance_base, nofile=True, **kwargs )
+            # image2: centered on 120, 40, at a 45° angle
+            image2 = Image( 'two.fits', ra=120, dec=40.,
+                            ra_corner_00=119.81538753, ra_corner_01=120, ra_corner_11=120.18461247, ra_corner_10=120,
+                            dec_corner_00=40, dec_corner_01=40.14142136, dec_corner_11=40, dec_corner_10=39.85857864,
+                            provenance=provenance_base, nofile=True, **kwargs )
+            # image3: centered offset by (0.025, 0.025) linear arcsec from 120, 40, square on sky
+            image3 = Image( 'three.fits', ra=120.03264714, dec=40.025,
+                            ra_corner_00=119.90210641, ra_corner_01=119.90210641,
+                            ra_corner_10=120.16318787, ra_corner_11=120.16318787,
+                            dec_corner_00=39.975, dec_corner_01=40.125, dec_corner_10=39.975, dec_corner_11=40.125,
+                            provenance=provenance_base, nofile=True, **kwargs )
+            # imagepoint and imagefar are used to test Image.containing and Image.find_containing,
+            # as Image is the only example of a SpatiallyIndexed thing we have so far.
+            # The corners don't matter for these given how they'll be used.
+            imagepoint = Image( 'point.fits', ra=119.88, dec=39.95, 
+                                ra_corner_00=-.001, ra_corner_01=0.001, ra_corner_10=-0.001,
+                                ra_corner_11=0.001, dec_corner_00=0, dec_corner_01=0, dec_corner_10=0, dec_corner_11=0,
+                                provenance=provenance_base, nofile=True, **kwargs )
+            imagefar = Image( 'far.fits', ra=30, dec=-10, 
+                                ra_corner_00=0, ra_corner_01=0, ra_corner_10=0,
+                              ra_corner_11=0, dec_corner_00=0, dec_corner_01=0, dec_corner_10=0, dec_corner_11=0,
+                                provenance=provenance_base, nofile=True, **kwargs )
+            session.add( image1 )
+            session.add( image2 )
+            session.add( image3 )
+            session.add( imagepoint )
+            session.add( imagefar )
+
+            sought = session.query( Image ).filter( Image.containing( 120, 40 ) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id, image2.id, image3.id }.issubset( soughtids )
+            assert len( { imagepoint.id, imagefar.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.containing( 119.88, 39.95 ) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id }.issubset( soughtids  )
+            assert len( { image2.id, image3.id, imagepoint.id, imagefar.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.containing( 120, 40.12 ) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image2.id, image3.id }.issubset( soughtids )
+            assert len( { image1.id, imagepoint.id, imagefar.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.containing( 120, 39.88 ) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image2.id }.issubset( soughtids )
+            assert len( { image1.id, image3.id, imagepoint.id, imagefar.id } & soughtids ) == 0
+
+            sought = Image.find_containing( imagepoint, session=session )
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id }.issubset( soughtids )
+            assert len( { image2.id, image3.id, imagepoint.id, imagefar.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.containing( 0, 0 ) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert len( { image1.id, image2.id, image3.id, imagepoint.id, imagefar.id } & soughtids ) == 0
+
+            sought = Image.find_containing( imagefar, session=session )
+            soughtids = set( [ s.id for s in sought ] )
+            assert len( { image1.id, image2.id, image3.id, imagepoint.id, imagefar.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.within( image1 ) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert { image1.id, image2.id, image3.id, imagepoint.id }.issubset( soughtids )
+            assert len( { imagefar.id } & soughtids ) == 0
+
+            sought = session.query( Image ).filter( Image.within( imagefar ) ).all()
+            soughtids = set( [ s.id for s in sought ] )
+            assert len( { image1.id, image2.id, image3.id, imagepoint.id, imagefar.id } & soughtids ) == 0
+
+        finally:
+            session.rollback()
 
 
 def test_image_from_exposure(exposure, provenance_base):
@@ -858,8 +1044,8 @@ def test_image_from_decam_exposure(decam_example_file, provenance_base):
     # assert im.dec == -26.25
     assert im.ra != e.ra
     assert im.dec != e.dec
-    assert im.ra == 116.23984530727733
-    assert im.dec == -26.410038282561345
+    assert im.ra == 116.32126671843677
+    assert im.dec == -26.337508447652503
     assert im.mjd == 59887.32121458
     assert im.end_mjd == 59887.32232569111
     assert im.exp_time == 96.0
