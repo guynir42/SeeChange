@@ -1,6 +1,7 @@
 import os
 import pytest
 import re
+import uuid
 
 import numpy as np
 from datetime import datetime
@@ -30,6 +31,7 @@ def test_exposure_no_null_values():
         'mjd': 58392.1,
         'exp_time': 30,
         'filter': 'r',
+        'md5sum': uuid.UUID('00000000-0000-0000-0000-000000000000'),
         'ra': np.random.uniform(0, 360),
         'dec': np.random.uniform(-90, 90),
         'instrument': 'DemoInstrument',
@@ -58,9 +60,12 @@ def test_exposure_no_null_values():
                     exposure_id = e.id
                 session.rollback()
 
-                if "check constraint" in str(exc.value):
+                if 'check constraint "exposures_filter_or_array_check"' in str(exc.value):
                     # the constraint on the filter is either filter or filter array must be not-null
                     colname = 'filter'
+                elif 'check constraint "exposures_md5sum_check"' in str(exc.value):
+                    # the constraint on the md5sum is that it must be not-null or md5sum_extensions must be non-null
+                    colname = 'md5sum'
                 else:
                     # a constraint on a column being not-null was violated
                     match_obj = re.search(expr, str(exc.value))
@@ -165,19 +170,23 @@ def test_exposure_load_demo_instrument_data(exposure):
 
 
 def test_exposure_comes_loaded_with_instrument_from_db(exposure):
-    with SmartSession() as session:
-        session.add(exposure)
-        session.commit()
-        eid = exposure.id
+    try:
+        with SmartSession() as session:
+            exposure.md5sum = uuid.uuid4()  # fake adding a file by making a random md5sum
+            session.add(exposure)
+            session.commit()
+            eid = exposure.id
 
-    assert eid is not None
+        assert eid is not None
 
-    with SmartSession() as session:
-        e2 = session.scalars(sa.select(Exposure).where(Exposure.id == eid)).first()
-        assert e2 is not None
-        assert e2.instrument_object is not None
-        assert isinstance(e2.instrument_object, DemoInstrument)
-        assert e2.instrument_object.sections is not None
+        with SmartSession() as session:
+            e2 = session.scalars(sa.select(Exposure).where(Exposure.id == eid)).first()
+            assert e2 is not None
+            assert e2.instrument_object is not None
+            assert isinstance(e2.instrument_object, DemoInstrument)
+            assert e2.instrument_object.sections is not None
+    finally:
+        pass
 
 
 def test_exposure_spatial_indexing(exposure):
@@ -193,7 +202,8 @@ def test_decam_exposure(decam_example_file):
         session.execute(sa.delete(Exposure).where(Exposure.filepath == decam_example_file_short))
         session.commit()
 
-    e = Exposure(decam_example_file)
+    # md5sum is spoofed as we don't have this file saved to archive
+    e = Exposure(decam_example_file, md5sum=uuid.uuid4())
 
     assert e.instrument == 'DECam'
     assert isinstance(e.instrument_object, DECam)

@@ -131,6 +131,7 @@ def exposure_factory():
             project='foo',
             target=rnd_str(6),
             nofile=True,
+            md5sum=uuid.uuid4(),  # this should be done when we clean up the exposure factory a little more
         )
         return e
 
@@ -216,6 +217,7 @@ def decam_example_exposure(decam_example_file):
         session.commit()
 
     exposure = Exposure(decam_example_file)
+    exposure.md5sum = uuid.uuid4()  # spoof the md5 sum
     return exposure
 
 
@@ -223,6 +225,7 @@ def decam_example_exposure(decam_example_file):
 def decam_example_image(decam_example_exposure):
     image = Image.from_exposure(decam_example_exposure, section_id='N1')
     image.data = image.raw_data.astype(np.float32)  # TODO: add bias/flat corrections at some point
+    image.md5sum = uuid.uuid4()  # spoof the md5 sum
     return image
 
 
@@ -231,6 +234,63 @@ def decam_small_image(decam_example_image):
     image = decam_example_image
     image.data = image.data[256:256+512, 256:256+512].copy()  # make it C-contiguous
     return image
+
+
+class ImageCleanup:
+    """
+    Helper function that allows you to take an Image object
+    with fake data (for testing) and save it to disk,
+    while also making sure that the data is removed from disk
+    when the object goes out of scope.
+
+    Usage:
+    >> im_clean = ImageCleanup.save_image(image)
+    at end of test the im_clean goes out of scope and removes the file
+    """
+
+    @classmethod
+    def save_image(cls, image, archive=False):
+        """
+        Save the image to disk, and return an ImageCleanup object.
+
+        Parameters
+        ----------
+        image: models.image.Image
+            The image to save (that is used to call remove_data_from_disk)
+        archive:
+            Whether to save to the archive or not. Default is False.
+            Controls the save(no_archive) flag and the delete_from_disk(purge_archive) flag.
+
+        Returns
+        -------
+        ImageCleanup:
+            An object that will remove the image from disk when it goes out of scope.
+            This should be put into a variable that goes out of scope at the end of the test.
+        """
+        if image.data is None:
+            if image.raw_data is None:
+                image.raw_data = np.random.uniform(0, 100, size=(100, 100))
+            image.data = np.float32(image.raw_data)
+
+        if image.instrument is None:
+            image.instrument = 'DemoInstrument'
+
+        if image._raw_header is None:
+            image._raw_header = {}
+
+        image.save(no_archive=not archive)
+
+        if not archive:
+            image.md5sum = uuid.uuid4()  # spoof the md5 sum
+        return cls(image, archive=archive)  # don't use this, but let it sit there until going out of scope of the test
+
+    def __init__(self, image, archive=False):
+        self.image = image
+        self.archive = archive
+
+    def __del__(self):
+        # print('removing file at end of test!')
+        self.image.remove_data_from_disk(purge_archive=self.archive)
 
 
 @pytest.fixture
@@ -243,7 +303,7 @@ def demo_image(exposure):
     try:
         with SmartSession() as session:
             im = session.merge(im)
-            im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+            im.remove_data_from_disk(remove_folders=True, purge_archive=True)
             if im.id is not None:
                 session.execute(sa.delete(Image).where(Image.id == im.id))
                 session.commit()
@@ -266,7 +326,7 @@ def generate_image():
 
         with SmartSession() as session:
             im = session.merge(im)
-            im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+            im.remove_data_from_disk(remove_folders=True, purge_archive=True)
             if im.id is not None:
                 session.execute(sa.delete(Image).where(Image.id == im.id))
                 session.commit()
@@ -338,11 +398,11 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
                 ref = ref_entry.image
                 for im in ref.source_images:
                     exp = im.exposure
-                    exp.remove_data_from_disk(purge_archive=True, session=session)
-                    im.remove_data_from_disk(purge_archive=True, session=session)
+                    exp.remove_data_from_disk(purge_archive=True)
+                    im.remove_data_from_disk(purge_archive=True)
                     session.delete(exp)
                     session.delete(im)
-                ref.remove_data_from_disk(purge_archive=True, session=session)
+                ref.remove_data_from_disk(purge_archive=True)
                 session.delete(ref)  # should also delete ref_entry
 
                 session.commit()
@@ -371,7 +431,7 @@ def sources(demo_image):
     try:
         with SmartSession() as session:
             s = session.merge(s)
-            s.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
+            s.remove_data_from_disk(remove_folders=True, purge_archive=True)
             if s.id is not None:
                 session.execute(sa.delete(SourceList).where(SourceList.id == s.id))
                 session.commit()

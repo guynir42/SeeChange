@@ -12,7 +12,7 @@ from astropy.coordinates import SkyCoord
 
 import sqlalchemy as sa
 from sqlalchemy import func, orm
-
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.ext.hybrid import hybrid_method
@@ -280,10 +280,8 @@ class FileOnDiskMixin():
     the three files image.fits.fz, image.mask.fits.fz, and
     image.weight.fz are all associated with this entry.  When
     filepath_extensions is non-null, md5sum should be null, and
-    md5sum_extensions is an array with the same length as
-    filepath_extensions.  (For extension files that have not yet been
-    saved to the archive, that element of the md5sum_etensions array is
-    null.)
+    md5sum_extensions is a dictionary keyed to filepath_extensions.
+    If none of the extensions have been saved, this column will be null.
 
     Saving data:
 
@@ -388,10 +386,10 @@ class FileOnDiskMixin():
     )
 
     md5sum_extensions = sa.Column(
-        sa.ARRAY(sqlUUID(as_uuid=True)),
+        JSONB,
         nullable=True,
         default=None,
-        doc="md5sum of extension files; must have same number of elements as filepath_extensions"
+        doc="md5sum of extension files; each field is keyed to one of the filepath_extensions"
     )
 
     __table_args__ = (
@@ -595,15 +593,13 @@ class FileOnDiskMixin():
             md5sum = self.md5sum.hex if self.md5sum is not None else None
         else:
             found = False
-            try:
-                extdex = self.filepath_extensions.index( ext )
-            except ValueError:
+            if ext not in self.filepath_extensions:
                 raise ValueError(f"Unknown extension {ext} for {fname}" )
-            if (self.md5sum_extensions is None ) or ( extdex >= len(self.md5sum_extensions) ):
+            if (self.md5sum_extensions is None ) or ( ext not in self.md5sum_extensions ):
                 md5sum = None
             else:
-                md5sum = self.md5sum_extensions[extdex]
-                md5sum = None if md5sum is None else md5sum.hex
+                md5sum = self.md5sum_extensions[ext]
+                md5sum = None if md5sum is None else md5sum
             fname += ext
 
         downloaded = False
@@ -655,9 +651,9 @@ class FileOnDiskMixin():
                   if overwrite = False
                       if exists_ok = True, assume existing file is right
             ARCHIVE
-               If self.md5sum (or the appropriate entry in
-               md5sum_extensions) is null, then always upload to the
-               archive as long as no_archive is False). Otherwise,
+               If self.md5sum is null (or the appropriate entry in
+               md5sum_extensions is missing), then always upload to the
+               archive as long as no_archive is False. Otherwise,
                verify_md5 modifies the behavior;
                verify_md5 = True
                  If self.md5sum (or the appropriate entry in
@@ -707,58 +703,20 @@ class FileOnDiskMixin():
         # or writing files when not necessary since I/O tends to be much
         # more expensive than processing.)
 
-        # First : figure out if this is an extension or not,
-        #   and make sure that's consistent with the object.
-        # If it is:
-        #   Find the index into the extensions array for
-        #   this extension, or append to the array if
-        #   it's a new extension that doesn't already exist.
-        #   Set the variables curextensions and extmd5s to lists with
-        #   extensions and md5sums of extension files,
-        #   initially copied from self.filepath_extensions and
-        #   self.md5sum_extensions, and modified if necessary
-        #   with the saved file.  extensiondex holds the index
-        #   into both of these arrays for the current extension.
-        # else:
-        #   Set curextions, extmd5s, and extensiondex to None.
+        # make copies if these are not None:
+        curextensions = list(self.filepath_extensions) if self.filepath_extensions is not None else None
+        extmd5s = dict(self.md5sum_extensions) if self.md5sum_extensions is not None else None
 
-        # We will either replace these two variables with empty lists,
-        #  or make a copy (using list()).  The reason for this: we don't
-        #  want to directly modify the lists in self until the saving is
-        #  done.  That way, self doesn't get mucked up if this function
-        #  exceptions out.
-        curextensions = self.filepath_extensions
-        extmd5s = self.md5sum_extensions
-
-        extensiondex = None
-        if extension is None:
-            if curextensions is not None:
-                raise RuntimeError( "Tried to save a non-extension file, but this file has extensions" )
-            if extmd5s is not None:
-                raise RuntimeError( "Data integrity error; filepath_extensions is null, "
-                                    "but md5sum_extensions isn't." )
-        else:
+        # make sure curextensions is a list with at least this new extension
+        # and that extmd5s is a dict with at least this new extension
+        if extension is not None:
             if curextensions is None:
-                if extmd5s is not None:
-                    raise RuntimeError( "Data integrity error; filepath_extensions is null, "
-                                        "but md5sum_extensions isn't." )
-                curextensions = []
-                extmd5s = []
+                curextensions = [extension]
             else:
-                if extmd5s is None:
-                    raise RuntimeError( "Data integrity error; filepath_extensions is not null, "
-                                        "but md5sum_extensions is" )
-                curextensions = list(curextensions)
-                extmd5s = list(extmd5s)
-            if len(curextensions) != len(extmd5s):
-                raise RuntimeError( f"Data integrity error; len(md5sum_extensions)={len(extmd5s)}, "
-                                    f"but len(filepath_extensions)={len(curextensions)}" )
-            try:
-                extensiondex = curextensions.index( extension )
-            except ValueError:
-                curextensions.append( extension )
-                extmd5s.append( None )
-                extensiondex = len(curextensions) - 1
+                if extension not in curextensions:
+                    curextensions.append(extension)
+            if extmd5s is None:
+                extmd5s = { extension: None }
 
         # relpath holds the path of the file relative to the data store root
         # origmd5 holds the md5sum (hashlib.hash object) of the original file,
@@ -842,8 +800,11 @@ class FileOnDiskMixin():
                 origmd5 = hashlib.md5()
                 with open( localpath, "rb" ) as ifp:
                     origmd5.update( ifp.read() )
-            if curextensions is not None:
-                extmd5s[ extensiondex ] = UUID( origmd5.hexdigest() )
+
+            if extension is not None:
+                if extmd5s is None:
+                    extmd5s = {}
+                extmd5s[ extension ] = origmd5.hexdigest()
                 self.filepath_extensions = curextensions
                 self.md5sum_extensions = extmd5s
             else:
@@ -852,14 +813,17 @@ class FileOnDiskMixin():
 
         # This is the case where there *is* an archive, but the no_archive option was passed
         if no_archive:
-            if curextensions is not None:
+            if extension is not None:
                 self.filepath_extensions = curextensions
-                self.md5sum_extensions = extmd5s
+                # self.md5sum_extensions = extmd5s
             return
 
         # The rest of this deals with the archive
 
-        archivemd5 = self.md5sum if extension is None else extmd5s[extensiondex]
+        if extension is None:
+            archivemd5 = self.md5sum.hex if self.md5sum is not None else None
+        else:
+            archivemd5 = extmd5s.get(extension, None)
 
         mustupload = False
         if archivemd5 is None:
@@ -878,7 +842,7 @@ class FileOnDiskMixin():
                         with open( localpath, "rb" ) as ifp:
                             data = ifp.read()
                     origmd5.update( data )
-                if origmd5.hexdigest() == archivemd5.hex:
+                if origmd5.hexdigest() == archivemd5:
                     _logger.debug( f"Archive md5sum for {self.filepath} matches saved data, not reuploading." )
                 else:
                     if overwrite:
@@ -890,20 +854,25 @@ class FileOnDiskMixin():
 
         if mustupload:
             remmd5 = self.archive.upload( localpath, relpath.parent, relpath.name, overwrite=overwrite, md5=origmd5 )
-            remmd5 = UUID( remmd5 )
             if curextensions is not None:
-                extmd5s[extensiondex] = remmd5
+                extmd5s[extension] = remmd5
                 self.md5sum = None
                 self.filepath_extensions = curextensions
                 self.md5sum_extensions = extmd5s
             else:
-                self.md5sum = remmd5
+                self.md5sum = UUID( remmd5 )
 
-    def remove_data_from_disk(self, remove_folders=True, purge_archive=False, session=None, nocommit=False):
+    def remove_data_from_disk(self, remove_folders=True, purge_archive=False):
 
         """Delete the data from disk, if it exists.
         If remove_folders=True, will also remove any folders
         if they are empty after the deletion.
+
+        It is the responsibility of the caller to make sure
+        these changes (i.e., the nullifying of the md5sums)
+        is also saved to the DB, or this entire object can be deleted
+        If not, there would be database objects without a corresponding
+        file on local disk / archive and that's not good!
 
         Parameters
         ----------
@@ -912,23 +881,8 @@ class FileOnDiskMixin():
             associated to this object, if they are empty.
         purge_archive: bool
             If True, will also remove these files from the archive.
-            Make this True when deleteing a file from the database. 
+            Make this True when deleting a file from the database.
             Make this False when you're just cleaning up local storage.
-        session: an sqlalchemy session, or None
-            Database session -- IMPORTANT: if you call this method
-            when a database session has a transaction in progress,
-            pass that session here, otherwise you'll likely get
-            database deadlocks.
-        nocommit: bool
-            Don't commit the md5sum changes to the database. WARNING:
-            only use this if the calling function is going to commit the
-            self object to the database shortly after calling this
-            method!  Otherwise, the database will get out of sync from
-            the reality of the archive.  This argument is here so that
-            this method may be called inside a database transaction that
-            is doing things that would lead to problems (e.g. deleting
-            some things that other things that won't be deleted until
-            later refer to via foreign keys).
 
         """
         if self.filepath is None:
@@ -952,13 +906,12 @@ class FileOnDiskMixin():
                 for ext in self.filepath_extensions:
                     self.archive.delete( f"{self.filepath}{ext}", okifmissing=True )
             self.md5sum = None
-            if self.filepath_extensions is not None:
-                self.md5sum_extensions = [ None for i in range(len(self.filepath_extensions)) ]
-            # If this image is in the database, make sure the database md5sum fields are updated
-            if not nocommit:
-                with SmartSession(session) as smsess:
-                    safe_merge( smsess, self )
-                    smsess.commit()
+            self.md5sum_extensions = None
+            # It is the responsibility of the caller to make sure
+            # these changes (i.e., the nullifying of the md5sums)
+            # is also saved to the DB, or this entire object can be deleted
+            # If not, there would be database objects without a corresponding
+            # file on local disk / archive and that's not good!
 
 
 def safe_mkdir(path):
