@@ -149,7 +149,7 @@ def make_exposure_file(exposure):
     try:
         with SmartSession() as session:
             exposure = session.merge(exposure)
-            if exposure.id is not None:
+            if sa.inspect( exposure ).persistent:
                 session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
                 session.commit()
 
@@ -290,7 +290,10 @@ class ImageCleanup:
 
     def __del__(self):
         # print('removing file at end of test!')
-        self.image.remove_data_from_disk(purge_archive=self.archive)
+        try:
+            self.image.remove_data_from_disk(purge_archive=self.archive)
+        except:
+            pass
 
 
 @pytest.fixture
@@ -304,7 +307,7 @@ def demo_image(exposure):
         with SmartSession() as session:
             im = session.merge(im)
             im.remove_data_from_disk(remove_folders=True, purge_archive=True)
-            if im.id is not None:
+            if sa.inspect( im ).persistent:
                 session.execute(sa.delete(Image).where(Image.id == im.id))
                 session.commit()
 
@@ -327,7 +330,7 @@ def generate_image():
         with SmartSession() as session:
             im = session.merge(im)
             im.remove_data_from_disk(remove_folders=True, purge_archive=True)
-            if im.id is not None:
+            if sa.inspect( im ).persistent:
                 session.execute(sa.delete(Image).where(Image.id == im.id))
                 session.commit()
 
@@ -432,7 +435,7 @@ def sources(demo_image):
         with SmartSession() as session:
             s = session.merge(s)
             s.remove_data_from_disk(remove_folders=True, purge_archive=True)
-            if s.id is not None:
+            if sa.inspect( s ).persistent:
                 session.execute(sa.delete(SourceList).where(SourceList.id == s.id))
                 session.commit()
     except Exception as e:

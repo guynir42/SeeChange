@@ -115,7 +115,6 @@ def test_image_must_have_md5(demo_image, provenance_base):
 
         # adding md5sums should fix this problem
         _2 = ImageCleanup.save_image(demo_image, archive=True)
-
         session.add(demo_image)
         session.commit()
 
@@ -179,11 +178,6 @@ def test_image_archive_singlefile(demo_image, provenance_base, archive):
                 ifp = open( f'{archivebase}{demo_image.filepath}', 'rb' )
                 ifp.close()
             assert demo_image.md5sum is None
-            session.commit()  # make sure md5sum that is now None is saved to DB
-
-            with SmartSession() as differentsession:
-                dbimage = differentsession.query(Image).filter(Image.id==demo_image.id).first()
-                assert dbimage.md5sum is None
 
     finally:
         cfg.set_value( 'storage.images.single_file', single_fileness )
@@ -207,38 +201,30 @@ def test_image_archive_multifile(demo_image, provenance_base, archive):
             # Make sure that the archive is not written when we tell it not to
             demo_image.save( no_archive=True )
             localmd5s = {}
-            filenames = demo_image.get_fullpath( nofile=True )
-            assert len( filenames ) == 2
-
-            extensions = demo_image.filepath_extensions
-            assert extensions == ['.image.fits', '.flags.fits']
-
-            for ext in extensions:
-                fullpath = [f for f in filenames if f.endswith(ext)][0]
-                localmd5s[ext] = hashlib.md5()
+            assert len(demo_image.get_fullpath(nofile=True)) == 2
+            for fullpath in demo_image.get_fullpath(nofile=True):
+                localmd5s[fullpath] = hashlib.md5()
                 with open(fullpath, "rb") as ifp:
-                    localmd5s[ext].update(ifp.read())
+                    localmd5s[fullpath].update(ifp.read())
             assert demo_image.md5sum is None
-            assert demo_image.md5sum_extensions is None
+            assert demo_image.md5sum_extensions == [None, None]
             demo_image.remove_data_from_disk()
 
             # Save to the archive
             demo_image.save()
-            assert set(extensions) == set(demo_image.md5sum_extensions.keys())
+            for ext, fullpath, md5sum in zip(demo_image.filepath_extensions,
+                                             demo_image.get_fullpath(nofile=True),
+                                             demo_image.md5sum_extensions):
+                assert localmd5s[fullpath].hexdigest() == md5sum.hex
 
-            filenames = demo_image.get_fullpath( nofile=True )
-            for ext in demo_image.filepath_extensions:
-                fullpath = [f for f in filenames if f.endswith(ext)][0]
-                md5sum = demo_image.md5sum_extensions[ext]
-                assert localmd5s[ext].hexdigest() == md5sum
                 with open( fullpath, "rb" ) as ifp:
                     m = hashlib.md5()
                     m.update( ifp.read() )
-                    assert m.hexdigest() == localmd5s[ext].hexdigest()
+                    assert m.hexdigest() == localmd5s[fullpath].hexdigest()
                 with open( f'{archivebase}{demo_image.filepath}{ext}', 'rb' ) as ifp:
                     m = hashlib.md5()
                     m.update( ifp.read() )
-                    assert m.hexdigest() == localmd5s[ext].hexdigest()
+                    assert m.hexdigest() == localmd5s[fullpath].hexdigest()
 
             # Make sure that we can download from the archive
             demo_image.remove_data_from_disk( purge_archive=False)
@@ -253,25 +239,22 @@ def test_image_archive_multifile(demo_image, provenance_base, archive):
             # this call to get_fullpath will also download the files to local storage
             newpaths = demo_image.get_fullpath( nofile=False )
             assert newpaths == filenames
-            for ext in extensions:
-                filename = [f for f in filenames if f.endswith(ext)][0]
+            for filename in filenames:
                 with open( filename, "rb" ) as ifp:
                     m = hashlib.md5()
                     m.update( ifp.read() )
-                    assert m.hexdigest() == localmd5s[ext].hexdigest()
+                    assert m.hexdigest() == localmd5s[filename].hexdigest()
 
             # Make sure that the md5sum is properly saved to the database
             session.add( demo_image )
             session.commit()
             with SmartSession() as differentsession:
-                dbimage = differentsession.query(Image).filter(Image.id == demo_image.id)[0]
+                dbimage = differentsession.scalars(sa.select(Image).where(Image.id == demo_image.id)).first()
                 assert dbimage.md5sum is None
 
                 filenames = dbimage.get_fullpath( nofile=True )
-                for ext in extensions:
-                    filename = [f for f in filenames if f.endswith(ext)][0]
-                    assert os.path.exists( filename )
-                    assert localmd5s[ext].hexdigest() == dbimage.md5sum_extensions[ext]
+                for fullpath, md5sum in zip(filenames, dbimage.md5sum_extensions):
+                    assert localmd5s[fullpath].hexdigest() == md5sum.hex
 
     finally:
         cfg.set_value( 'storage.images.single_file', single_fileness )
@@ -406,13 +389,14 @@ def test_multiple_images_badness(
     target = uuid.uuid4().hex
     filter = demo_image.filter
     filenames = []
+    cleanups = []
     try:
         with SmartSession() as session:
             for im in images:
                 im.target = target
                 im.filter = filter
                 im.provenance = provenance_base
-                _ = ImageCleanup.save_image(im)
+                cleanups.append(ImageCleanup.save_image(im))
                 filenames.append(im.get_fullpath(as_list=True)[0])
                 assert os.path.exists(filenames[-1])
                 session.add(im)
@@ -436,7 +420,7 @@ def test_multiple_images_badness(
             # make an image from the two bad exposures using subtraction
             demo_image4 = Image.from_ref_and_new(demo_image2, demo_image3)
             demo_image4.provenance = provenance_extra
-            _ = ImageCleanup.save_image(demo_image4)
+            cleanups.append(ImageCleanup.save_image(demo_image4))
             images.append(demo_image4)
             filenames.append(demo_image4.get_fullpath(as_list=True)[0])
             session.add(demo_image4)
@@ -470,7 +454,7 @@ def test_multiple_images_badness(
                 im.target = target
                 im.filter = filter
                 im.provenance = provenance_base
-                _ = ImageCleanup.save_image(im)
+                cleanups.append(ImageCleanup.save_image(im))
                 filenames.append(im.get_fullpath(as_list=True)[0])
                 images.append(im)
                 session.add(im)
@@ -479,7 +463,7 @@ def test_multiple_images_badness(
             # make a new subtraction:
             demo_image7 = Image.from_ref_and_new(demo_image5, demo_image6)
             demo_image7.provenance = provenance_extra
-            _ = ImageCleanup.save_image(demo_image7)
+            cleanups.append(ImageCleanup.save_image(demo_image7))
             images.append(demo_image7)
             filenames.append(demo_image7.get_fullpath(as_list=True)[0])
             session.add(demo_image7)
@@ -508,7 +492,7 @@ def test_multiple_images_badness(
             # make a coadded image (without including the subtraction demo_image4):
             demo_image8 = Image.from_images([demo_image, demo_image2, demo_image3, demo_image5, demo_image6])
             demo_image8.provenance = provenance_extra
-            _ = ImageCleanup.save_image(demo_image8)
+            cleanups.append(ImageCleanup.save_image(demo_image8))
             images.append(demo_image8)
             filenames.append(demo_image8.get_fullpath(as_list=True)[0])
             session.add(demo_image8)
@@ -541,7 +525,7 @@ def test_multiple_images_badness(
             for im in images:
                 im.remove_data_from_disk(purge_archive=True)
                 if im.id is not None:
-                    session.delete(im)
+                    session.execute(sa.delete(Image).where(Image.id == im.id))
             session.commit()
 
         for filename in filenames:

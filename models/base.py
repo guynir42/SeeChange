@@ -394,12 +394,16 @@ class FileOnDiskMixin:
         doc="md5sum of extension files; must have same number of elements as filepath_extensions"
     )
 
-    __table_args__ = (
-        CheckConstraint(
-            sqltext='NOT(md5sum IS NULL AND md5sum_extensions IS NULL)',
-            name='md5sum_or_md5sum_extensions_check'
-        ),
-    )
+    # ref: https://docs.sqlalchemy.org/en/20/orm/declarative_mixins.html#creating-indexes-with-mixins
+    @declared_attr
+    def __table_args__(cls):
+        return (
+            CheckConstraint(
+                sqltext='NOT(md5sum IS NULL AND '
+                        '(md5sum_extensions IS NULL OR array_position(md5sum_extensions, NULL) IS NOT NULL))',
+                name=f'{cls.__tablename__}_md5sum_check'
+            ),
+        )
 
     def __init__(self, *args, **kwargs):
         """
@@ -632,7 +636,7 @@ class FileOnDiskMixin:
     def save(self, data, extension=None, overwrite=True, exists_ok=True, verify_md5=True, no_archive=False ):
         """Save a file to disk, and to the archive.
 
-        Parametrs
+        Parameters
         ---------
         data: bytes, string, or Path
           The data to be saved
@@ -947,6 +951,8 @@ class FileOnDiskMixin:
                     self.archive.delete( f"{self.filepath}{ext}", okifmissing=True )
             self.md5sum = None
             self.md5sum_extensions = None
+            self.filepath_extensions = None
+            self.filepath = None
             # It is the responsibility of the caller to make sure
             # these changes (i.e., the nullifying of the md5sums)
             # is also saved to the DB, or this entire object can be deleted
