@@ -389,7 +389,7 @@ class FileOnDiskMixin():
         JSONB,
         nullable=True,
         default=None,
-        doc="md5sum of extension files; each field is keyed to one of the filepath_extensions"
+        doc="md5sum of extension files; a dictionary with one key for each of filepath_extensions"
     )
 
     __table_args__ = (
