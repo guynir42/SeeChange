@@ -249,7 +249,7 @@ class ImageCleanup:
     """
 
     @classmethod
-    def save_image(cls, image, archive=False):
+    def save_image(cls, image, archive=True):
         """
         Save the image to disk, and return an ImageCleanup object.
 
@@ -258,7 +258,7 @@ class ImageCleanup:
         image: models.image.Image
             The image to save (that is used to call remove_data_from_disk)
         archive:
-            Whether to save to the archive or not. Default is False.
+            Whether to save to the archive or not. Default is True.
             Controls the save(no_archive) flag and the delete_from_disk(purge_archive) flag.
 
         Returns
@@ -280,11 +280,11 @@ class ImageCleanup:
 
         image.save(no_archive=not archive)
 
-        if not archive:
-            image.md5sum = uuid.uuid4()  # spoof the md5 sum
+        # if not archive:
+        #     image.md5sum = uuid.uuid4()  # spoof the md5 sum
         return cls(image, archive=archive)  # don't use this, but let it sit there until going out of scope of the test
 
-    def __init__(self, image, archive=False):
+    def __init__(self, image, archive=True):
         self.image = image
         self.archive = archive
 

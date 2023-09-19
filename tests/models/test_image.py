@@ -114,9 +114,7 @@ def test_image_must_have_md5(demo_image, provenance_base):
         session.rollback()
 
         # adding md5sums should fix this problem
-        if demo_image.exposure.md5sum is None:
-            demo_image.exposure.md5sum = uuid.uuid4()
-        demo_image.md5sum = uuid.uuid4()
+        _2 = ImageCleanup.save_image(demo_image, archive=True)
 
         session.add(demo_image)
         session.commit()
@@ -285,8 +283,7 @@ def test_image_enum_values(demo_image, provenance_base):
         with pytest.raises(RuntimeError, match='The image data is not loaded. Cannot save.'):
             demo_image.save( no_archive=True )
 
-        _ = ImageCleanup.save_image(demo_image, archive=False)
-        demo_image.md5sum = uuid.uuid4()
+        _ = ImageCleanup.save_image(demo_image, archive=True)
         data_filename = demo_image.get_fullpath(as_list=True)[0]
         assert os.path.exists(data_filename)
 
@@ -338,6 +335,7 @@ def test_image_enum_values(demo_image, provenance_base):
             assert demo_image.id not in [i.id for i in images]
 
         finally:
+            demo_image.remove_data_from_disk(purge_archive=True)
             if data_filename is not None and os.path.exists(data_filename):
                 os.remove(data_filename)
                 folder = os.path.dirname(data_filename)
@@ -414,7 +412,7 @@ def test_multiple_images_badness(
                 im.target = target
                 im.filter = filter
                 im.provenance = provenance_base
-                _ = ImageCleanup.save_image(im, archive=False)
+                _ = ImageCleanup.save_image(im)
                 filenames.append(im.get_fullpath(as_list=True)[0])
                 assert os.path.exists(filenames[-1])
                 session.add(im)
@@ -438,7 +436,7 @@ def test_multiple_images_badness(
             # make an image from the two bad exposures using subtraction
             demo_image4 = Image.from_ref_and_new(demo_image2, demo_image3)
             demo_image4.provenance = provenance_extra
-            _ = ImageCleanup.save_image(demo_image4, archive=False)
+            _ = ImageCleanup.save_image(demo_image4)
             images.append(demo_image4)
             filenames.append(demo_image4.get_fullpath(as_list=True)[0])
             session.add(demo_image4)
@@ -472,7 +470,7 @@ def test_multiple_images_badness(
                 im.target = target
                 im.filter = filter
                 im.provenance = provenance_base
-                _ = ImageCleanup.save_image(im, archive=False)
+                _ = ImageCleanup.save_image(im)
                 filenames.append(im.get_fullpath(as_list=True)[0])
                 images.append(im)
                 session.add(im)
@@ -481,7 +479,7 @@ def test_multiple_images_badness(
             # make a new subtraction:
             demo_image7 = Image.from_ref_and_new(demo_image5, demo_image6)
             demo_image7.provenance = provenance_extra
-            _ = ImageCleanup.save_image(demo_image7, archive=False)
+            _ = ImageCleanup.save_image(demo_image7)
             images.append(demo_image7)
             filenames.append(demo_image7.get_fullpath(as_list=True)[0])
             session.add(demo_image7)
@@ -510,10 +508,7 @@ def test_multiple_images_badness(
             # make a coadded image (without including the subtraction demo_image4):
             demo_image8 = Image.from_images([demo_image, demo_image2, demo_image3, demo_image5, demo_image6])
             demo_image8.provenance = provenance_extra
-            _ = ImageCleanup.save_image(demo_image8, archive=False)
-            # demo_image8.data = np.random.normal(0, 10, size=(100, 100)).astype(np.float32)
-            # demo_image8.save(no_archive=True)
-            # demo_image8.md5sum = uuid.uuid4()
+            _ = ImageCleanup.save_image(demo_image8)
             images.append(demo_image8)
             filenames.append(demo_image8.get_fullpath(as_list=True)[0])
             session.add(demo_image8)
@@ -544,7 +539,7 @@ def test_multiple_images_badness(
     finally:  # cleanup
         with SmartSession() as session:
             for im in images:
-                im.remove_data_from_disk(purge_archive=False)
+                im.remove_data_from_disk(purge_archive=True)
                 if im.id is not None:
                     session.delete(im)
             session.commit()
@@ -603,22 +598,22 @@ def test_image_cone_search( provenance_base ):
             image1 = Image(ra=120., dec=10., provenance=provenance_base, **kwargs )
             image1.mjd = np.random.uniform(0, 1) + 60000
             image1.end_mjd = image1.mjd + 0.007
-            clean1 = ImageCleanup.save_image( image1, archive=False )
+            clean1 = ImageCleanup.save_image( image1 )
 
             image2 = Image(ra=120.0002, dec=9.9998, provenance=provenance_base, **kwargs )
             image2.mjd = np.random.uniform(0, 1) + 60000
             image2.end_mjd = image2.mjd + 0.007
-            clean2 = ImageCleanup.save_image( image2, archive=False )
+            clean2 = ImageCleanup.save_image( image2 )
 
             image3 = Image(ra=120.0005, dec=10., provenance=provenance_base, **kwargs )
             image3.mjd = np.random.uniform(0, 1) + 60000
             image3.end_mjd = image3.mjd + 0.007
-            clean3 = ImageCleanup.save_image( image3, archive=False )
+            clean3 = ImageCleanup.save_image( image3 )
 
             image4 = Image(ra=60., dec=0., provenance=provenance_base, **kwargs )
             image4.mjd = np.random.uniform(0, 1) + 60000
             image4.end_mjd = image4.mjd + 0.007
-            clean4 = ImageCleanup.save_image( image4, archive=False )
+            clean4 = ImageCleanup.save_image( image4 )
 
             session.add( image1 )
             session.add( image2 )
@@ -691,7 +686,7 @@ def test_four_corners( provenance_base ):
                             provenance=provenance_base, nofile=True, **kwargs )
             image1.mjd = np.random.uniform(0, 1) + 60000
             image1.end_mjd = image1.mjd + 0.007
-            clean1 = ImageCleanup.save_image( image1, archive=False )
+            clean1 = ImageCleanup.save_image( image1 )
 
             # image2: centered on 120, 40, at a 45° angle
             image2 = Image( ra=120, dec=40.,
@@ -700,7 +695,7 @@ def test_four_corners( provenance_base ):
                             provenance=provenance_base, nofile=True, **kwargs )
             image2.mjd = np.random.uniform(0, 1) + 60000
             image2.end_mjd = image2.mjd + 0.007
-            clean2 = ImageCleanup.save_image( image2, archive=False )
+            clean2 = ImageCleanup.save_image( image2 )
 
             # image3: centered offset by (0.025, 0.025) linear arcsec from 120, 40, square on sky
             image3 = Image( ra=120.03264714, dec=40.025,
@@ -710,7 +705,7 @@ def test_four_corners( provenance_base ):
                             provenance=provenance_base, nofile=True, **kwargs )
             image3.mjd = np.random.uniform(0, 1) + 60000
             image3.end_mjd = image3.mjd + 0.007
-            clean3 = ImageCleanup.save_image( image3, archive=False )
+            clean3 = ImageCleanup.save_image( image3 )
 
             # imagepoint and imagefar are used to test Image.containing and Image.find_containing,
             # as Image is the only example of a SpatiallyIndexed thing we have so far.
@@ -721,7 +716,7 @@ def test_four_corners( provenance_base ):
                                 provenance=provenance_base, nofile=True, **kwargs )
             imagepoint.mjd = np.random.uniform(0, 1) + 60000
             imagepoint.end_mjd = imagepoint.mjd + 0.007
-            clearpoint = ImageCleanup.save_image( imagepoint, archive=False )
+            clearpoint = ImageCleanup.save_image( imagepoint )
 
             imagefar = Image( ra=30, dec=-10,
                               ra_corner_00=0, ra_corner_01=0, ra_corner_10=0,
@@ -729,7 +724,7 @@ def test_four_corners( provenance_base ):
                               provenance=provenance_base, nofile=True, **kwargs )
             imagefar.mjd = np.random.uniform(0, 1) + 60000
             imagefar.end_mjd = imagefar.mjd + 0.007
-            clearfar = ImageCleanup.save_image( imagefar, archive=False )
+            clearfar = ImageCleanup.save_image( imagefar )
 
             session.add( image1 )
             session.add( image2 )
@@ -832,9 +827,7 @@ def test_image_from_exposure(exposure, provenance_base):
                 session.commit()
             session.rollback()
 
-            # must add the filepath and md5 sum!
-            im.filepath = 'foo_exposure.fits'
-            im.md5sum = uuid.uuid4()
+            _ = ImageCleanup.save_image(im)  # this will add the filepath and md5 sum!
 
             session.add(im)
             session.commit()
@@ -848,9 +841,7 @@ def test_image_from_exposure(exposure, provenance_base):
     finally:
         if im_id is not None:
             with SmartSession() as session:
-                im = session.scalars(sa.select(Image).where(Image.id == im_id)).first()
-                session.delete(im)
-                session.commit()
+                im.delete_from_disk_and_database(commit=True, session=session)
 
 
 def test_image_from_exposure_filter_array(exposure_filter_array):
@@ -875,17 +866,15 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
     im2.target = im1.target
 
     im1.provenance = provenance_base
-    im1.filepath = 'foo1.fits'
-    im1.md5sum = uuid.uuid4()
+    _1 = ImageCleanup.save_image(im1)
+
     im2.provenance = provenance_base
-    im2.filepath = 'foo2.fits'
-    im2.md5sum = uuid.uuid4()
+    _2 = ImageCleanup.save_image(im2)
 
     # make a coadd image from the two
     im = Image.from_images([im1, im2])
-    im.filepath = 'foo.fits'
     im.provenance = provenance_base
-    im.md5sum = uuid.uuid4()
+    _3 = ImageCleanup.save_image(im)
 
     try:
         im_id = None
@@ -941,17 +930,14 @@ def test_image_subtraction(exposure, exposure2, provenance_base):
     im2.target = im1.target
 
     im1.provenance = provenance_base
-    im1.filepath = 'foo1.fits'
-    im1.md5sum = uuid.uuid4()
+    _1 = ImageCleanup.save_image(im1)
     im2.provenance = provenance_base
-    im2.filepath = 'foo2.fits'
-    im2.md5sum = uuid.uuid4()
+    _2 = ImageCleanup.save_image(im2)
 
     # make a coadd image from the two
     im = Image.from_ref_and_new(im1, im2)
-    im.filepath = 'foo.fits'
     im.provenance = provenance_base
-    im.md5sum = uuid.uuid4()
+    _3 = ImageCleanup.save_image(im)
 
     try:
         im_id = None

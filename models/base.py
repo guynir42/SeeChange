@@ -874,6 +874,9 @@ class FileOnDiskMixin():
         If not, there would be database objects without a corresponding
         file on local disk / archive and that's not good!
 
+        To remove both the files and the database entry, use
+        delete_from_disk_and_database() instead.
+
         Parameters
         ----------
         remove_folders: bool
@@ -912,6 +915,41 @@ class FileOnDiskMixin():
             # is also saved to the DB, or this entire object can be deleted
             # If not, there would be database objects without a corresponding
             # file on local disk / archive and that's not good!
+            # to remove this entry from DB and archive and disk, use
+            # the delete_from_disk_and_database() method instead
+
+    def delete_from_disk_and_database(self, session=None, commit=True, remove_folders=True):
+        """
+        Delete the data from disk, archive and the database.
+        Use this to clean up an entry from all locations.
+        This will call object.remove_data_from_disk(purge_archive=True)
+        and then session.delete(object) using either the supplied session
+        or an internal session that would be opened and closed for this.
+
+        Parameters
+        ----------
+        session: sqlalchemy session
+            The session to use for the deletion. If None, will open a new session,
+            which will also close at the end of the call.
+        commit: bool
+            Whether to commit the deletion to the database.
+            Default is True. When session=None then commit must be True,
+            otherwise the session will exit without committing
+            (in this case the function will raise a RuntimeException).
+        remove_folders: bool
+            If True, will remove any folders on the path to the files
+            associated to this object, if they are empty.
+        """
+
+        if session is None and not commit:
+            raise RuntimeError("When session=None, commit must be True!")
+
+        self.remove_data_from_disk(remove_folders=remove_folders, purge_archive=True)
+
+        with SmartSession(session) as session:
+            session.delete(self)
+            if commit:
+                session.commit()
 
 
 def safe_mkdir(path):
