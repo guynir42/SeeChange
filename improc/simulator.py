@@ -210,7 +210,6 @@ class SimCamera:
         self.vignette_inner_radius = None  # inside this radius the vignette is ignored
         self.vignette_offset_x = None  # vignette offset in x
         self.vignette_offset_y = None  # vignette offset in y
-
         self.vignette_map = None  # e.g., vignette
 
         self.oversampling = None  # how much do we need the PSF to be oversampled?
@@ -349,7 +348,8 @@ class SimStars:
     def get_star_flux_values(self):
         """
         Return the fluxes of the stars (in photons per total exposure time)
-        after possibly applying a flux change due to e.g., occultations/flares
+        after possibly applying a flux change due to e.g., occultations/flares,
+        or due to scintillation noise.
         (TODO: this is not yet implemented!)
 
         """
@@ -389,6 +389,10 @@ class Simulator:
         # now the photons are absorbed into the sensor pixels
         self.electrons = None  # average number of electrons in each pixel, considering QE
 
+        self.counts_without_noise = None  # the final counts, not including noise
+        self.noise_var_map = None  # the total variance from read, dark, sky b/g, and source noise
+        self.counts = None  # this is the final counts from everything except cosmic rays/satellites/artefacts
+
         # outputs:
         self.image = None
 
@@ -404,8 +408,8 @@ class Simulator:
         self.sensor = SimSensor()
 
         self.sensor.bias_mean = self.pars.bias_mean
-        self.sensor.bias_std = self.pars.bias_std
-        self.sensor.bias_total = self.sensor.bias_mean + np.random.poisson(self.sensor.bias_std ** 2)
+        self.sensor.pixel_bias_std = self.pars.bias_std
+        self.sensor.pixel_bias_map = self.sensor.bias_mean + np.random.poisson(self.sensor.pixel_bias_std ** 2)
 
         self.sensor.gain_mean = self.pars.gain_mean
         self.sensor.gain_std = self.pars.gain_std
@@ -514,6 +518,16 @@ class Simulator:
         self.make_raw_star_flux_map()  # image of the flux of stars after PSF convolution (no sky, no noise)
         self.add_atmosphere()  # add the transmission and sky background to the image, with oversampling, without noise
 
+        self.add_camera()
+
+        self.flux_to_electrons()
+
+        self.electrons_to_adu()
+
+        self.add_noise()
+
+        self.add_artefacts()
+
         # make sure to collect all the parameters used in each part
         self.save_truth()
 
@@ -561,7 +575,80 @@ class Simulator:
 
     def add_atmosphere(self):
         """
+        Add the effects of the atmosphere, namely the sky background and transmission.
+        """
+        self.flux_with_sky = self.flux_top * self.sky.transmission_instance + self.sky.background_instance
 
+    def add_camera(self):
+        """
+        Add the effects of the camera, namely the vignette.
+        """
+        self.flux_vignette = self.flux_with_sky * self.camera.vignette_map
+
+    def flux_to_electrons(self):
+        """
+        Calculate the number of electrons in each pixel,
+        accounting for the total QE and the pixel QE,
+        and adding the dark current.
+        """
+        self.electrons = self.flux_vignette * self.sensor.pixel_qe_map
+        self.electrons += self.sensor.dark_current * self.pars.exposure_time
+
+        # add saturation and bleeding:
+        # TODO: add bleeding before clipping
+        self.electrons[self.electrons > self.sensor.saturation_limit] = self.sensor.saturation_limit
+
+    def electrons_to_adu(self):
+        """
+        Convert the number of electrons in each pixel
+        to the number of ADU (analog to digital units)
+        that will be read out.
+        """
+        self.counts_without_noise = self.electrons / self.sensor.gain_map
+        self.noise_var_map = (self.electrons + self.sensor.read_noise ** 2) / self.sensor.gain_map
+
+    def add_noise(self):
+        """
+        Combine the noise variance map and the counts without noise to make
+        an image of the counts, including also the bias map.
+        """
+        self.counts = self.sensor.pixel_bias_map + self.counts_without_noise + np.random.poisson(self.noise_var_map)
+
+    def add_artefacts(self):
+        """
+        Add artefacts like cosmic rays, satellites, etc.
+        This should produce the final image.
+        """
+        self.image = np.copy(self.counts)
+        for i in range(np.random.poisson(self.pars.cosmic_ray_number)):
+            self.add_cosmic_ray(self.image)  # add in place
+
+        for i in range(np.random.posson(self.pars.satellite_number)):
+            self.add_satellite(self.image)  # add in place
+
+        # add more artefacts here...
+
+    def add_cosmic_ray(self, image):
+        """
+        Add a cosmic ray to the image.
+
+        Parameters
+        ----------
+        image: array
+            The image to add the cosmic ray to.
+            This will be modified in place.
+        """
+        pass
+
+    def add_satellite(self, image):
+        """
+        Add a satellite trail to the image.
+
+        Parameters
+        ----------
+        image: array
+            The image to add the satellite trail to.
+            This will be modified in place.
         """
         pass
 
