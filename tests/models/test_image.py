@@ -13,10 +13,12 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
 import util.config as config
+import util.radec
 from models.base import SmartSession
 from models.exposure import Exposure
 from models.image import Image
 from tests.conftest import ImageCleanup
+from models.instrument import Instrument, get_instrument_instance
 
 
 def rnd_str(n):
@@ -108,6 +110,7 @@ def test_image_must_have_md5(demo_image, provenance_base):
 
     demo_image.md5sum = None
     with SmartSession() as session:
+        demo_image.recursive_merge(session)
         with pytest.raises(IntegrityError, match='violates check constraint'):
             session.add(demo_image)
             session.commit()
@@ -122,6 +125,7 @@ def test_image_must_have_md5(demo_image, provenance_base):
 def test_image_archive_singlefile(demo_image, provenance_base, archive):
     demo_image.data = np.float32( demo_image.raw_data )
     demo_image.flags = np.random.randint(0, 100, size=demo_image.raw_data.shape, dtype=np.uint16)
+    demo_image.provenance = provenance_base
 
     cfg = config.Config.get()
     archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
@@ -129,11 +133,9 @@ def test_image_archive_singlefile(demo_image, provenance_base, archive):
 
     try:
         with SmartSession() as session:
-            demo_image.provenance = provenance_base
-
             # Do single file first
             cfg.set_value( 'storage.images.single_file', True )
-
+            demo_image.exposure.recursive_merge(session)  # make sure the exposure and provenance/code versions merge
             # Make sure that the archive is *not* written when we tell it not to.
             demo_image.save( no_archive=True )
             assert demo_image.md5sum is None
@@ -166,6 +168,7 @@ def test_image_archive_singlefile(demo_image, provenance_base, archive):
             assert localmd5.hexdigest() == demo_image.md5sum.hex
 
             # Make sure that the md5sum is properly saved to the database
+            demo_image.provenance = session.merge( demo_image.provenance )
             session.add( demo_image )
             session.commit()
             with SmartSession() as differentsession:
@@ -183,7 +186,7 @@ def test_image_archive_singlefile(demo_image, provenance_base, archive):
         cfg.set_value( 'storage.images.single_file', single_fileness )
 
 
-def test_image_archive_multifile(demo_image, provenance_base, archive):
+def test_image_archive_multifile(exposure, demo_image, provenance_base, archive):
     demo_image.data = np.float32( demo_image.raw_data )
     demo_image.flags = np.random.randint(0, 100, size=demo_image.raw_data.shape, dtype=np.uint16)
 
@@ -193,7 +196,9 @@ def test_image_archive_multifile(demo_image, provenance_base, archive):
 
     try:
         with SmartSession() as session:
-            demo_image.provenance = provenance_base
+            # First, work around SQLAlchemy
+            demo_image.provenance = session.merge( provenance_base )
+            exposure.provenance = session.merge( exposure.provenance )
 
             # Now do multiple images
             cfg.set_value( 'storage.images.single_file', False )
@@ -260,9 +265,11 @@ def test_image_archive_multifile(demo_image, provenance_base, archive):
         cfg.set_value( 'storage.images.single_file', single_fileness )
 
 
-def test_image_enum_values(demo_image, provenance_base):
+def test_image_enum_values(exposure, demo_image, provenance_base):
+    data_filename = None
     with SmartSession() as session:
-        demo_image.provenance = provenance_base
+        demo_image.provenance = session.merge( provenance_base )
+        exposure.provenance = session.merge( exposure.provenance )
         with pytest.raises(RuntimeError, match='The image data is not loaded. Cannot save.'):
             demo_image.save( no_archive=True )
 
@@ -364,6 +371,7 @@ def test_image_badness(demo_image):
         assert demo_image.badness == 'Banding, Shaking, Bright Sky'
 
 
+# @pytest.mark.skip( reason="slow" )
 def test_multiple_images_badness(
         demo_image,
         demo_image2,
@@ -399,6 +407,7 @@ def test_multiple_images_badness(
                 cleanups.append(ImageCleanup.save_image(im))
                 filenames.append(im.get_fullpath(as_list=True)[0])
                 assert os.path.exists(filenames[-1])
+                im = im.recursive_merge( session )
                 session.add(im)
             session.commit()
 
@@ -423,6 +432,7 @@ def test_multiple_images_badness(
             cleanups.append(ImageCleanup.save_image(demo_image4))
             images.append(demo_image4)
             filenames.append(demo_image4.get_fullpath(as_list=True)[0])
+            demo_image4 = demo_image4.recursive_merge( session )
             session.add(demo_image4)
             session.commit()
             assert demo_image4.id is not None
@@ -457,6 +467,7 @@ def test_multiple_images_badness(
                 cleanups.append(ImageCleanup.save_image(im))
                 filenames.append(im.get_fullpath(as_list=True)[0])
                 images.append(im)
+                im = im.recursive_merge( session )
                 session.add(im)
             session.commit()
 
@@ -466,6 +477,7 @@ def test_multiple_images_badness(
             cleanups.append(ImageCleanup.save_image(demo_image7))
             images.append(demo_image7)
             filenames.append(demo_image7.get_fullpath(as_list=True)[0])
+            demo_image7 = demo_image7.recursive_merge( session )
             session.add(demo_image7)
             session.commit()
 
@@ -495,6 +507,7 @@ def test_multiple_images_badness(
             cleanups.append(ImageCleanup.save_image(demo_image8))
             images.append(demo_image8)
             filenames.append(demo_image8.get_fullpath(as_list=True)[0])
+            demo_image8 = demo_image8.recursive_merge( session )
             session.add(demo_image8)
             session.commit()
             assert demo_image8.badness == 'Banding, Bright Sky'
@@ -800,12 +813,14 @@ def test_image_from_exposure(exposure, provenance_base):
     try:
         with SmartSession() as session:
             with pytest.raises(IntegrityError, match='null value in column .* of relation "images"'):
+                im = im.recursive_merge( session )
                 session.add(im)
                 session.commit()
             session.rollback()
 
             # must add the provenance!
             im.provenance = provenance_base
+            im = im.recursive_merge( session )
             with pytest.raises(IntegrityError, match='null value in column "filepath" of relation "images"'):
                 session.add(im)
                 session.commit()
@@ -865,6 +880,16 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
         im1_id = None
         im2_id = None
         with SmartSession() as session:
+            # im.provenance = session.merge( im.provenance )
+            # im1.provenance = session.merge( im1.provenance )
+            # im2.provenance = session.merge( im2.provenance )
+            # exposure.provenance = session.merge( exposure.provenance )
+            # exposure2.provenance = session.merge( exposure2.provenance )
+            im = im.recursive_merge( session )
+            im1 = im1.recursive_merge( session )
+            im2 = im2.recursive_merge( session )
+            exposure = exposure.recursive_merge( session )
+            exposure2 = exposure2.recursive_merge( session )
             session.add(im)
             session.commit()
 
@@ -928,6 +953,11 @@ def test_image_subtraction(exposure, exposure2, provenance_base):
         im1_id = None
         im2_id = None
         with SmartSession() as session:
+            im = im.recursive_merge( session )
+            im1 = im1.recursive_merge( session )
+            im2 = im2.recursive_merge( session )
+            exposure = exposure.recursive_merge( session )
+            exposure2 = exposure2.recursive_merge( session )
             session.add(im)
             session.commit()
 
@@ -1082,7 +1112,13 @@ def test_image_multifile(demo_image, provenance_base):
 
 
 def test_image_from_decam_exposure(decam_example_file, provenance_base):
-    e = Exposure(decam_example_file)
+    with fits.open( decam_example_file, memmap=False ) as ifp:
+        hdr = ifp[0].header
+    exphdrinfo = Instrument.extract_header_info( hdr, [ 'mjd', 'exp_time', 'filter', 'project', 'target' ] )
+    ra = util.radec.parse_sexigesimal_degrees( hdr['RA'], hours=True )
+    dec = util.radec.parse_sexigesimal_degrees( hdr['DEC'] )
+    e = Exposure( ra=ra, dec=dec, instrument='DECam', format='fits', **exphdrinfo,
+                  filepath=str( pathlib.Path('DECam_examples') / pathlib.Path(decam_example_file).name ) )
     sec_id = 'N4'
     im = Image.from_exposure(e, section_id=sec_id)  # load the first CCD
 

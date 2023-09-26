@@ -11,13 +11,16 @@ import numpy as np
 import sqlalchemy as sa
 
 from astropy.time import Time
+from astropy.io import fits
 
 from util.config import Config
-from models.base import SmartSession, CODE_ROOT
+from models.base import SmartSession, CODE_ROOT, _logger
 from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.references import ReferenceEntry
+from models.instrument import Instrument
+from models.decam import DECam
 from models.source_list import SourceList
 from util import config
 from util.archive import Archive
@@ -39,6 +42,17 @@ def tests_setup_and_teardown():
     # Will be executed after the last test
     # print('Final teardown fixture executed! ')
 
+    with SmartSession() as session:
+        # Tests are leaving behind (at least) exposures and provenances.
+        # Ideally, they should all clean up after themselves.  Finding
+        # all of this is a worthwhile TODO, but recursive_merge probably
+        # means that finding all of them is going to be a challenge.
+        # So, make sure that the database is wiped.  Deleting just
+        # provenances and codeversions should do it, because most things
+        # have a cascading foreign key into provenances.
+        session.execute( sa.text( "DELETE FROM provenances" ) )
+        session.execute( sa.text( "DELETE FROM code_versions" ) )
+        session.commit()
 
 def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
@@ -53,15 +67,18 @@ def config_test():
 def code_version():
     with SmartSession() as session:
         cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.id == 'test_v1.0.0')).first()
-    if cv is None:
-        cv = CodeVersion(id="test_v1.0.0")
-        cv.update()
+        if cv is None:
+            cv = CodeVersion(id="test_v1.0.0")
+            cv.update()
+            session.add( cv )
+            session.commit()
+        cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.id == 'test_v1.0.0')).first()
 
     yield cv
 
     try:
         with SmartSession() as session:
-            session.execute(sa.delete(CodeVersion).where(CodeVersion.version == 'test_v1.0.0'))
+            session.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
             session.commit()
     except Exception as e:
         warnings.warn(str(e))
@@ -122,7 +139,7 @@ def provenance_extra(code_version, provenance_base):
 def exposure_factory():
     def factory():
         e = Exposure(
-            f"Demo_test_{rnd_str(5)}.fits",
+            filepath=f"Demo_test_{rnd_str(5)}.fits",
             section_id=0,
             exp_time=np.random.randint(1, 4) * 10,  # 10 to 40 seconds
             mjd=np.random.uniform(58000, 58500),
@@ -149,8 +166,8 @@ def make_exposure_file(exposure):
 
     try:
         with SmartSession() as session:
-            exposure = session.merge(exposure)
-            if sa.inspect( exposure ).persistent:
+            exposure = exposure.recursive_merge( session )
+            if exposure.id is not None:
                 session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
                 session.commit()
 
@@ -217,8 +234,11 @@ def decam_example_exposure(decam_example_file):
         session.execute(sa.delete(Exposure).where(Exposure.filepath == decam_example_file_short))
         session.commit()
 
-    exposure = Exposure(decam_example_file)
-    exposure.md5sum = uuid.uuid4()  # spoof the md5 sum
+    with fits.open( decam_example_file, memmap=False ) as ifp:
+        hdr = ifp[0].header
+    exphdrinfo = Instrument.extract_header_info( hdr, [ 'mjd', 'exp_time', 'filter', 'project', 'target' ] )
+
+    exposure = Exposure( filepath=decam_example_file, instrument='DECam', **exphdrinfo )
     return exposure
 
 
@@ -390,6 +410,7 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
     ref_entry.target = target
 
     with SmartSession() as session:
+        ref_entry.image = session.merge( ref_entry.image )
         session.add(ref_entry)
         session.commit()
 
