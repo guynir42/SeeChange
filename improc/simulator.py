@@ -69,8 +69,9 @@ class SimPars(Parameters):
         self.atmos_psf_pars = self.add_par('atmos_psf_pars', {'sigma': 1.0}, dict, 'Atmospheric PSF parameters')
 
         self.star_number = self.add_par('star_number', 1000, int, 'Number of stars (on average) to simulate')
+        self.star_min_flux = self.add_par('star_min_flux', 100, (int, float), 'Minimum flux for the star power law')
         self.star_flux_power_law = self.add_par(
-            'star_flux_power_law', -1.0, float,
+            'star_flux_power_law', -2.0, float,
             'Power law index for the flux distribution of stars'
         )
         self.star_position_std = self.add_par(
@@ -306,6 +307,7 @@ class SimStars:
     """
     def __init__(self):
         self.star_number = None  # average number of stars in each field
+        self.star_min_flux = None  # minimal flux for the star power law
         self.star_flux_power_law = None  # power law index of the flux of stars
         self.star_mean_fluxes = None  # for each star, the mean flux (in photons per total exposure time)
         self.star_mean_x_pos = None  # for each star, the mean x position
@@ -320,9 +322,8 @@ class SimStars:
         The input, imsize, is a tuple of (imsize_x, imsize_y).
         """
         rng = np.random.default_rng()
-        min_flux = 10
-        alpha = abs(self.star_flux_power_law) + 1
-        self.star_mean_fluxes = min_flux / (1 / min_flux + rng.power(alpha, self.star_number))
+        alpha = abs(self.star_flux_power_law) - 1
+        self.star_mean_fluxes = self.star_min_flux / rng.power(alpha, self.star_number)
         self.star_mean_x_pos = rng.uniform(-0.01, 1.01, self.star_number) * imsize[0]
         self.star_mean_y_pos = rng.uniform(-0.01, 1.01, self.star_number) * imsize[1]
 
@@ -396,9 +397,8 @@ class Simulator:
         # now the photons are absorbed into the sensor pixels
         self.electrons = None  # average number of electrons in each pixel, considering QE
 
-        self.counts_without_noise = None  # the final counts, not including noise
+        self.average_counts = None  # the final counts, not including noise
         self.noise_var_map = None  # the total variance from read, dark, sky b/g, and source noise
-        self.counts = None  # this is the final counts from everything except cosmic rays/satellites/artefacts
 
         # outputs:
         self.image = None
@@ -494,6 +494,7 @@ class Simulator:
         """
         self.stars = SimStars()
         self.stars.star_number = self.pars.star_number
+        self.stars.star_min_flux = self.pars.star_min_flux
         self.stars.star_flux_power_law = self.pars.star_flux_power_law
         self.stars.star_position_std = self.pars.star_position_std
 
@@ -561,6 +562,11 @@ class Simulator:
             print(f'time to convert flux to electrons: {time.time() - t0:.2f}s')
 
         t0 = time.time()
+        self.add_artefacts()
+        if self.pars.show_runtimes:
+            print(f'time to add artefacts: {time.time() - t0:.2f}s')
+
+        t0 = time.time()
         self.electrons_to_adu()
         if self.pars.show_runtimes:
             print(f'time to convert electrons to ADU: {time.time() - t0:.2f}s')
@@ -569,11 +575,6 @@ class Simulator:
         self.add_noise()
         if self.pars.show_runtimes:
             print(f'time to add noise: {time.time() - t0:.2f}s')
-
-        t0 = time.time()
-        self.add_artefacts()
-        if self.pars.show_runtimes:
-            print(f'time to add artefacts: {time.time() - t0:.2f}s')
 
         # make sure to collect all the parameters used in each part
         self.save_truth()
@@ -645,35 +646,17 @@ class Simulator:
         # TODO: add bleeding before clipping
         self.electrons[self.electrons > self.sensor.saturation_limit] = self.sensor.saturation_limit
 
-    def electrons_to_adu(self):
-        """
-        Convert the number of electrons in each pixel
-        to the number of ADU (analog to digital units)
-        that will be read out.
-        """
-        self.counts_without_noise = self.electrons / self.sensor.pixel_gain_map
-        self.noise_var_map = (self.electrons + self.sensor.read_noise ** 2) / self.sensor.pixel_gain_map
-
-    def add_noise(self):
-        """
-        Combine the noise variance map and the counts without noise to make
-        an image of the counts, including also the bias map.
-        """
-        self.counts = self.sensor.pixel_bias_map + self.counts_without_noise + np.random.poisson(
-            self.noise_var_map, size=self.pars.imsize
-        )
-
     def add_artefacts(self):
         """
         Add artefacts like cosmic rays, satellites, etc.
         This should produce the final image.
         """
-        self.image = np.copy(self.counts)
+
         for i in range(np.random.poisson(self.pars.cosmic_ray_number)):
-            self.add_cosmic_ray(self.image)  # add in place
+            self.add_cosmic_ray(self.average_counts)  # add in place
 
         for i in range(np.random.poisson(self.pars.satellite_number)):
-            self.add_satellite(self.image)  # add in place
+            self.add_satellite(self.average_counts)  # add in place
 
         # add more artefacts here...
 
@@ -700,6 +683,25 @@ class Simulator:
             This will be modified in place.
         """
         pass
+
+    def electrons_to_adu(self):
+        """
+        Convert the number of electrons in each pixel
+        to the number of ADU (analog to digital units)
+        that will be read out.
+        """
+        self.average_counts = self.electrons / self.sensor.pixel_gain_map
+        self.noise_var_map = self.average_counts + self.sensor.read_noise ** 2
+
+    def add_noise(self):
+        """
+        Combine the noise variance map and the counts without noise to make
+        an image of the counts, including also the bias map.
+        """
+        self.image = self.sensor.pixel_bias_map - self.sensor.read_noise ** 2 + np.random.poisson(
+            self.noise_var_map, size=self.pars.imsize
+        )  # read noise is included in the variance, but should not add to the baseline (bias)
+        self.image = np.round(self.image).astype(int)
 
     def save_truth(self):
         """
