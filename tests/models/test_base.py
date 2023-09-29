@@ -52,7 +52,7 @@ def diskfile( diskfiletable ):
 
     with SmartSession() as session:
         df = session.merge( df )
-        df.remove_data_from_disk( remove_folders=True, purge_archive=True)
+        df.remove_data_from_disk( remove_folders=True )
         if sa.inspect( df ).persistent:
             session.delete( df )
         session.expunge( df )
@@ -175,7 +175,7 @@ def test_fileondisk_save_singlefile( diskfile, archive ):
         assert md5sum1 == hashlib.md5( ifp.read() ).hexdigest()
 
     # Verify that we can delete from disk without deleting from the archive
-    diskfile.remove_data_from_disk( purge_archive=False )
+    diskfile.remove_data_from_disk()
     assert diskfile.md5sum.hex == md5sum1
     with pytest.raises( FileNotFoundError ):
         ifp = open( diskfile.get_fullpath(), 'rb' )
@@ -196,7 +196,7 @@ def test_fileondisk_save_singlefile( diskfile, archive ):
     # Clean up for further tests
     filename = diskfile.get_fullpath()
     filepath = diskfile.filepath
-    diskfile.remove_data_from_disk( purge_archive=True )
+    diskfile.delete_from_disk_and_database()
     with pytest.raises( FileNotFoundError ):
         ifp = open( filename, 'rb' )
         ifp.close()
@@ -344,7 +344,7 @@ def test_fileondisk_save_multifile( diskfile, archive ):
             assert md5sum2 == hashlib.md5( ifp.read() ).hexdigest()
 
         # Make sure we can delete without purging the archive
-        diskfile.remove_data_from_disk( purge_archive=False )
+        diskfile.remove_data_from_disk()
         assert diskfile.filepath_extensions == [ '_1.dat', '_2.dat' ]
         assert diskfile.md5sum_extensions == [ uuid.UUID(md5sum1), uuid.UUID(md5sum2) ]
         assert diskfile.md5sum == None
@@ -374,7 +374,7 @@ def test_fileondisk_save_multifile( diskfile, archive ):
     finally:
         # Delete it all
         paths = diskfile.get_fullpath()
-        diskfile.remove_data_from_disk( purge_archive=True )
+        diskfile.delete_from_disk_and_database()
         assert diskfile.filepath_extensions is None
         assert diskfile.md5sum_extensions is None
         assert diskfile.md5sum is None

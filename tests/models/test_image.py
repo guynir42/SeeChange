@@ -156,7 +156,7 @@ def test_image_archive_singlefile(demo_image, provenance_base, archive):
             assert archivemd5.hexdigest() == demo_image.md5sum.hex
 
             # Make sure that we can download from the archive
-            demo_image.remove_data_from_disk( purge_archive=False)
+            demo_image.remove_data_from_disk()
             with pytest.raises(FileNotFoundError):
                 assert isinstance( demo_image.get_fullpath( nofile=True ), str )
                 ifp = open( demo_image.get_fullpath( nofile=True ), "rb" )
@@ -176,7 +176,7 @@ def test_image_archive_singlefile(demo_image, provenance_base, archive):
                 assert dbimage.md5sum.hex == demo_image.md5sum.hex
 
             # Make sure we can purge the archive
-            demo_image.remove_data_from_disk( purge_archive=True)
+            demo_image.delete_from_disk_and_database(session=session, commit=True)
             with pytest.raises(FileNotFoundError):
                 ifp = open( f'{archivebase}{demo_image.filepath}', 'rb' )
                 ifp.close()
@@ -232,7 +232,7 @@ def test_image_archive_multifile(exposure, demo_image, provenance_base, archive)
                     assert m.hexdigest() == localmd5s[fullpath].hexdigest()
 
             # Make sure that we can download from the archive
-            demo_image.remove_data_from_disk( purge_archive=False)
+            demo_image.remove_data_from_disk()
 
             # using nofile=True will make sure the files are not downloaded from archive
             filenames = demo_image.get_fullpath( nofile=True )
@@ -325,7 +325,7 @@ def test_image_enum_values(exposure, demo_image, provenance_base):
             assert demo_image.id not in [i.id for i in images]
 
         finally:
-            demo_image.remove_data_from_disk(purge_archive=True)
+            demo_image.remove_data_from_disk()
             if data_filename is not None and os.path.exists(data_filename):
                 os.remove(data_filename)
                 folder = os.path.dirname(data_filename)
@@ -536,7 +536,7 @@ def test_multiple_images_badness(
     finally:  # cleanup
         with SmartSession() as session:
             for im in images:
-                im.remove_data_from_disk(purge_archive=True)
+                im.remove_data_from_disk()
                 if im.id is not None:
                     session.execute(sa.delete(Image).where(Image.id == im.id))
             session.commit()

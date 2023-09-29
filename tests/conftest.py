@@ -280,7 +280,8 @@ class ImageCleanup:
             The image to save (that is used to call remove_data_from_disk)
         archive:
             Whether to save to the archive or not. Default is True.
-            Controls the save(no_archive) flag and the delete_from_disk(purge_archive) flag.
+            Controls the save(no_archive) flag and whether the file
+            will be cleaned up from database and archive at the end.
 
         Returns
         -------
@@ -312,7 +313,10 @@ class ImageCleanup:
     def __del__(self):
         # print('removing file at end of test!')
         try:
-            self.image.remove_data_from_disk(purge_archive=self.archive)
+            if self.archive:
+                self.image.delete_from_disk_and_database()
+            else:
+                self.image.remove_data_from_disk()
         except:
             pass
 
@@ -327,10 +331,7 @@ def demo_image(exposure):
     try:
         with SmartSession() as session:
             im = session.merge(im)
-            im.remove_data_from_disk(remove_folders=True, purge_archive=True)
-            if sa.inspect( im ).persistent:
-                session.execute(sa.delete(Image).where(Image.id == im.id))
-                session.commit()
+            im.delete_from_disk_and_database(session=session, commit=True)
 
     except Exception as e:
         warnings.warn(str(e))
@@ -350,7 +351,7 @@ def generate_image():
 
         with SmartSession() as session:
             im = session.merge(im)
-            im.remove_data_from_disk(remove_folders=True, purge_archive=True)
+            im.delete_from_disk_and_database(session=session, commit=True)
             if sa.inspect( im ).persistent:
                 session.execute(sa.delete(Image).where(Image.id == im.id))
                 session.commit()
@@ -423,12 +424,9 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
                 ref = ref_entry.image
                 for im in ref.source_images:
                     exp = im.exposure
-                    exp.remove_data_from_disk(purge_archive=True)
-                    im.remove_data_from_disk(purge_archive=True)
-                    session.delete(exp)
-                    session.delete(im)
-                ref.remove_data_from_disk(purge_archive=True)
-                session.delete(ref)  # should also delete ref_entry
+                    exp.delete_from_disk_and_database(session=session, commit=False)
+                    im.delete_from_disk_and_database(session=session, commit=False)
+                ref.delete_from_disk_and_database(session=session, commit=False)
 
                 session.commit()
 
@@ -456,10 +454,7 @@ def sources(demo_image):
     try:
         with SmartSession() as session:
             s = session.merge(s)
-            s.remove_data_from_disk(remove_folders=True, purge_archive=True)
-            if sa.inspect( s ).persistent:
-                session.execute(sa.delete(SourceList).where(SourceList.id == s.id))
-                session.commit()
+            s.delete_from_disk_and_database(session=session, commit=True)
     except Exception as e:
         warnings.warn(str(e))
 

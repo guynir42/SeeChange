@@ -911,17 +911,11 @@ class FileOnDiskMixin:
             else:
                 self.md5sum = remmd5
 
-    def remove_data_from_disk(self, remove_folders=True, purge_archive=False):
+    def remove_data_from_disk(self, remove_folders=True):
 
-        """Delete the data from disk, if it exists.
+        """Delete the data from local disk, if it exists.
         If remove_folders=True, will also remove any folders
         if they are empty after the deletion.
-
-        It is the responsibility of the caller to make sure
-        these changes (i.e., the nullifying of the md5sums)
-        is also saved to the DB, or this entire object can be deleted
-        If not, there would be database objects without a corresponding
-        file on local disk / archive and that's not good!
 
         To remove both the files and the database entry, use
         delete_from_disk_and_database() instead.
@@ -931,11 +925,6 @@ class FileOnDiskMixin:
         remove_folders: bool
             If True, will remove any folders on the path to the files
             associated to this object, if they are empty.
-        purge_archive: bool
-            If True, will also remove these files from the archive.
-            Make this True when deleting a file from the database.
-            Make this False when you're just cleaning up local storage.
-
         """
         if self.filepath is None:
             return
@@ -951,31 +940,20 @@ class FileOnDiskMixin:
                             os.rmdir(folder)
                         else:
                             break
-        if purge_archive:
-            if self.filepath_extensions is None:
-                self.archive.delete( self.filepath, okifmissing=True )
-            else:
-                for ext in self.filepath_extensions:
-                    self.archive.delete( f"{self.filepath}{ext}", okifmissing=True )
-            self.md5sum = None
-            self.md5sum_extensions = None
-            self.filepath_extensions = None
-            self.filepath = None
-            # It is the responsibility of the caller to make sure
-            # these changes (i.e., the nullifying of the md5sums)
-            # is also saved to the DB, or this entire object can be deleted
-            # If not, there would be database objects without a corresponding
-            # file on local disk / archive and that's not good!
-            # to remove this entry from DB and archive and disk, use
-            # the delete_from_disk_and_database() method instead
 
     def delete_from_disk_and_database(self, session=None, commit=True, remove_folders=True):
         """
         Delete the data from disk, archive and the database.
         Use this to clean up an entry from all locations.
-        This will call object.remove_data_from_disk(purge_archive=True)
-        and then session.delete(object) using either the supplied session
-        or an internal session that would be opened and closed for this.
+        Will delete the object from the DB using the given session
+        (or using an internal session).
+        If using an internal session, commit must be True,
+        to allow the change to be committed before closing it.
+
+        This will silently continue if the file does not exist
+        (locally or on the archive), or if it isn't on the database,
+        and will attempt to delete from any locations regardless
+        of if it existed elsewhere or not.
 
         Parameters
         ----------
@@ -995,12 +973,27 @@ class FileOnDiskMixin:
         if session is None and not commit:
             raise RuntimeError("When session=None, commit must be True!")
 
-        self.remove_data_from_disk(remove_folders=remove_folders, purge_archive=True)
+        self.remove_data_from_disk(remove_folders=remove_folders)
+
+        if self.filepath is not None:
+            if self.filepath_extensions is None:
+                self.archive.delete( self.filepath, okifmissing=True )
+            else:
+                for ext in self.filepath_extensions:
+                    self.archive.delete( f"{self.filepath}{ext}", okifmissing=True )
+
+        # make sure these are set to null just in case we fail
+        # to commit later on, we will at least know something is wrong
+        self.md5sum = None
+        self.md5sum_extensions = None
+        self.filepath_extensions = None
+        self.filepath = None
 
         with SmartSession(session) as session:
-            session.delete(self)
-            if commit:
-                session.commit()
+            if sa.inspect(self).persistent:
+                session.delete(self)
+                if commit:
+                    session.commit()
 
 
 def safe_mkdir(path):
