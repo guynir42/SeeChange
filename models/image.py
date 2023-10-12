@@ -7,6 +7,7 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.functions import coalesce
+from sqlalchemy.schema import CheckConstraint
 
 from astropy.time import Time
 from astropy.wcs import WCS
@@ -22,6 +23,7 @@ from models.enums_and_bitflags import (
     ImageTypeConverter,
     image_badness_inverse,
     data_badness_dict,
+    image_preprocessing_dict,
     string_to_bitflag,
     bitflag_to_string,
 )
@@ -203,7 +205,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         index=True,
         doc=(
             "ID of the provenance of this image. "
-            "The provenance will contain a record of the code version"
+            "The provenance will contain a record of the code version "
             "and the parameters used to produce this image. "
         )
     )
@@ -214,7 +216,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         lazy='selectin',
         doc=(
             "Provenance of this image. "
-            "The provenance will contain a record of the code version"
+            "The provenance will contain a record of the code version "
             "and the parameters used to produce this image. "
         )
     )
@@ -296,7 +298,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         doc="Name of the telescope used to create this image. "
     )
 
-    filter = sa.Column(sa.Text, nullable=False, index=True, doc="Name of the filter used to make this image. ")
+    filter = sa.Column(sa.Text, nullable=True, index=True, doc="Name of the filter used to make this image. ")
 
     section_id = sa.Column(
         sa.Text,
@@ -317,6 +319,14 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         nullable=False,
         index=True,
         doc='Name of the target object or field id. '
+    )
+
+    preproc_bitflag = sa.Column(
+        sa.SMALLINT,
+        nullable=False,
+        default=0,
+        index=False,
+        doc='Bitflag specifying which preprocessing steps have been completed for the image.'
     )
 
     _bitflag = sa.Column(
@@ -596,6 +606,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         doc='Free text comment about this image, e.g., why it is bad. '
     )
 
+    __table_args__ = (
+        CheckConstraint(
+            sqltext='NOT(md5sum IS NULL AND md5sum_extensions IS NULL)',
+            name='md5sum_or_md5sum_extensions_check'
+        ),
+    )
+
     def __init__(self, *args, **kwargs):
         FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
@@ -771,6 +788,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
             gotcorners = True
 
         # the exposure_id will be set automatically at commit time
+        # ...but we have to set it right now because other things are
+        # going to check to see if exposure.id matches image.exposure.id
+        new.exposure_id = exposure.id
         new.exposure = exposure
 
         return new
@@ -929,13 +949,15 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
     def __str__(self):
         return self.__repr__()
 
-    def invent_filename(self):
-        """
-        Create a filename for the object based on its metadata.
-        This is used when saving the image to disk.
-        Data products that depend on an image and are also
-        saved to disk (e.g., SourceList) will just append
-        another string to the Image filename.
+    def invent_filepath(self):
+        """Create a relative file path for the object.
+
+        Create a file path relative to data root for the object based on its
+        metadata.  This is used when saving the image to disk.  Data
+        products that depend on an image and are also saved to disk
+        (e.g., SourceList) will just append another string to the Image
+        filename.
+
         """
         prov_hash = inst_name = im_type = date = time = filter = ra = dec = dec_int_pm = ''
         section_id = section_id_int = ra_int = ra_int_h = ra_frac = dec_int = dec_frac = 0
@@ -1037,7 +1059,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         if self.provenance is None:
             raise RuntimeError("The image provenance is not set. Cannot save.")
 
-        self.filepath = filename if filename is not None else self.invent_filename()
+        self.filepath = filename if filename is not None else self.invent_filepath()
 
         cfg = config.Config.get()
         single_file = cfg.value('storage.images.single_file', default=False)
@@ -1059,6 +1081,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
 
             # save the other extensions
             array_list = ['flags', 'weight', 'background', 'score', 'psf']
+            # TODO: the list of extensions should be saved somewhere more central
+
             for array_name in array_list:
                 array = getattr(self, array_name)
                 if array is not None:
@@ -1091,10 +1115,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         # (as well as self.filepath, self.filepath_extensions, self.md5sum, self.md5sum_extensions)
         # (From what we did above, it's already in the right place in the local filestore.)
         if single_file:
-            super().save( files_written, **kwargs )
+            FileOnDiskMixin.save( self, files_written, **kwargs )
         else:
             for ext in extensions:
-                super().save( files_written[ext], ext, **kwargs )
+                FileOnDiskMixin.save( self, files_written[ext], ext, **kwargs )
 
     def load(self):
         """

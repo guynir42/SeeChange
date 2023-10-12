@@ -11,13 +11,17 @@ import numpy as np
 import sqlalchemy as sa
 
 from astropy.time import Time
+from astropy.io import fits
 
 from util.config import Config
-from models.base import SmartSession, CODE_ROOT
+from models.base import FileOnDiskMixin, SmartSession, CODE_ROOT, _logger
 from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
 from models.image import Image
+from models.datafile import DataFile
 from models.references import ReferenceEntry
+from models.instrument import Instrument, get_instrument_instance
+from models.decam import DECam
 from models.source_list import SourceList
 from util import config
 from util.archive import Archive
@@ -39,6 +43,17 @@ def tests_setup_and_teardown():
     # Will be executed after the last test
     # print('Final teardown fixture executed! ')
 
+    with SmartSession() as session:
+        # Tests are leaving behind (at least) exposures and provenances.
+        # Ideally, they should all clean up after themselves.  Finding
+        # all of this is a worthwhile TODO, but recursive_merge probably
+        # means that finding all of them is going to be a challenge.
+        # So, make sure that the database is wiped.  Deleting just
+        # provenances and codeversions should do it, because most things
+        # have a cascading foreign key into provenances.
+        session.execute( sa.text( "DELETE FROM provenances" ) )
+        session.execute( sa.text( "DELETE FROM code_versions" ) )
+        session.commit()
 
 def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
@@ -53,15 +68,18 @@ def config_test():
 def code_version():
     with SmartSession() as session:
         cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.id == 'test_v1.0.0')).first()
-    if cv is None:
-        cv = CodeVersion(id="test_v1.0.0")
-        cv.update()
+        if cv is None:
+            cv = CodeVersion(id="test_v1.0.0")
+            cv.update()
+            session.add( cv )
+            session.commit()
+        cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.id == 'test_v1.0.0')).first()
 
     yield cv
 
     try:
         with SmartSession() as session:
-            session.execute(sa.delete(CodeVersion).where(CodeVersion.version == 'test_v1.0.0'))
+            session.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
             session.commit()
     except Exception as e:
         warnings.warn(str(e))
@@ -124,7 +142,7 @@ def provenance_extra(code_version, provenance_base):
 def exposure_factory():
     def factory():
         e = Exposure(
-            f"Demo_test_{rnd_str(5)}.fits",
+            filepath=f"Demo_test_{rnd_str(5)}.fits",
             section_id=0,
             exp_time=np.random.randint(1, 4) * 10,  # 10 to 40 seconds
             mjd=np.random.uniform(58000, 58500),
@@ -134,6 +152,7 @@ def exposure_factory():
             project='foo',
             target=rnd_str(6),
             nofile=True,
+            md5sum=uuid.uuid4(),  # this should be done when we clean up the exposure factory a little more
         )
         return e
 
@@ -150,7 +169,7 @@ def make_exposure_file(exposure):
 
     try:
         with SmartSession() as session:
-            exposure = session.merge(exposure)
+            exposure = exposure.recursive_merge( session )
             if exposure.id is not None:
                 session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
                 session.commit()
@@ -218,14 +237,28 @@ def decam_example_exposure(decam_example_file):
         session.execute(sa.delete(Exposure).where(Exposure.filepath == decam_example_file_short))
         session.commit()
 
-    exposure = Exposure(decam_example_file)
+    with fits.open( decam_example_file, memmap=False ) as ifp:
+        hdr = ifp[0].header
+    exphdrinfo = Instrument.extract_header_info( hdr, [ 'mjd', 'exp_time', 'filter', 'project', 'target' ] )
+
+    exposure = Exposure( filepath=decam_example_file, instrument='DECam', **exphdrinfo )
     return exposure
+
+
+# This one is currently completely redudant with decam_example_image, except
+# for the TODO comment
+@pytest.fixture
+def decam_example_raw_image( decam_example_exposure ):
+    image = Image.from_exposure(decam_example_exposure, section_id='N1')
+    image.data = image.raw_data.astype(np.float32)
+    return image
 
 
 @pytest.fixture
 def decam_example_image(decam_example_exposure):
     image = Image.from_exposure(decam_example_exposure, section_id='N1')
     image.data = image.raw_data.astype(np.float32)  # TODO: add bias/flat corrections at some point
+    image.md5sum = uuid.uuid4()  # spoof the md5 sum
     return image
 
 
@@ -234,6 +267,70 @@ def decam_small_image(decam_example_image):
     image = decam_example_image
     image.data = image.data[256:256+512, 256:256+512].copy()  # make it C-contiguous
     return image
+
+
+class ImageCleanup:
+    """
+    Helper function that allows you to take an Image object
+    with fake data (for testing) and save it to disk,
+    while also making sure that the data is removed from disk
+    when the object goes out of scope.
+
+    Usage:
+    >> im_clean = ImageCleanup.save_image(image)
+    at end of test the im_clean goes out of scope and removes the file
+    """
+
+    @classmethod
+    def save_image(cls, image, archive=True):
+        """
+        Save the image to disk, and return an ImageCleanup object.
+
+        Parameters
+        ----------
+        image: models.image.Image
+            The image to save (that is used to call remove_data_from_disk)
+        archive:
+            Whether to save to the archive or not. Default is True.
+            Controls the save(no_archive) flag and whether the file
+            will be cleaned up from database and archive at the end.
+
+        Returns
+        -------
+        ImageCleanup:
+            An object that will remove the image from disk when it goes out of scope.
+            This should be put into a variable that goes out of scope at the end of the test.
+        """
+        if image.data is None:
+            if image.raw_data is None:
+                image.raw_data = np.random.uniform(0, 100, size=(100, 100))
+            image.data = np.float32(image.raw_data)
+
+        if image.instrument is None:
+            image.instrument = 'DemoInstrument'
+
+        if image._raw_header is None:
+            image._raw_header = {}
+
+        image.save(no_archive=not archive)
+
+        # if not archive:
+        #     image.md5sum = uuid.uuid4()  # spoof the md5 sum
+        return cls(image, archive=archive)  # don't use this, but let it sit there until going out of scope of the test
+
+    def __init__(self, image, archive=True):
+        self.image = image
+        self.archive = archive
+
+    def __del__(self):
+        # print('removing file at end of test!')
+        try:
+            if self.archive:
+                self.image.delete_from_disk_and_database()
+            else:
+                self.image.remove_data_from_disk()
+        except:
+            pass
 
 
 @pytest.fixture
@@ -246,10 +343,7 @@ def demo_image(exposure):
     try:
         with SmartSession() as session:
             im = session.merge(im)
-            im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
-            if im.id is not None:
-                session.execute(sa.delete(Image).where(Image.id == im.id))
-                session.commit()
+            im.delete_from_disk_and_database(session=session, commit=True)
 
     except Exception as e:
         warnings.warn(str(e))
@@ -269,8 +363,8 @@ def generate_image():
 
         with SmartSession() as session:
             im = session.merge(im)
-            im.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
-            if im.id is not None:
+            im.delete_from_disk_and_database(session=session, commit=True)
+            if sa.inspect( im ).persistent:
                 session.execute(sa.delete(Image).where(Image.id == im.id))
                 session.commit()
 
@@ -329,6 +423,7 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
     ref_entry.target = target
 
     with SmartSession() as session:
+        ref_entry.image = session.merge( ref_entry.image )
         session.add(ref_entry)
         session.commit()
 
@@ -341,12 +436,9 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
                 ref = ref_entry.image
                 for im in ref.source_images:
                     exp = im.exposure
-                    exp.remove_data_from_disk(purge_archive=True, session=session)
-                    im.remove_data_from_disk(purge_archive=True, session=session)
-                    session.delete(exp)
-                    session.delete(im)
-                ref.remove_data_from_disk(purge_archive=True, session=session)
-                session.delete(ref)  # should also delete ref_entry
+                    exp.delete_from_disk_and_database(session=session, commit=False)
+                    im.delete_from_disk_and_database(session=session, commit=False)
+                ref.delete_from_disk_and_database(session=session, commit=False)
 
                 session.commit()
 
@@ -374,10 +466,7 @@ def sources(demo_image):
     try:
         with SmartSession() as session:
             s = session.merge(s)
-            s.remove_data_from_disk(remove_folders=True, purge_archive=True, session=session)
-            if s.id is not None:
-                session.execute(sa.delete(SourceList).where(SourceList.id == s.id))
-                session.commit()
+            s.delete_from_disk_and_database(session=session, commit=True)
     except Exception as e:
         warnings.warn(str(e))
 
@@ -403,3 +492,46 @@ def archive():
 
     except Exception as e:
         warnings.warn(str(e))
+
+
+# Get the flat, fringe, and linearity for
+# a couple of DECam chips and filters
+# Need session scope; otherwise, things
+# get mixed up when _get_default_calibrator
+# is called from within another function.
+@pytest.fixture( scope='session' )
+def decam_default_calibrators():
+    decam = get_instrument_instance( 'DECam' )
+    sections = [ 'N1', 'S1' ]
+    filters = [ 'r', 'i', 'z' ]
+    for sec in sections:
+        for calibtype in [ 'flat', 'fringe' ]:
+            for filt in filters:
+                decam._get_default_calibrator( 60000, sec, calibtype=calibtype, filter=filt )
+    decam._get_default_calibrator( 60000, sec, calibtype='linearity' )
+
+    yield sections, filters
+
+    imagestonuke = set()
+    datafilestonuke = set()
+    with SmartSession() as session:
+        for sec in [ 'N1', 'S1' ]:
+            for filt in [ 'r', 'i', 'z' ]:
+                info = decam.preprocessing_calibrator_files( 'externally_supplied', 'externally_supplied',
+                                                             sec, filt, 60000, nofetch=True, session=session )
+                for filetype in [ 'zero', 'flat', 'dark', 'fringe', 'illumination', 'linearity' ]:
+                    if ( f'{filetype}_fileid' in info ) and ( info[ f'{filetype}_fileid' ] is not None ):
+                        if info[ f'{filetype}_isimage' ]:
+                            imagestonuke.add( info[ f'{filetype}_fileid' ] )
+                        else:
+                            datafilestonuke.add( info[ f'{filetype}_fileid' ] )
+        for imid in imagestonuke:
+            im = session.get( Image, imid )
+            im.remove_data_from_disk( purge_archive=True, session=session, nocommit=True )
+            session.delete( im )
+        for dfid in datafilestonuke:
+            df = session.get( DataFile, dfid )
+            df.remove_data_from_disk( purge_archive=True, session=session, nocommit=True )
+            session.delete( df )
+        session.commit()
+

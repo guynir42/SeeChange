@@ -1,14 +1,28 @@
 import os
 import re
+import io
+import math
+import time
+import traceback
+import pathlib
+import pytz
+from enum import Enum
+from datetime import datetime, timedelta
 
 import numpy as np
-from datetime import datetime, timedelta
 
 import sqlalchemy as sa
 
+import astropy.time
+
 from models.base import Base, AutoIDMixin, SmartSession
 
+from models.base import Base, SmartSession, FileOnDiskMixin,_logger
+from models.enums_and_bitflags import CalibratorTypeConverter
+from models.provenance import Provenance
 from pipeline.utils import parse_dateobs, read_fits_image
+from util.config import Config
+import util.radec
 
 # dictionary of regex for filenames, pointing at instrument names
 INSTRUMENT_FILENAME_REGEX = None
@@ -18,6 +32,19 @@ INSTRUMENT_CLASSNAME_TO_CLASS = None
 
 # dictionary of instrument object instances, lazy loaded to be shared between exposures
 INSTRUMENT_INSTANCE_CACHE = None
+
+
+# Orientations for those instruments that have a permanent orientation square to the sky
+# x increases to the right, y increases upward
+class InstrumentOrientation(Enum):
+    NupEleft = 0          # No rotation
+    NrightEup = 1         # 90° clockwise
+    NdownEright = 2       # 180°
+    NleftEdown = 3        # 270° clockwise
+    NupEright = 4         # flip-x
+    NrightEdown = 5       # flip-x, then 90° clockwise
+    NdownEleft = 6        # flip-x, then 180°
+    NleftEup = 7          # flip-x, then 270° clockwise
 
 
 # from: https://stackoverflow.com/a/5883218
@@ -185,13 +212,13 @@ class SensorSection(Base, AutoIDMixin):
     offset_x = sa.Column(
         sa.Integer,
         nullable=True,
-        doc='Offset of the section in the x direction (in pixels). '
+        doc='Offset of the center of the section in the x direction (in pixels). '
     )
 
     offset_y = sa.Column(
         sa.Integer,
         nullable=True,
-        doc='Offset of the section in the y direction (in pixels). '
+        doc='Offset of the center of the section in the y direction (in pixels). '
     )
 
     filter_array_index = sa.Column(
@@ -199,6 +226,12 @@ class SensorSection(Base, AutoIDMixin):
         nullable=True,
         doc='Index in the filter array that specifies which filter this section is located under in the array. '
     )
+
+    # Note that read_noise, dark_current, gain, saturation_limit, and
+    #  non_linearity_limit can vary by lot (10s of %) between amps on a
+    #  single chip.  The values here will be at best "nominal" values,
+    #  and shouldn't be used for any image reduction, but only for
+    #  general low-precision instrument comparison.
 
     read_noise = sa.Column(
         sa.Float,
@@ -279,7 +312,6 @@ class SensorSection(Base, AutoIDMixin):
 
         return True
 
-
 class Instrument:
     """
     Base class for an instrument.
@@ -329,6 +361,10 @@ class Instrument:
         self.size_x = getattr(self, 'size_x', None)  # number of pixels in the x direction
         self.size_y = getattr(self, 'size_y', None)  # number of pixels in the y direction
         self.read_time = getattr(self, 'read_time', None)  # read time in seconds (e.g., 20.0)
+        # read_noise, dark_currnet, gain, saturation_limit, and non_linearity_limit can
+        #   vary by a lot between chips (and between amps on a single chip).  The numbers
+        #   here should only be used for low-precision instrument comparision, not
+        #   for any data reduction.  (Same comment in SensorSection.)
         self.read_noise = getattr(self, 'read_noise', None)  # read noise in electrons (e.g., 7.0)
         self.dark_current = getattr(self, 'dark_current', None)  # dark current in electrons/pixel/second (e.g., 0.2)
         self.gain = getattr(self, 'gain', None)  # gain in electrons/ADU (e.g., 4.0)
@@ -337,9 +373,24 @@ class Instrument:
 
         self.allowed_filters = getattr(self, 'allowed_filters', None)  # list of allowed filter (e.g., ['g', 'r', 'i'])
 
+        self.orientation_fixed = ( self, 'orientation_fixed', False ) # True if sensor never rotates
+        self.orientation = ( self, 'orientation', None ) # If orientation_fixed is True, one of InstrumentOrientation
+
         self.sections = getattr(self, 'sections', None)  # populate this using fetch_sections(), then a dict
-        self._dateobs_for_sections = getattr(self, '_date_obs_for_sections', None)  # dateobs when sections were loaded
+        self._dateobs_for_sections = getattr(self, '_dateobs_for_sections', None)  # dateobs when sections were loaded
         self._dateobs_range_days = getattr(self, '_dateobs_range_days', 1.0)  # how many days from dateobs to reload
+
+        # List of the preprocessing steps to apply to images from this
+        # instrument, in order overscan must always be first.  The
+        # values here (in the Instrument class) are all possible values.
+        # Subclasses should redefine this with the subset that they
+        # actually need.  If a subclass has to add a new preprocessing
+        # step, then it should add that step to this list, and (if it's
+        # a step that includes a calibraiton image or datafile) to the
+        # CalibratorTypeConverter dict in enums_and_bitflags.py
+        self.preprocessing_steps = [ 'overscan', 'zero','dark', 'linearity', 'flat', 'fringe', 'illumination' ]
+        # nofile_steps are ones that don't have an associated file
+        self.preprocessing_nofile_steps = [ 'overscan' ]
 
         # set the attributes from the kwargs
         for key, value in kwargs.items():
@@ -353,11 +404,10 @@ class Instrument:
             INSTRUMENT_INSTANCE_CACHE[self.__class__.__name__] = self
 
     def __repr__(self):
-        return (
-            f'<Instrument {self.name} on {self.telescope} ' 
-            f'({self.aperture:.1f}m, {self.pixel_scale:.2f}"/pix, '
-            f'[{",".join(self.allowed_filters)}])>'
-        )
+        ap = None if self.aperture is None else f'{self.aperture:.1f}m'
+        sc = None if self.pixel_scale is None else f'{self.pixel_scale:.2f}"/pix'
+        filts = [] if self.allowed_filters is None else [",".join(self.allowed_filters)]
+        return f'<Instrument {self.name} on {self.telescope} ({ap}, {sc}, {filts})'
 
     @classmethod
     def get_section_ids(cls):
@@ -726,7 +776,7 @@ class Instrument:
 
         Parameters
         ----------
-        filepath: str or list of str
+        filepath: str, Path or list of str or Path
             The filename (and full path) of the exposure file.
             If an Exposure is associated with multiple files,
             this will be a list of filenames.
@@ -742,14 +792,14 @@ class Instrument:
             The header from the exposure file, as a dictionary
             (or the more complex astropy.io.fits.Header object).
         """
-        if isinstance(filepath, str):
+        if isinstance(filepath, (str, pathlib.Path)):
             if section_id is None:
                 return read_fits_image(filepath, ext=0, output='header')
             else:
                 self.check_section_id(section_id)
                 idx = self._get_fits_hdu_index_from_section_id(section_id)
                 return read_fits_image(filepath, ext=idx, output='header')
-        elif isinstance(filepath, list) and all(isinstance(f, str) for f in filepath):
+        elif isinstance(filepath, list) and all( (isinstance(f, (str, pathlib.Path))) for f in filepath):
             if section_id is None:
                 # just read the header of the first file
                 return read_fits_image(filepath[0], ext=0, output='header')
@@ -863,8 +913,60 @@ class Instrument:
         self.check_section_id(section_id)
         return None, None
 
+    def get_standard_flags_image( self, section_id ):
+        """Get the default flags image for the given SensorSection of this instrument.
+
+        This is for loading, say, an observatory-standard flags image.
+        It should be overriden by any subclass that has such a default
+        flags image.  By default, it returns a data array of all zeros.
+
+        Parameters
+        ----------
+        section_id: int or str
+          The identifier of the section
+
+        Returns
+        -------
+        A 2d numpy array of uint16 with shape [ sensorsection.size_y, sensorsection.size_x ]
+
+        """
+
+        sec = self.get_section( section_id )
+        return np.zeros( [ sec.size_y, sec.size_x ], dtype=numpy.uint16 )
+
+    def get_gain_at_pixel( self, image, x, y, section_id=None ):
+        """Get the gain of an image at a given pixel position.
+
+        THIS SHOULD USUALLY BE OVERRIDDEN BY SUBCLASSES.  By default,
+        it's going to assume that the gain property of the sensor
+        section is good, or if it's null, that the gain property of the
+        instrument is good.  Subclasses should use the image header
+        information.
+
+        Parameters
+        ----------
+        image: Image or None
+          The Image.  If None, section_id must not be none.
+        x, y: int or float
+          Position on the image in C-coordinates (0 offset).  Remember
+          that numpy arrays are indexed [y, x].
+        section_id:
+          If Image is None, pass a non-null section_id to get the default gain.
+
+        Returns
+        -------
+        float
+
+        """
+        sec = self.get_section( section_id if image is None else image.section_id )
+        if sec.gain is None:
+            return self.gain
+        else:
+            return sec.gain
+
     @classmethod
     def _get_header_keyword_translations(cls):
+
         """
         Get a dictionary that translates the header keywords into normalized column names.
         Each column name has a list of possible header keywords that can be used to populate it.
@@ -982,6 +1084,484 @@ class Instrument:
 
         return filter
 
+    # ----------------------------------------
+    # Preprocessing functions.  These live here rather than
+    # in pipeline/preprocessing.py because individual instruments
+    # may need specific overrides for some of the steps.  For many
+    # instruments, the defaults should work.
+
+    def _get_default_calibrator( self, mjd, section, calibtype='dark', filter=None, session=None ):
+        """Acquire (if possible) the default externally-supplied CalibratorFile.
+
+        Will load it into the database as both an Image and a Calibrator
+        Image; may also load other default calibrator images if they
+        come as a pack. WILL CALL session.commit()!
+
+        Should not be called from outside Instrument; instead, use
+        preprocessing_calibrator_files.  _get_default_calibrator method
+        will assume that the default is not already in the database, and
+        load it without checking first.  That other method searches the
+        database first.
+
+        WILL NEED TO BE OVERRIDEEN FOR EVERY SUBCLASS, unless the
+        instrument doesn't use any calibrator images, or doesn't have
+        any default externally supplied calibrator images.
+
+        Parameters
+        ----------
+        mjd: float
+          mjd of validity of the dark frame
+        section: SensorSection
+          The sensor section for the dark frame
+        calibtype: str
+          One of 'zero', 'dark', 'flat', 'illumination', 'fringe', or 'linearity'
+        session: Session
+          database session
+
+        Returns
+        -------
+        CalibratorFile or None
+
+        """
+
+        # Note: subclasses will need to import CalibratorFile here.  We
+        # can't import it at the top of the file because calibrator.py
+        # imports image.py, image.py imports exposure.py, and
+        # exposure.py imports instrument.py -- leading to a circular import
+
+        # from models.calibratorfile import CalibratorFile
+
+        return None
+
+    def preprocessing_calibrator_files( self, calibset, flattype, section, filter, mjd, nofetch=False, session=None ):
+        """Get a dictionary of calibrator images/datafiles for a given mjd and sensor section.
+
+        MIGHT call session.commit(); see below.
+
+        Instruments *may* need to override this.
+
+        If a calibrator file doesn't exist for calibset 'default', will
+        call the instrument's _get_default_calibrator, which will call
+        session.commit().
+
+        If a calibrator file isn't found (potentially after calling the
+        instrument's _get_default_calibrator), then the _isimage and
+        _fileid values in the return dictionary for that calibrator file
+        will be None.
+
+        Parameters
+        ----------
+        calibset: str
+          The calibrator set, one of the values in the CalibratorSetConverter enum
+        flattype: str
+          The flatfield type, one of the values in the FlatTypeConverter
+          enum; if and only if calibset is externally_supplied, then
+          flattype must be externally_supplied.
+        section: str
+          The name of the SensorSection
+        filter: str
+          The filter (can be None for some types, e.g. zero, linearity)
+        mjd: float
+          The mjd where the calibrator params are valid
+        nofetch: bool
+          If True, will only search the database for an
+          externally_supplied calibrator.  If False (default), will call
+          the instrument's _get_default_calibrators method if an
+          externally_supplied calibrator isn't found in the database.
+          Ignored if calibset is not externally_supplied.
+        session: Session
+
+        Returns
+        -------
+        dict with up to 12 keys:
+           (zero|flat|dark|fringe|illumination|linearity)_isimage: bool
+               True if the calibrator id is an image (other wise is none, or a miscellaneous data file)
+           (zero|flat|dark|fringe|illumination|linearity)_fileid: int
+               Either the image_id or datafile_id of the calibrator file, or None if not found
+
+        keys will only be included for steps in the instrument's
+        preprocessing_steps list (which is set during instrument object
+        construction).
+
+        """
+
+        if ( calibset == 'externally_supplied' ) != ( flattype == 'externally_supplied' ):
+            raise ValueError( "Doesn't make sense to have only one of calibset and flattype be externally_supplied" )
+
+        # Import CalibratorFile here.  We can't import it at the top of
+        # the file because calibrator.py imports image.py, image.py
+        # imports exposure.py, and exposure.py imports instrument.py --
+        # leading to a circular import
+        from models.calibratorfile import CalibratorFile
+        from models.image import Image
+
+        params = {}
+
+        expdatetime = pytz.utc.localize( astropy.time.Time( mjd, format='mjd' ).datetime )
+
+        with SmartSession(session) as session:
+            for calibtype in self.preprocessing_steps:
+                if calibtype in self.preprocessing_nofile_steps:
+                    continue
+                # To avoid a race condition in _get_default_calibrator, we need to
+                # lock the CalibratorFile table.  Reason: if multiple processes are
+                # running at once, they might both look for the same calibrator file
+                # at once, both not find it, and both call _get_default_calibrator
+                # to try to add the same calibrator file.
+                try:
+                    if ( calibset == 'externally_supplied' ) and ( not nofetch ):
+                        session.connection().execute( sa.text( 'LOCK TABLE calibrator_files' ) )
+                    calibquery = ( session.query( CalibratorFile )
+                                   .filter( CalibratorFile.calibrator_set == calibset )
+                                   .filter( CalibratorFile.instrument == self.name )
+                                   .filter( CalibratorFile.type == calibtype )
+                                   .filter( CalibratorFile.sensor_section == section )
+                                   .filter( sa.or_( CalibratorFile.validity_start == None,
+                                                    CalibratorFile.validity_start <= expdatetime ) )
+                                   .filter( sa.or_( CalibratorFile.validity_end == None,
+                                                    CalibratorFile.validity_end >= expdatetime ) )
+                                  )
+                    if calibtype == 'flat':
+                        calibquery = calibquery.filter( CalibratorFile.flat_type == flattype )
+                    if ( calibtype in [ 'flat', 'fringe', 'illumination' ] ) and ( filter is not None ):
+                        calibquery = calibquery.join( Image ).filter( Image.filter == filter )
+
+                    calib = None
+                    if ( calibquery.count() == 0 ) and ( calibset == 'externally_supplied' ) and ( not nofetch ):
+                        calib = self._get_default_calibrator( mjd, section, calibtype=calibtype,
+                                                              filter=self.get_short_filter_name( filter ),
+                                                              session=session )
+                    else:
+                        if calibquery.count() > 1:
+                            _logger.warning( f"Found {calibquery.count()} valid {calibtype}s for "
+                                             f"{instrument.name} {section}, randomly using one." )
+                        calib = calibquery.first()
+                finally:
+                    # Make sure that the calibrator_files table gets
+                    # unlocked.  If _get_default_calibrator had to add
+                    # something to the database, it will have called a
+                    # commit() already, which would have already
+                    # unlocked the table.  But, if it wasn't called,
+                    # then the table would remain locked; to avoid that,
+                    # rollback here.
+                    if ( calibset == 'externally_supplied' ) and ( not nofetch ):
+                        session.rollback()
+
+                if calib is None:
+                    params[ f'{calibtype}_isimage' ] = False
+                    params[ f'{calibtype}_fileid'] = None
+                else:
+                    if calib.image_id is not None:
+                        params[ f'{calibtype}_isimage' ] = True
+                        params[ f'{calibtype}_fileid' ] = calib.image_id
+                    elif calib.datafile_id is not None:
+                        params[ f'{calibtype}_isimage' ] = False
+                        params[ f'{calibtype}_fileid' ] = calib.datafile_id
+                    else:
+                        raise RuntimeError( f'Data corruption: CalibratorFile {calib.id} has neither '
+                                            f'image_id nor datafile_id' )
+
+        return params
+
+    def overscan_sections( self, header ):
+        """Return the overscan sections for a raw image given its header.
+
+        You probably want to call overscan_and_data_sections() rather than this.
+
+        Most instruments will need to override this to look at the right
+        header keywords.  This default routine uses the keywords from
+        DECam, i.e. BIASSECA, BIASSECB, DATASECA, DATASECB.
+
+        Parameters
+        ----------
+        header: dict
+          The header of the image in question.
+          NOTE: this needs to be the full header of the image,
+          i.e. Image.raw_header rahter than Image.header.
+
+        Returns
+        -------
+        list of dicts; each element has fields
+          'secname': str,
+          'biassec': { 'x0': int, 'x1': int, 'y0': int, 'y1': int },
+          'datasec': { 'x0': int, 'x1': int, 'y0': int, 'y1': int }
+        Secname is some subsection identifier, which is instrument
+        specific.  By default, it will be 'A' or 'B'.  Sections are in
+        C-coordinates (0-offset), using the numpy standard (i.e. x1 is
+        one past the end of the region); remember that numpy arrays are
+        indexed [y, x].
+
+        """
+
+        arrparse = re.compile( '^\s*\[\s*(?P<x0>\d+)\s*:\s*(?P<x1>\d+)\s*,\s*(?P<y0>\d+)\s*:\s*(?P<y1>\d+)\s*\]\s*$' )
+        retval = []
+        for letter in [ 'A', 'B' ]:
+            if ( f'BIASSEC{letter}' not in header ) or ( f'DATASEC{letter}' not in header ):
+                raise RuntimeError( f"Can't find BAISSEC{letter} and/or DATASEC{letter} in header" )
+            biassec = header[ f'BIASSEC{letter}' ]
+            datasec = header[ f'DATASEC{letter}' ]
+            biasmatch = arrparse.search( biassec )
+            datamatch = arrparse.search( datasec )
+            if not biasmatch:
+                raise ValueError( f"Error parsing header BIASSEC{letter} entry {biassec}" )
+            if not datamatch:
+                raise ValueError( f"Error parsing header DATASEC{letter} entry {biassec}" )
+            # The -1 are to convert from FITS/Fortran coordinates to C coordinates
+            # There is no -1 high limits because the header keywords
+            # give inclusive right-side limits, but numpy wants exclusive right-side
+            # limits, and we're using numpy.  (The -1 offsets the +1 to
+            # go from inclusive to exclusive.)
+            retval.append( { 'secname': letter,
+                             'biassec': { 'x0': int(biasmatch.group('x0'))-1, 'x1': int(biasmatch.group('x1')),
+                                          'y0': int(biasmatch.group('y0'))-1, 'y1': int(biasmatch.group('y1')) },
+                             'datasec': { 'x0': int(datamatch.group('x0'))-1, 'x1': int(datamatch.group('x1')),
+                                          'y0': int(datamatch.group('y0'))-1, 'y1': int(datamatch.group('y1')) }
+                            } )
+        return retval
+
+
+    def overscan_and_data_sections( self, header ):
+        """Return the data sections where they appear in the image after trimming.
+
+        Returns everything overscan_sections does, plus more.
+
+        It's possible (likely?) that an instrument that overrides
+        overscan_sections won't need to override this.
+
+        Parameters
+        ----------
+        header: dict
+          The header of the image in question; use Image.raw_header not Image.header.
+
+        Returns
+        ------
+        list of dicts, each dict being:
+           { 'secname': str,
+             'biassec': { 'x0': int, 'x1': int, 'y0': int, 'y1': int },
+             'datasec': { 'x0': int, 'x1': int, 'y0': int, 'y1': int },
+             'destsec': { 'x0': int, 'x1', int, 'y0': int, 'y1': int }
+           }
+        secname is a string identifying the subsection.  (Not to be
+        confused with SensorSection, as each Image has a single
+        SensorSection.)  biassec and datasec are regions on the raw
+        image; destsec are regions on the trimmed image.  Sections are
+        in C-coordiates(0-offset), using the numpy standard (i.e. x1 and
+        y1 are one past the end of the region); remember that numpy
+        arrays are indexed [y, x].
+
+        """
+        # This whole thing turns out to be surprisingly complicated
+
+        secs = self.overscan_sections( header )
+
+        # Figure out all the data ranges, making sure they don't overlap
+        xranges = []
+        yranges = []
+        for sec in secs:
+            x0 = sec['datasec']['x0']
+            x1 = sec['datasec']['x1']
+            y0 = sec['datasec']['y0']
+            y1 = sec['datasec']['y1']
+            foundx = False
+            for xr in xranges:
+                if ( x0 == xr[0] ) and ( x1 == xr[1] ):
+                    foundx = True
+                    continue
+                if ( ( ( x0 > xr[0] ) and ( x0 < xr[1] ) )
+                     or
+                     ( ( x1 > xr[0] ) and ( x1 < xr[1] ) ) ):
+                    raise ValueError( f"Error, data sections aren't in a grid" )
+            if not foundx:
+                xranges.append( [ x0, x1 ] )
+            foundy = False
+            for yr in yranges:
+                if ( y0 == yr[0] ) and ( y1 == yr[1] ):
+                    foundy = True
+                    continue
+                if ( ( ( y0 > yr[0] ) and ( y0 < yr[1] ) )
+                     or
+                     ( ( y1 > yr[0] ) and ( y1 < yr[1] ) ) ):
+                    raise ValueError( f"Error, data sections aren't in a grid" )
+            if not foundy:
+                yranges.append( [ y0, y1 ] )
+
+        # Figure out destination data ranges.  There's a built in
+        # assumption here that the ordering of the data sections on the
+        # raw image is the same as the ordering of the data sections on
+        # the trimmed image.
+        xranges.sort( key = lambda a: a[0] )
+        yranges.sort( key = lambda a: a[0] )
+        xdestranges = []
+        ydestranges = []
+        xsize = 0
+        for xr in xranges:
+            xdestranges.append( [ xsize, xsize + xr[1] - xr[0] ] )
+            xsize += xr[1] - xr[0]
+        ysize = 0
+        for yr in yranges:
+            ydestranges.append( [ ysize, ysize + yr[1] - yr[0] ] )
+            ysize += yr[1] - yr[0]
+
+        # Now map sections to ranges
+        for sec in secs:
+            # Figure out where the data section goes in the trimmed image
+            xr = None
+            xrdest = None
+            for xrcand, xrdestcand in zip( xranges, xdestranges ):
+                if ( xrcand[0] == sec['datasec']['x0'] ) and ( xrcand[1] == sec['datasec']['x1'] ):
+                    xr = xrcand
+                    xrdest = xrdestcand
+            yr = None
+            yrdest = None
+            for yrcand, yrdestcand in zip( yranges, ydestranges ):
+                if ( yrcand[0] == sec['datasec']['y0'] ) and ( yrcand[1] == sec['datasec']['y1'] ):
+                    yr = yrcand
+                    yrdest = yrdestcand
+            sec[ 'destsec' ] = { 'x0': xrdest[0], 'x1': xrdest[1], 'y0': yrdest[0], 'y1': yrdest[1] }
+
+        # whew
+        return secs
+
+    def overscan_and_trim( self, *args ):
+        """Overscan and trim image.
+
+        Parameters
+        ----------
+        Can pass either one or two positional parmeters
+
+        If one: image
+        image: Image
+          The Image to process.  Will use Image.raw_header for header
+          and Image.raw_data for data
+
+          --- OR ---
+
+        If two: header, data
+        header: dict (NOTE THIS DOESN'T WORK -- SEE ISSUE #92)
+          Image header.  Need the full header, i.e. Image.raw_header not Image.header.
+        data: numpy array
+          Image data.  Must not be trimmed, i.e. must include the overscan section
+
+        Hopefully most instruments won't have to override this (only
+        overscan_sections), but this routine does assume that the data
+        sections are laid out in a grid (1x2, 2x2, 2x2, 3x3, etc), and
+        that the relative positions of the data sections on the raw
+        images (i.e. what is to the left of what) is the same as on the
+        reconstructed trimmed image.   Any more complicated layout of
+        data sections (e.g. interleaving, out of order data sections,
+        etc.) will require custom code.
+
+        Returns
+        -------
+        numpy array
+          The bias-corrected and trimmed image data
+
+        """
+        # import image here because importing it at the top
+        # of the file leads to circular imports
+        from models.image import Image
+
+        if len(args) == 1:
+            if not isinstance( args[0], Image ):
+                raise TypeError( 'overscan_and_trim: pass either an Image as one argument, '
+                                 'or header and data as two arguments' )
+            # THOUGHT REQUIRED
+            # The raw FITS data as loaded might be integer data (based on what
+            # the observatory does), but we want to use floats once we start
+            # processing.  Are we limiting ourselves too much by hardcoding
+            # in float32, or should we put in an option somewhere to
+            # use float64?  That's probably a back-burner low-priority TODO.
+            data = args[0].raw_data.astype( np.float32 )
+            header = args[0].raw_header
+        elif len(args) == 2:
+            # if not isinstance( args[0], <whatever the right header datatype is>:
+            #     raise TypeError( "header isn't a <header>" )
+            if not isinstance( args[1], np.ndarray ):
+                raise TypeError( "data isn't a numpy array" )
+            header = args[0]
+            data = args[1].astype( np.float32 )
+        else:
+            raise RuntimeError( 'overscan_and_trim: pass either an Image as one argument, '
+                                'or header and data as two arguments' )
+
+        sections = self.overscan_and_data_sections( header )
+        xsize = 0
+        ysize = 0
+        for sec in sections:
+            ysize = max( sec['destsec']['y1'], ysize )
+            xsize = max( sec['destsec']['x1'], xsize )
+
+        # Figure out bias values by taking the median of the appropriate overscan sections
+        for sec in sections:
+            # Have to figure out whether the overscan strip is offset in x or offset in y
+            if sec['biassec']['y1'] - sec['biassec']['y0'] == sec['datasec']['y1'] - sec['datasec']['y0']:
+                sec['bias'] = np.median( data[ sec['biassec']['y0']:sec['biassec']['y1'] ,
+                                               sec['biassec']['x0']:sec['biassec']['x1'] ],
+                                         axis=1 )[ :, np.newaxis ]
+            elif sec['biassec']['x1'] - sec['biassec']['x0'] == sec['datasec']['x1'] - sec['datasec']['x0']:
+                sec['bias'] = np.median( data[ sec['biassec']['y0']:sec['biassec']['y1'] ,
+                                               sec['biassec']['x0']:sec['biassec']['x1'] ],
+                                         axis=0 )[ np.newaxis, : ]
+            else:
+                err = ( f"Bias/Data section size mismatch: biassec=["
+                        f"{sec['biassec']['x0']}:{sec['biassec']['x1']},"
+                        f"{sec['biassec']['y0']}:{sec['biassec']['y1']}], datasec=["
+                        f"{sec['datasec']['x0']}:{sec['datasec']['x1']},"
+                        f"{sec['datasec']['y0']}:{sec['datasec']['y1']}]" )
+                _logger.error( err )
+                raise ValueError( err )
+
+        # Actually subtract overscan and trim
+        trimmedimage = np.zeros( [ ysize, xsize ], dtype=data.dtype )
+        for sec in sections:
+            # Make a bunch of temp variables for clarity
+            xsrc0 = sec['datasec']['x0']
+            xsrc1 = sec['datasec']['x1']
+            ysrc0 = sec['datasec']['y0']
+            ysrc1 = sec['datasec']['y1']
+            xdst0 = sec['destsec']['x0']
+            xdst1 = sec['destsec']['x1']
+            ydst0 = sec['destsec']['y0']
+            ydst1 = sec['destsec']['y1']
+            trimmedimage[ ydst0:ydst1, xdst0:xdst1 ] = data[ ysrc0:ysrc1, xsrc0:xsrc1 ] - sec[ 'bias' ]
+
+        return trimmedimage
+
+    def linearity_correct( self, *args, linearitydata=None ):
+        """Linearity correct image.
+
+        Pass an image that has already been overscanned and trimmed.
+
+        Parameters
+        ----------
+        Can pass either one or two positional parmeters
+
+        If one: image
+        image: Image
+          The Image to process.  Will use Image.raw_header for header
+          and Image.data for data
+
+          --- OR ---
+
+        If two: header, data
+        header: dict (NOTE THIS DOESN'T WORK -- SEE ISSUE #92)
+          Image header.  Need the full header, i.e. Image.raw_header not Image.header.
+        data: numpy array
+          Image data.  Must not be trimmed, i.e. must include the overscan section
+
+        In addition, there's one keyword parameter, linearitydata, which
+        should be either an Image or a DataFile (which one is needed
+        depends on the instrument) holding the data that the instrument
+        needs to linearity correct this image.
+
+        Returns
+        -------
+        numpy array
+          The linearity-corrected data
+
+        """
+        raise NotImplementedError( f"{self.__class__.__name__} needs to impldment linearity_correct" )
+
 
 class DemoInstrument(Instrument):
 
@@ -1003,8 +1583,12 @@ class DemoInstrument(Instrument):
         # will apply kwargs to attributes, and register instrument in the INSTRUMENT_INSTANCE_CACHE
         Instrument.__init__(self, **kwargs)
 
+        # DemoInstrument doesn't know how to preprocess
+        self.preprocessing_steps = []
+
     @classmethod
     def get_section_ids(cls):
+
         """
         Get a list of SensorSection identifiers for this instrument.
         """
@@ -1059,7 +1643,7 @@ class DemoInstrument(Instrument):
 
         section = self.get_section(section_id)
 
-        return np.random.poisson(10, (section.size_y, section.size_x))
+        return np.array( np.random.poisson(10., (section.size_y, section.size_x)), dtype='=f4' )
 
     def read_header(self, filepath, section_id=None):
         # return a spoof header
@@ -1087,129 +1671,158 @@ class DemoInstrument(Instrument):
         """
         return 'Demo'
 
+    def find_origin_exposures( self, skip_exposures_in_database=True,
+                               minmjd=None, maxmjd=None, filters=None,
+                               containing_ra=None, containing_dec=None,
+                               minexptime=None ):
+        """Search the external repository associated with this instrument.
 
-class DECam(Instrument):
+        Search the external image/exposure repository for this
+        instrument for exposures that the database doesn't know about
+        already.  For example, for DECam, this searches the noirlab data
+        archive.
 
-    def __init__(self, **kwargs):
-        self.name = 'DECam'
-        self.telescope = 'CTIO 4.0-m telescope'
-        self.aperture = 4.0
-        self.focal_ratio = 2.7
-        self.square_degree_fov = 3.0
-        self.pixel_scale = 0.2637
-        self.read_time = 20.0
-        self.read_noise = 7.0
-        self.dark_current = 0.1
-        self.gain = 4.0
-        self.saturation_limit = 100000
-        self.non_linearity_limit = 200000
-        self.allowed_filters = ["g", "r", "i", "z", "Y"]
-
-        # will apply kwargs to attributes, and register instrument in the INSTRUMENT_INSTANCE_CACHE
-        Instrument.__init__(self, **kwargs)
-
-    @classmethod
-    def get_section_ids(cls):
-        """
-        Get a list of SensorSection identifiers for this instrument.
-        We are using the names of the FITS extensions (e.g., N12, S22, etc.).
-        See ref: https://noirlab.edu/science/sites/default/files/media/archives/images/DECamOrientation.png
-        """
-        n_list = [f'N{i}' for i in range(1, 32)]
-        s_list = [f'S{i}' for i in range(1, 32)]
-        return n_list + s_list
-
-    @classmethod
-    def check_section_id(cls, section_id):
-        """
-        Check that the type and value of the section is compatible with the instrument.
-        In this case, it must be an integer in the range [0, 63].
-        """
-        if not isinstance(section_id, str):
-            raise ValueError(f"The section_id must be a string. Got {type(section_id)}. ")
-
-        letter = section_id[0]
-        number = int(section_id[1:])
-
-        if letter not in ['N', 'S']:
-            raise ValueError(f"The section_id must start with either 'N' or 'S'. Got {letter}. ")
-
-        if not 1 <= number <= 31:
-            raise ValueError(f"The section_id number must be in the range [1, 31]. Got {number}. ")
-
-    @classmethod
-    def get_section_offsets(cls, section_id):
-        """
-        Find the offset for a specific section.
+        WARNING : do not call this without some parameters that limit
+        the search; otherwise, too many things will be returned, and the
+        query is likely to time out or get an error from the external
+        repository. E.g., a good idea is to search only for exposure from the last week. 
 
         Parameters
         ----------
-        section_id: int
-            The identifier of the section.
+        skip_exposures_in_databse: bool
+           If True (default), will filter out any exposures that (as
+           best can be determined) are already known in the SeeChange
+           database.  If False, will include all exposures. 
+        minmjd: float
+           The earliest time of exposure to search (default: no limit)
+        maxmjd: float
+           The latest time of exposure to search (default: no limit)
+        filters: str or list of str
+           Filters to search.  The actual strings are
+           instrument-dependent, and will match what is expected on the
+           external repository.  By default, doesn't limit by filter.
+        containing_ra: float
+           Search for exposures that include this RA (degrees, J2000);
+           default, no RA constraint.
+        containing_dec: float
+           Search for exposures that include this Dec (degrees, J2000);
+           default, no Dec constraint.
+        minexptime: float
+           Search for exposures that have this minimum exposure time in
+           seconds; default, no limit.
 
         Returns
         -------
-        offset_x: int
-            The x offset of the section.
-        offset_y: int
-            The y offset of the section.
-        """
-        # TODO: this is just a placeholder, we need to put the actual offsets here!
-        cls.check_section_id(section_id)
-        letter = section_id[0]
-        number = int(section_id[1:])
-        dx = number % 8
-        dy = number // 8
-        if letter == 'S':
-            dy = -dy
-        return dx * 2048, dy * 4096
+        A InstrumentOriginExposures object, or None if nothing is found.
 
-    def _make_new_section(self, section_id):
         """
-        Make a single section for the DECam instrument.
-        The section_id must be a valid section identifier (int in this case).
+        raise NotImplementedError( f"Instrument class {self.__class__.__name__} hasn't "
+                                   f"implemented find_origin_exposures." )
+
+class InstrumentOriginExposures:
+    """A class encapsulating the response from Instrument.find_origin_exposures()
+
+    Never instantiate one of these (or a subclass) directly; get it from
+    find_origin_exposures().
+
+    Must be subclassed by each instrument that defines
+    find_origin_exposures().  The internal storage of the exposures will
+    differ for each instrument, and no external assumptions should be
+    made about it other than that it's a sequence (and so can be indexed).
+
+    """
+
+    def download_exposures( self, outdir=".", indexes=None, onlyexposures=True,
+                            clobber=False, existing_ok=False, session=None ):
+        """Download exposures from the origin.
+
+        Parameters
+        ----------
+        outdir: Path or str
+           Directory where to save the files.  Filenames will be
+           straight from the origin.
+        indexes: list of int or None
+           List of indexes into the set of origin exposures to download;
+           None means download them all.
+        onlyexposures: bool default True
+           If True, only download the exposure.  If False, and there are
+           anciallary exposure (e.g. for the DECam instrument, when
+           reducing prod_type='instcal' images, there are weight and
+           data quality mask exposure), download those as well.
+        clobber: bool
+           If True, will always download and overwrite existing files.
+           If False, will trust that the file is the right thing if existing_ok=True,
+           otherwise will throw an exception.
+        existing_ok: bool
+           Only matters if clobber=False (see above)
+        session: Session
+           Database session to use.  (A new one will be created if this
+           is None, but that will lead to the returned exposures and
+           members of those exposures not being bound to a session, so
+           lazy-loading won't work).
 
         Returns
         -------
-        section: SensorSection
-            A new section for this instrument.
-        """
-        # TODO: we must improve this!
-        #  E.g., we should add some info on the gain and read noise (etc) for each chip.
-        #  Also need to fix the offsets, this is really not correct.
-        self.check_section_id(section_id)
-        (dx, dy) = self.get_section_offsets(section_id)
-        return SensorSection(section_id, self.name, size_x=2048, size_y=4096, offset_x=dx, offset_y=dy)
+        A list of dictionaries, each element of which is { prod_type: pathlib.Path }
+        prod_type will generally only be "exposure", but if there are ancillary
+        exposures, there may be others.  E.g., when downloading reduced DECam
+        images from NOIRlab, prod_type may be all of 'exposure', 'weight', 'dqmask'.
 
-    @classmethod
-    def _get_fits_hdu_index_from_section_id(cls, section_id):
         """
-        Return the index of the HDU in the FITS file for the DECam files.
-        Since the HDUs have extension names, we can use the section_id directly
-        to index into the HDU list.
-        """
-        cls.check_section_id(section_id)
-        return section_id
+        raise NotImplementedError( f"Instrument class {self.__class__.__name__} hasn't "
+                                   f"implemented download_exposure." )
 
-    @classmethod
-    def get_filename_regex(cls):
-        return [r'c4d.*\.fits']
+    def download_and_commit_exposures( self, indexes=None, clobber=False, existing_ok=False,
+                                       delete_downloads=True, skip_existing=True ):
+        """Download exposures and load them into the database.
 
-    @classmethod
-    def get_short_instrument_name(cls):
-        """
-        Get a short name used for e.g., making filenames.
-        """
-        return 'c4d'
+        Files will first be downloaded to FileOnDiskMixin.local_path
+        with the filename that the origin gave them.  The headers of
+        files will be used to construct Exposure objects.  When each
+        Exposure object is saved, it will copy the file to the file
+        named by Exposure.invent_filpath (relative to
+        FileOnDiskMixin.local_path) and upload the exposure to the
+        archive.
 
-    @classmethod
-    def get_short_filter_name(cls, filter):
+        Parmaeters
+        ----------
+        indexes: list of int or None
+           List of indexes into the set of origin exposures to download;
+           None means download them all.
+        clobber: bool
+           Applies to the originally downloaded file
+           (i.e. FileOnDiskMixin.local_path/{origin_filename}) already
+           exists.  If clobber is True, that originally downloaded file
+           will always be deleted and written over with a redownload.
+           If clobber is False, then if existing_ok is True it will
+           assume that that file is correct, otherwise it throws an
+           exception.
+        existing_ok: bool
+           Applies to the originally downloaded file; see clobber.
+        delete_downloads: bool
+           If True (the default), will delete the originally downloaded
+           files after they have been copied to their final location.
+           (This mainly exists for testing purposes to avoid repeated
+           downloads.)
+        skip_existing: bool
+           If True, will silently skip loading exposures that already exist in the
+           database.  If False, will raise an exception on an attempt to load
+           an exposure that already exists in the database.
+
+        Returns
+        -------
+        A list of Exposure objects.  Depending on skip_existing, the length of this list may
+        not be the same as the length of indexes.
+
         """
-        Return the short version of each filter used by DECam.
-        In this case we just return the first character of the filter name,
-        e.g., shortening "g DECam SDSS c0001 4720.0 1520.0" to "g".
-        """
-        return filter[0:1]
+        raise NotImplementedError( f"Instrument class {self.__class__.__name__} hasn't "
+                                   f"implemented download_and_commit_exposures." )
+
+    def __len__( self ):
+        """The number of exposures this object encapsulates."""
+        raise NotImplementedError( f"Instrument class {self.__class__.__name__} hasn't implemented __len__." )
+
+
 
 
 if __name__ == "__main__":
