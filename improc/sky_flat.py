@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def calc_sky_flat(images, iterations=3, nsigma=5.0):
+def calc_sky_flat(images, iterations=3, nsigma=3.0):
     """Calculate the sky flat for a set of images.
 
     Parameters
@@ -23,6 +23,7 @@ def calc_sky_flat(images, iterations=3, nsigma=5.0):
         Divide an image by the flat to correct for pixel-to-pixel sensitivity variations
         and camera vignetting.
     """
+    # TODO: we may need to chop the images into smaller pieces to avoid memory issues
 
     if isinstance(images, np.ndarray) and images.ndim == 3:
         pass

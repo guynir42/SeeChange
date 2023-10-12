@@ -55,6 +55,7 @@ def tests_setup_and_teardown():
         session.execute( sa.text( "DELETE FROM code_versions" ) )
         session.commit()
 
+
 def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
 

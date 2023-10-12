@@ -4,21 +4,23 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
+from models.base import CODE_ROOT
+
 from improc.simulator import Simulator
 from improc.sky_flat import calc_sky_flat
 
 
 def test_simple_sky_flat():
     clear_cache = False  # cache the images from the simulator
-    filename = "tests/improc/cache/test_images_flats.npy"
+    filename = os.path.join(CODE_ROOT, "tests/improc/cache/flat_test_images.npy")
+    sim = Simulator()
+
     if os.path.isfile(filename) and not clear_cache:
+        sim.make_image()
         images = np.load(filename)
     else:
-        sim = Simulator()
-
-        # sim.pars.background_std = 5.0
         images = []
-        for i in range(10):
+        for i in range(1000):
             sim.make_image(new_sky=True, new_stars=True)
             # plt.imshow(sim.image)
             # plt.title(f"Image {i}")
@@ -30,8 +32,23 @@ def test_simple_sky_flat():
             os.makedirs(os.path.dirname(filename))
         np.save(filename, images)
 
-    sky_flat = calc_sky_flat(images, iterations=1)
-    plt.imshow(sky_flat)
-    plt.title("Sky Flat")
+    sky_flat = calc_sky_flat(images, nsigma=2.0, iterations=10)
+
+    # plt.imshow(sim.sensor.pixel_qe_map)
+    # plt.title('sensor QE')
+    # plt.show(block=True)
+
+    # plt.imshow(sim.camera.vignette_map)
+    # plt.title('camera vignette')
+    # plt.show(block=True)
+
+    # plt.imshow(sky_flat)
+    # plt.title("Sky Flat")
+    # plt.show(block=True)
+
+    plt.plot(sky_flat[100, :], label="sky flat")
+    plt.plot(sim.sensor.pixel_qe_map[100, :], label="sensor QE")
+    plt.plot(sim.camera.vignette_map[100, :], label="camera vignette")
+    plt.legend()
     plt.show(block=True)
 

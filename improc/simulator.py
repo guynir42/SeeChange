@@ -264,7 +264,7 @@ class SimCamera:
         rr = np.sqrt(xx ** 2 + yy ** 2)
         v += (self.vignette_amplitude * (rr - self.vignette_inner_radius)) ** 2
         v[rr < self.vignette_inner_radius] = 1.0
-        self.vignette_map = v
+        self.vignette_map = 1/v
 
 
 class SimSky:
@@ -640,7 +640,7 @@ class Simulator:
         """
         Add the effects of the camera, namely the vignette.
         """
-        self.flux_vignette = self.flux_with_sky / self.camera.vignette_map
+        self.flux_vignette = self.flux_with_sky * self.camera.vignette_map
 
     def flux_to_electrons(self):
         """
