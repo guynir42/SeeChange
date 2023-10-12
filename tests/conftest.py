@@ -66,6 +66,7 @@ def code_version():
     except Exception as e:
         warnings.warn(str(e))
 
+
 @pytest.fixture
 def provenance_base(code_version):
     p = Provenance(
@@ -90,6 +91,7 @@ def provenance_base(code_version):
             session.commit()
     except Exception as e:
         warnings.warn(str(e))
+
 
 @pytest.fixture
 def provenance_extra(code_version, provenance_base):

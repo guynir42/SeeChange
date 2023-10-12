@@ -17,7 +17,7 @@ class SimPars(Parameters):
         self.bias_mean = self.add_par('bias_mean', 100, (int, float), 'Mean bias level')
         self.bias_std = self.add_par(
             'bias_std', 1, (int, float),
-            'Square this and use it as Poisson variance for bias values'
+            'variation in the actual mean bias value of each pixel. '
         )
         self.dark_current = self.add_par(
             'dark_current', 0.1, (int, float),
@@ -34,20 +34,20 @@ class SimPars(Parameters):
             'Fraction of electrons that bleed in the y direction if saturation is reached'
         )
         self.pixel_qe_std = self.add_par(
-            'pixel_qe_std', 0.0, float,
+            'pixel_qe_std', 0.01, float,
             'Standard deviation of the pixel quantum efficiency (around value of 1.0)'
         )
         self.gain_mean = self.add_par('gain_mean', 1.0, (int, float), 'Mean gain')
         self.gain_std = self.add_par('gain_std', 0.0, (int, float), 'Gain variation between pixels')
 
         # camera parameters
-        self.vignette_amplitude = self.add_par('vignette_amplitude', 0.0, float, 'Vignette amplitude')
+        self.vignette_amplitude = self.add_par('vignette_amplitude', 0.01, float, 'Vignette amplitude')
         self.vignette_inner_radius = self.add_par(
-            'vignette_inner_radius', 0.0, float,
+            'vignette_inner_radius', 280, float,
             'Inside this radius the vignette is ignored'
         )
-        self.vignette_offset_x = self.add_par('vignette_offset_x', 0.0, float, 'Vignette offset in x')
-        self.vignette_offset_y = self.add_par('vignette_offset_y', 0.0, float, 'Vignette offset in y')
+        self.vignette_offset_x = self.add_par('vignette_offset_x', 10.0, float, 'Vignette offset in x')
+        self.vignette_offset_y = self.add_par('vignette_offset_y', -5.0, float, 'Vignette offset in y')
 
         self.optic_psf_mode = self.add_par('optic_psf_mode', 'gaussian', str, 'Optical PSF mode')
         self.optic_psf_pars = self.add_par('optic_psf_pars', {'sigma': 1.0}, dict, 'Optical PSF parameters')
@@ -257,9 +257,14 @@ class SimCamera:
         Input the imsize as a tuple of (imsize_x, imsize_y).
         """
 
-        self.vignette_map = np.ones((imsize[0], imsize[1]))
-
-        # TODO: continue this!
+        v = np.ones((imsize[0], imsize[1]))
+        [xx, yy] = np.meshgrid(np.arange(-imsize[1] / 2, imsize[1] / 2), np.arange(-imsize[0] / 2, imsize[0] / 2))
+        xx += self.vignette_offset_x
+        yy += self.vignette_offset_y
+        rr = np.sqrt(xx ** 2 + yy ** 2)
+        v += (self.vignette_amplitude * (rr - self.vignette_inner_radius)) ** 2
+        v[rr < self.vignette_inner_radius] = 1.0
+        self.vignette_map = v
 
 
 class SimSky:
@@ -416,9 +421,14 @@ class Simulator:
 
         self.sensor.bias_mean = self.pars.bias_mean
         self.sensor.pixel_bias_std = self.pars.bias_std
-        self.sensor.pixel_bias_map = self.sensor.bias_mean + np.random.poisson(
-            self.sensor.pixel_bias_std ** 2, size=self.pars.imsize
-        ) - self.sensor.pixel_bias_std ** 2
+        # self.sensor.pixel_bias_map = self.sensor.bias_mean + np.random.poisson(
+        #     self.sensor.pixel_bias_std ** 2, size=self.pars.imsize
+        # ) - self.sensor.pixel_bias_std ** 2
+        self.sensor.pixel_bias_map = np.random.normal(
+            self.sensor.bias_mean,
+            self.sensor.pixel_bias_std,
+            size=self.pars.imsize
+        )
 
         self.sensor.gain_mean = self.pars.gain_mean
         self.sensor.pixel_gain_std = self.pars.gain_std
@@ -630,7 +640,7 @@ class Simulator:
         """
         Add the effects of the camera, namely the vignette.
         """
-        self.flux_vignette = self.flux_with_sky * self.camera.vignette_map
+        self.flux_vignette = self.flux_with_sky / self.camera.vignette_map
 
     def flux_to_electrons(self):
         """
@@ -701,6 +711,20 @@ class Simulator:
             self.noise_var_map, size=self.pars.imsize
         )  # read noise is included in the variance, but should not add to the baseline (bias)
         self.image = np.round(self.image).astype(int)
+
+    def apply_bias_correction(self, image):
+        """
+        Apply the bias correction to an image.
+        """
+        return image - self.sensor.pixel_bias_map
+
+    def apply_dark_correction(self, image):
+        """
+        Apply the dark current correction to an image.
+        """
+        return image - self.sensor.dark_current * self.pars.exposure_time
+
+    # TODO: apply flat
 
     def save_truth(self):
         """
@@ -781,5 +805,10 @@ def make_gaussian(sigma_x=2.0, sigma_y=None, rotation=0.0, norm=1, imsize=None):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     s = Simulator()
-    s.pars.image_size_y = 1024
+    s.pars.image_size_y = 600
     s.make_image()
+
+    plt.imshow(s.image)
+    plt.figure()
+    # plt.imshow(s.camera.vignette_map)
+    plt.imshow(s.image, vmin=0, vmax=1000)
