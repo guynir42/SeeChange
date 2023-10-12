@@ -99,7 +99,7 @@ class SimPars(Parameters):
         if self.image_size_y is None:
             return self.image_size_x, self.image_size_x
         else:
-            return self.image_size_x, self.image_size_y
+            return self.image_size_y, self.image_size_x
 
 
 class SimTruth:
@@ -257,7 +257,7 @@ class SimCamera:
         Input the imsize as a tuple of (imsize_x, imsize_y).
         """
 
-        self.vignette_map = np.ones((imsize[1], imsize[0]))
+        self.vignette_map = np.ones((imsize[0], imsize[1]))
 
         # TODO: continue this!
 
@@ -324,8 +324,8 @@ class SimStars:
         rng = np.random.default_rng()
         alpha = abs(self.star_flux_power_law) - 1
         self.star_mean_fluxes = self.star_min_flux / rng.power(alpha, self.star_number)
-        self.star_mean_x_pos = rng.uniform(-0.01, 1.01, self.star_number) * imsize[0]
-        self.star_mean_y_pos = rng.uniform(-0.01, 1.01, self.star_number) * imsize[1]
+        self.star_mean_x_pos = rng.uniform(-0.01, 1.01, self.star_number) * imsize[1]
+        self.star_mean_y_pos = rng.uniform(-0.01, 1.01, self.star_number) * imsize[0]
 
     def get_star_x_values(self):
         """
@@ -607,9 +607,8 @@ class Simulator:
         imsize = (imsize[0] * self.oversampling, imsize[1] * self.oversampling)
         self.flux_top = np.zeros(imsize, dtype=float)
 
-        # TODO: make sure we are not out of bounds on x or y
         for x, y, f in zip(self.star_x, self.star_y, self.star_f):
-            self.flux_top[round((y + buffer[0]) * self.oversampling)][round((x + buffer[1]) * self.oversampling)] += f
+            self.flux_top[round((y + buffer[0]) * self.oversampling), round((x + buffer[1]) * self.oversampling)] += f
 
         self.flux_top = scipy.signal.convolve(self.flux_top, self.psf, mode='same')
 
@@ -782,4 +781,5 @@ def make_gaussian(sigma_x=2.0, sigma_y=None, rotation=0.0, norm=1, imsize=None):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     s = Simulator()
+    s.pars.image_size_y = 1024
     s.make_image()
