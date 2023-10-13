@@ -53,7 +53,7 @@ def calc_sky_flat(images, iterations=3, nsigma=3.0):
         noise = np.nanstd(im, axis=0)
 
         new_nans = np.isnan(im).sum()
-        print(new_nans)
+
         if new_nans == nans:
             break
         else:
