@@ -14,9 +14,9 @@ from improc.sky_flat import calc_sky_flat
 
 @pytest.mark.parametrize("N", [10, 100, 1000])
 def test_simple_sky_flat(N):
-    clear_cache = False  # cache the images from the simulator
+    clear_cache = True  # cache the images from the simulator
     filename = os.path.join(CODE_ROOT, f"tests/improc/cache/flat_test_images_{N}.npy")
-    sim = Simulator()
+    sim = Simulator(image_size_x=128)
 
     if os.path.isfile(filename) and not clear_cache:
         sim.make_image()
@@ -58,6 +58,6 @@ def test_simple_sky_flat(N):
     plt.show(block=False)
 
     delta = (sky_flat - sim.camera.vignette_map) ** 2
-    print(delta[:10, :10])
+    print(delta[:3, :3])
     print(np.sqrt(np.sum(delta)))
 
