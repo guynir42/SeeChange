@@ -53,14 +53,14 @@ class SimPars(Parameters):
         self.optic_psf_pars = self.add_par('optic_psf_pars', {'sigma': 1.0}, dict, 'Optical PSF parameters')
 
         # sky parameters
-        self.background_mean = self.add_par('background_mean', 20.0, (int, float), 'Mean background level')
+        self.background_mean = self.add_par('background_mean', 10.0, (int, float), 'Mean background level')
         self.background_std = self.add_par(
             'background_std', 1.0, (int, float),
             'Variation of background level between different sky instances'
         )
         self.transmission_mean = self.add_par('transmission_mean', 1.0, (int, float), 'Mean transmission (zero point)')
         self.transmission_std = self.add_par(
-            'transmission_std', 0.1, (int, float),
+            'transmission_std', 0.01, (int, float),
             'Variation of transmission (zero point) between different sky instances'
         )
         self.seeing_mean = self.add_par('seeing_mean', 1.0, (int, float), 'Mean seeing')
@@ -128,11 +128,17 @@ class SimTruth:
         self.saturation_limit = None  # pixels above this value will be clipped to this number
 
         # things involving the camera/telescope
-        self.vignette_map = None  # how much light is lost along the edges of the image
-        self.flat_field_total = None  # combination of the vignette and pixel QE variations
+        self.vignette_amplitude = None  # intensity of the vignette
+        self.vignette_inner_radius = None  # inside this radius the vignette is ignored
+        self.vignette_offset_x = None  # vignette offset in x
+        self.vignette_offset_y = None  # vignette offset in y
+        self.vignette_map = None  # e.g., vignette
 
+        self.oversampling = None  # how much do we need the PSF to be oversampled?
         self.optic_psf_mode = None  # e.g., 'gaussian'
         self.optic_psf_pars = None  # a dict with the parameters used to make this PSF
+        self.optic_psf_image = None  # the final shape of the PSF for this image
+        self.optic_psf_fwhm = None  # e.g., the total effect of optical aberrations on the width
 
         # things involving the sky
         self.background_mean = None  # mean sky+dark current across image
@@ -147,13 +153,16 @@ class SimTruth:
         self.seeing_std = None  # the variation in seeing between images
         self.seeing_instance = None  # the seeing for this specific image's sky
 
-        self.atmos_psf_mode = None  # e.g., lorentzian
+        self.atmos_psf_mode = None  # e.g., 'gaussian'
         self.atmos_psf_pars = None  # a dict with the parameters used to make this PSF
-        self.total_fwhm = None  # e.g., the seeing
-        self.psf_image = None  # the final shape of the PSF for this image
+        self.atmos_psf_image = None  # the final shape of the PSF for this image
+        self.atmos_psf_fwhm = None  # e.g., the seeing
 
         # things involving the specific set of objects in the sky
-        self.star_mean_fluxes = None  # for each star, the mean flux (add source noise based on gain)
+        self.star_number = None  # average number of stars in each field
+        self.star_min_flux = None  # minimal flux for the star power law
+        self.star_flux_power_law = None  # power law index of the flux of stars
+        self.star_mean_fluxes = None  # for each star, the mean flux (in photons per total exposure time)
         self.star_mean_x_pos = None  # for each star, the mean x position
         self.star_mean_y_pos = None  # for each star, the mean y position
         self.star_position_std = None  # for each star, the variation in position (in both x and y)
@@ -383,6 +392,9 @@ class Simulator:
         self.sky = None
         self.stars = None
 
+        # holds the truth values for this image
+        self.truth = None
+
         # intermediate variables
         # fluxes coming from the stars
         self.star_x = None
@@ -440,6 +452,7 @@ class Simulator:
 
         self.sensor.pixel_qe_std = self.pars.pixel_qe_std
         self.sensor.pixel_qe_map = np.random.normal(1.0, self.sensor.pixel_qe_std, size=self.pars.imsize)
+        self.sensor.pixel_qe_map[self.sensor.pixel_qe_map < 0] = 0.0
 
         self.sensor.dark_current = self.pars.dark_current
         self.sensor.read_noise = self.pars.read_noise
@@ -664,6 +677,7 @@ class Simulator:
         for i in range(np.random.poisson(self.pars.cosmic_ray_number)):
             self.add_cosmic_ray(self.average_counts)  # add in place
 
+        # TODO: satellites should be moved to the stage above atmosphere where stars and galaxies are added!
         for i in range(np.random.poisson(self.pars.satellite_number)):
             self.add_satellite(self.average_counts)  # add in place
 
@@ -699,7 +713,7 @@ class Simulator:
         to the number of ADU (analog to digital units)
         that will be read out.
         """
-        self.average_counts = self.electrons / self.sensor.pixel_gain_map
+        self.average_counts = self.electrons * self.sensor.pixel_gain_map
         self.noise_var_map = self.average_counts + self.sensor.read_noise ** 2
 
     def add_noise(self):
@@ -732,7 +746,63 @@ class Simulator:
         into one object that can be saved with the image.
 
         """
-        pass
+        t = SimTruth()
+        t.bias_mean = self.sensor.bias_mean
+        t.pixel_bias_std = self.sensor.pixel_bias_std
+        t.pixel_bias_map = self.sensor.pixel_bias_map
+
+        t.gain_mean = self.sensor.gain_mean
+        t.pixel_gain_std = self.sensor.pixel_gain_std
+        t.pixel_gain_map = self.sensor.pixel_gain_map
+
+        t.qe_mean = self.sensor.qe_mean
+        t.pixel_qe_std = self.sensor.pixel_qe_std
+        t.pixel_qe_map = self.sensor.pixel_qe_map
+
+        t.dark_current = self.sensor.dark_current
+        t.read_noise = self.sensor.read_noise
+        t.saturation_limit = self.sensor.saturation_limit
+        t.bleed_fraction_x = self.sensor.bleed_fraction_x
+        t.bleed_fraction_y = self.sensor.bleed_fraction_y
+
+        t.vignette_amplitude = self.camera.vignette_amplitude
+        t.vignette_inner_radius = self.camera.vignette_inner_radius
+        t.vignette_offset_x = self.camera.vignette_offset_x
+        t.vignette_offset_y = self.camera.vignette_offset_y
+        t.vignette_map = self.camera.vignette_map
+
+        t.oversampling = self.oversampling
+        t.optic_psf_mode = self.camera.optic_psf_mode
+        t.optic_psf_pars = self.camera.optic_psf_pars
+        t.optic_psf_image = self.camera.optic_psf_image
+        t.optic_psf_fwhm = self.camera.optic_psf_fwhm
+
+        t.background_mean = self.sky.background_mean
+        t.background_std = self.sky.background_std
+        t.background_instance = self.sky.background_instance
+
+        t.transmission_mean = self.sky.transmission_mean
+        t.transmission_std = self.sky.transmission_std
+        t.transmission_instance = self.sky.transmission_instance
+
+        t.seeing_mean = self.sky.seeing_mean
+        t.seeing_std = self.sky.seeing_std
+        t.seeing_instance = self.sky.seeing_instance
+
+        t.atmos_psf_mode = self.sky.atmos_psf_mode
+        t.atmos_psf_pars = self.sky.atmos_psf_pars
+        t.atmos_psf_image = self.sky.atmos_psf_image
+        t.atmos_psf_fwhm = self.sky.atmos_psf_fwhm
+
+        t.star_number = self.stars.star_number
+        t.star_min_flux = self.stars.star_min_flux
+        t.star_flux_power_law = self.stars.star_flux_power_law
+        t.star_mean_fluxes = self.stars.star_mean_fluxes
+        t.star_mean_x_pos = self.stars.star_mean_x_pos
+        t.star_mean_y_pos = self.stars.star_mean_y_pos
+        t.star_position_std = self.stars.star_position_std
+
+        self.truth = t
 
 
 def make_gaussian(sigma_x=2.0, sigma_y=None, rotation=0.0, norm=1, imsize=None):

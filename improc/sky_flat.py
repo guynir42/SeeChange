@@ -1,6 +1,10 @@
 import numpy as np
 
 
+from improc.simulator import Simulator
+from improc.tools import sigma_clipping
+
+
 def calc_sky_flat(images, iterations=3, nsigma=3.0):
     """Calculate the sky flat for a set of images.
 
@@ -33,30 +37,16 @@ def calc_sky_flat(images, iterations=3, nsigma=3.0):
         raise TypeError("images must be a list of 2D numpy arrays or a 3D numpy array")
 
     # normalize all images to the same mean sky level
-    mean_sky = np.nanmedian(images, axis=(1, 2), keepdims=True)
+    mean_sky = np.array([sigma_clipping(im)[0] for im in images])
+    mean_sky = np.reshape(mean_sky, (images.shape[0], 1, 1))
+
     im = images.copy() / mean_sky
 
-    # first iteration:
-    sky_flat = np.nanmedian(im, axis=0)
-    noise = np.nanstd(im, axis=0)
+    mean, rms = sigma_clipping(im, nsigma=nsigma, iterations=iterations, axis=0)
 
-    # how many nan values?
-    nans = np.isnan(im).sum()
+    return mean
 
-    for i in range(iterations):
-        # remove pixels that are more than nsigma from the median
-        clipped = np.abs(im - sky_flat) > nsigma * noise
-        im[clipped] = np.nan
 
-        # recalculate the sky flat and noise
-        sky_flat = np.nanmean(im, axis=0)  # we only use median on the first iteration!
-        noise = np.nanstd(im, axis=0)
-
-        new_nans = np.isnan(im).sum()
-
-        if new_nans == nans:
-            break
-        else:
-            nans = new_nans
-
-    return sky_flat
+if __name__ == '__main__':
+    sim = Simulator(image_size_x=128)
+    sim.make_image()
