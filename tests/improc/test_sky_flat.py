@@ -12,9 +12,9 @@ from improc.simulator import Simulator
 from improc.sky_flat import calc_sky_flat
 
 
-@pytest.mark.parametrize("num_images", [10, 100])
+@pytest.mark.parametrize("num_images", [10, 300])
 def test_simple_sky_flat(num_images):
-    clear_cache = True  # cache the images from the simulator
+    clear_cache = False  # cache the images from the simulator
     filename = os.path.join(CODE_ROOT, f"tests/improc/cache/flat_test_images_{num_images}.npz")
     sim = Simulator(
         image_size_x=256,  # make smaller images to make the test faster
