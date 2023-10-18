@@ -42,8 +42,8 @@ class SimPars(Parameters):
 
         # camera parameters
         self.vignette_amplitude = self.add_par('vignette_amplitude', 0.01, float, 'Vignette amplitude')
-        self.vignette_inner_radius = self.add_par(
-            'vignette_inner_radius', 280, float,
+        self.vignette_radius = self.add_par(
+            'vignette_radius', 280, float,
             'Inside this radius the vignette is ignored'
         )
         self.vignette_offset_x = self.add_par('vignette_offset_x', 10.0, float, 'Vignette offset in x')
@@ -111,6 +111,7 @@ class SimTruth:
     """
     def __init__(self):
         # things involving the image sensor
+        self.imsize = None  # the size of the image (y, x)
         self.bias_mean = None  # the mean counts for each pixel (e.g., 100)
         self.pixel_bias_std = None  # variations between pixels (the square of this is the var of a Poisson process)
         self.pixel_bias_map = None  # final result of the bias for each pixel
@@ -129,7 +130,7 @@ class SimTruth:
 
         # things involving the camera/telescope
         self.vignette_amplitude = None  # intensity of the vignette
-        self.vignette_inner_radius = None  # inside this radius the vignette is ignored
+        self.vignette_radius = None  # inside this radius the vignette is ignored
         self.vignette_offset_x = None  # vignette offset in x
         self.vignette_offset_y = None  # vignette offset in y
         self.vignette_map = None  # e.g., vignette
@@ -232,7 +233,7 @@ class SimCamera:
     """
     def __init__(self):
         self.vignette_amplitude = None  # intensity of the vignette
-        self.vignette_inner_radius = None  # inside this radius the vignette is ignored
+        self.vignette_radius = None  # inside this radius the vignette is ignored
         self.vignette_offset_x = None  # vignette offset in x
         self.vignette_offset_y = None  # vignette offset in y
         self.vignette_map = None  # e.g., vignette
@@ -271,8 +272,8 @@ class SimCamera:
         xx += self.vignette_offset_x
         yy += self.vignette_offset_y
         rr = np.sqrt(xx ** 2 + yy ** 2)
-        v += (self.vignette_amplitude * (rr - self.vignette_inner_radius)) ** 2
-        v[rr < self.vignette_inner_radius] = 1.0
+        v += (self.vignette_amplitude * (rr - self.vignette_radius)) ** 2
+        v[rr < self.vignette_radius] = 1.0
         self.vignette_map = 1/v
 
 
@@ -469,7 +470,7 @@ class Simulator:
         """
         self.camera = SimCamera()
         self.camera.vignette_amplitude = self.pars.vignette_amplitude
-        self.camera.vignette_inner_radius = self.pars.vignette_inner_radius
+        self.camera.vignette_radius = self.pars.vignette_radius
         self.camera.vignette_offset_x = self.pars.vignette_offset_x
         self.camera.vignette_offset_y = self.pars.vignette_offset_y
 
@@ -747,6 +748,7 @@ class Simulator:
 
         """
         t = SimTruth()
+        t.imsize = self.pars.imsize
         t.bias_mean = self.sensor.bias_mean
         t.pixel_bias_std = self.sensor.pixel_bias_std
         t.pixel_bias_map = self.sensor.pixel_bias_map
@@ -766,7 +768,7 @@ class Simulator:
         t.bleed_fraction_y = self.sensor.bleed_fraction_y
 
         t.vignette_amplitude = self.camera.vignette_amplitude
-        t.vignette_inner_radius = self.camera.vignette_inner_radius
+        t.vignette_radius = self.camera.vignette_radius
         t.vignette_offset_x = self.camera.vignette_offset_x
         t.vignette_offset_y = self.camera.vignette_offset_y
         t.vignette_map = self.camera.vignette_map

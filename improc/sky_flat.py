@@ -36,8 +36,15 @@ def calc_sky_flat(images, iterations=3, nsigma=3.0):
     else:
         raise TypeError("images must be a list of 2D numpy arrays or a 3D numpy array")
 
+    # use the middle half of the image to calculate the sky level (to avoid vignetting)
+    idx1_1 = images.shape[1] // 4
+    idx1_2 = images.shape[1] // 4 * 3
+    idx2_1 = images.shape[2] // 4
+    idx2_2 = images.shape[2] // 4 * 3
+
     # normalize all images to the same mean sky level
-    mean_sky = np.array([sigma_clipping(im)[0] for im in images])
+    mean_sky = np.array([sigma_clipping(im[idx1_1:idx1_2, idx2_1:idx2_2], nsigma=3.0)[0] for im in images])
+    # mean_sky = np.array([sigma_clipping(im)[0] for im in images])
     mean_sky = np.reshape(mean_sky, (images.shape[0], 1, 1))
 
     im = images.copy() / mean_sky
