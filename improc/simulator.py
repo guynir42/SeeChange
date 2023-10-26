@@ -513,12 +513,12 @@ class Simulator:
         self.sky.background_mean = self.pars.background_mean
         self.sky.background_std = self.pars.background_std
         self.sky.background_minimum = self.pars.background_minimum
-        if self.sky.background_minimum > self.sky.background_mean:
+        if self.sky.background_minimum >= self.sky.background_mean:
             raise ValueError('background_minimum must be less than background_mean')
 
         for i in range(100):
             self.sky.background_instance = np.random.normal(self.sky.background_mean, self.sky.background_std)
-            if self.sky.background_instance > self.sky.background_minimum:
+            if self.sky.background_instance >= self.sky.background_minimum:
                 break
         else:
             raise RuntimeError('Could not generate a background instance above the minimum value')
@@ -526,12 +526,12 @@ class Simulator:
         self.sky.transmission_mean = self.pars.transmission_mean
         self.sky.transmission_std = self.pars.transmission_std
         self.sky.transmission_minimum = self.pars.transmission_minimum
-        if self.sky.transmission_minimum > self.sky.transmission_mean:
+        if self.sky.transmission_minimum >= self.sky.transmission_mean:
             raise ValueError('transmission_minimum must be less than transmission_mean')
 
         for i in range(100):
             self.sky.transmission_instance = np.random.normal(self.sky.transmission_mean, self.sky.transmission_std)
-            if self.sky.transmission_instance > self.sky.transmission_minimum:
+            if self.sky.transmission_instance >= self.sky.transmission_minimum:
                 break
         else:
             raise RuntimeError('Could not generate a transmission instance above the minimum value')
@@ -539,12 +539,12 @@ class Simulator:
         self.sky.seeing_mean = self.pars.seeing_mean
         self.sky.seeing_std = self.pars.seeing_std
         self.sky.seeing_minimum = self.pars.seeing_minimum
-        if self.sky.seeing_minimum > self.sky.seeing_mean:
+        if self.sky.seeing_minimum >= self.sky.seeing_mean:
             raise ValueError('seeing_minimum must be less than seeing_mean')
 
         for i in range(100):
             self.sky.seeing_instance = np.random.normal(self.sky.seeing_mean, self.sky.seeing_std)
-            if self.sky.seeing_instance > self.sky.seeing_minimum:
+            if self.sky.seeing_instance >= self.sky.seeing_minimum:
                 break
         else:
             raise RuntimeError('Could not generate a seeing instance above the minimum value')
