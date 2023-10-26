@@ -5,7 +5,7 @@ from improc.simulator import Simulator
 from improc.tools import sigma_clipping
 
 
-def calc_sky_flat(images, iterations=3, nsigma=3.0):
+def calc_sky_flat(images, iterations=3, nsigma=3.0, median=True):
     """Calculate the sky flat for a set of images.
 
     Parameters
@@ -19,6 +19,11 @@ def calc_sky_flat(images, iterations=3, nsigma=3.0):
         The number of sigma to use for the sigma clipping procedure.
         Values further from this many standard deviations are removed.
         Default is 5.0.
+    median: bool
+        If True, use the median instead of the mean for the all iterations
+        of the sigma clipping algorithm. Default is True.
+        TODO: does the use of median cause a bias?
+
     Returns
     -------
     sky_flat : numpy.ndarray
@@ -49,7 +54,7 @@ def calc_sky_flat(images, iterations=3, nsigma=3.0):
 
     im = images.copy() / mean_sky
 
-    mean, rms = sigma_clipping(im, nsigma=nsigma, iterations=iterations, axis=0)
+    mean, rms = sigma_clipping(im, nsigma=nsigma, iterations=iterations, axis=0, median=median)
 
     return mean
 

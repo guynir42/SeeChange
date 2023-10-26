@@ -14,7 +14,7 @@ from improc.sky_flat import calc_sky_flat
 
 @pytest.mark.parametrize("num_images", [10, 300])
 def test_simple_sky_flat(num_images):
-    clear_cache = False  # cache the images from the simulator
+    clear_cache = True  # cache the images from the simulator
     filename = os.path.join(CODE_ROOT, f"tests/improc/cache/flat_test_images_{num_images}.npz")
     sim = Simulator(
         image_size_x=256,  # make smaller images to make the test faster
@@ -22,6 +22,7 @@ def test_simple_sky_flat(num_images):
         pixel_qe_std=0.025,  # increase the QE variations above the background noise
         star_number=100,  # the smaller images require a smaller number of stars to avoid crowding
         bias_std=0,  # simplify by having a completely uniform bias
+        gain_std=0,  # leave the gain at 1.0
         dark_current=0,  # simplify by having no dark current
         read_noise=0,  # simplify by having no read noise
     )
@@ -44,7 +45,8 @@ def test_simple_sky_flat(num_images):
         # print(f"Generating {num_images} images took {time.time() - t0:.1f} seconds")
 
     t0 = time.time()
-    sky_flat = calc_sky_flat(images, nsigma=3.0, iterations=5)
+    # don't use median so we can see when it fails on too few stars
+    sky_flat = calc_sky_flat(images, nsigma=3.0, iterations=5, median=False)
     # print(f'calc_sky_flat took {time.time() - t0:.1f} seconds')
 
     # plt.plot(sky_flat[10, :], label="sky flat")

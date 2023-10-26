@@ -58,13 +58,27 @@ class SimPars(Parameters):
             'background_std', 1.0, (int, float),
             'Variation of background level between different sky instances'
         )
+        self.background_minimum = self.add_par(
+            'background_minimum', 6.0, (int, float),
+            'Minimal value of the background (to avoid negative values). Will regenerate if below this value.'
+        )
         self.transmission_mean = self.add_par('transmission_mean', 1.0, (int, float), 'Mean transmission (zero point)')
         self.transmission_std = self.add_par(
             'transmission_std', 0.01, (int, float),
             'Variation of transmission (zero point) between different sky instances'
         )
+        self.transmission_minimum = self.add_par(
+            'transmission_minimum', 0.5, (int, float),
+            'Minimal value of the transmission (to avoid negative values). Will regenerate if below this value.'
+        )
+
         self.seeing_mean = self.add_par('seeing_mean', 1.0, (int, float), 'Mean seeing')
         self.seeing_std = self.add_par('seeing_std', 0.0, (int, float), 'Seeing variation between images')
+        self.seeing_minimum = self.add_par(
+            'seeing_minimum', 0.5, (int, float),
+            'Minimal value of the seeing (to avoid negative values). Will regenerate if below this value.'
+        )
+
         self.atmos_psf_mode = self.add_par('atmos_psf_mode', 'gaussian', str, 'Atmospheric PSF mode')
         self.atmos_psf_pars = self.add_par('atmos_psf_pars', {'sigma': 1.0}, dict, 'Atmospheric PSF parameters')
 
@@ -144,14 +158,17 @@ class SimTruth:
         # things involving the sky
         self.background_mean = None  # mean sky+dark current across image
         self.background_std = None  # variation between images
+        self.background_minimum = None  # minimal value of the background (to avoid negative values)
         self.background_instance = None  # the background for this specific image's sky
 
         self.transmission_mean = None  # average sky transmission
         self.transmission_std = None  # variation in transmission between images
+        self.transmission_minimum = None  # minimal value of the transmission (to avoid negative values)
         self.transmission_instance = None  # the transmission for this specific image's sky
 
         self.seeing_mean = None  # the average seeing in this survey
         self.seeing_std = None  # the variation in seeing between images
+        self.seeing_minimum = None  # minimal value of the seeing (to avoid negative values)
         self.seeing_instance = None  # the seeing for this specific image's sky
 
         self.atmos_psf_mode = None  # e.g., 'gaussian'
@@ -284,14 +301,17 @@ class SimSky:
     def __init__(self):
         self.background_mean = None  # mean sky+dark current across image
         self.background_std = None  # variation between images
+        self.background_minimum = None  # minimal value of the background (to avoid negative values)
         self.background_instance = None  # the background for this specific image's sky
 
         self.transmission_mean = None  # average sky transmission
         self.transmission_std = None  # variation in transmission between images
+        self.transmission_minimum = None  # minimal value of the transmission (to avoid negative values)
         self.transmission_instance = None  # the transmission for this specific image's sky
 
         self.seeing_mean = None  # the average seeing in this survey
         self.seeing_std = None  # the variation in seeing between images
+        self.seeing_minimum = None  # minimal value of the seeing (to avoid negative values)
         self.seeing_instance = None  # the seeing for this specific image's sky
 
         self.oversampling = None  # how much do we need the PSF to be oversampled?
@@ -434,9 +454,7 @@ class Simulator:
 
         self.sensor.bias_mean = self.pars.bias_mean
         self.sensor.pixel_bias_std = self.pars.bias_std
-        # self.sensor.pixel_bias_map = self.sensor.bias_mean + np.random.poisson(
-        #     self.sensor.pixel_bias_std ** 2, size=self.pars.imsize
-        # ) - self.sensor.pixel_bias_std ** 2
+
         self.sensor.pixel_bias_map = np.random.normal(
             self.sensor.bias_mean,
             self.sensor.pixel_bias_std,
@@ -450,6 +468,7 @@ class Simulator:
             self.sensor.pixel_gain_std,
             size=self.pars.imsize
         )
+        self.sensor.pixel_gain_map[self.sensor.pixel_gain_map < 0] = 0.0
 
         self.sensor.pixel_qe_std = self.pars.pixel_qe_std
         self.sensor.pixel_qe_map = np.random.normal(1.0, self.sensor.pixel_qe_std, size=self.pars.imsize)
@@ -493,21 +512,48 @@ class Simulator:
         self.sky = SimSky()
         self.sky.background_mean = self.pars.background_mean
         self.sky.background_std = self.pars.background_std
-        self.sky.background_instance = np.random.normal(self.sky.background_mean, self.sky.background_std)
+        self.sky.background_minimum = self.pars.background_minimum
+        if self.sky.background_minimum > self.sky.background_mean:
+            raise ValueError('background_minimum must be less than background_mean')
+
+        for i in range(100):
+            self.sky.background_instance = np.random.normal(self.sky.background_mean, self.sky.background_std)
+            if self.sky.background_instance > self.sky.background_minimum:
+                break
+        else:
+            raise RuntimeError('Could not generate a background instance above the minimum value')
 
         self.sky.transmission_mean = self.pars.transmission_mean
         self.sky.transmission_std = self.pars.transmission_std
-        self.sky.transmission_instance = np.random.normal(self.sky.transmission_mean, self.sky.transmission_std)
+        self.sky.transmission_minimum = self.pars.transmission_minimum
+        if self.sky.transmission_minimum > self.sky.transmission_mean:
+            raise ValueError('transmission_minimum must be less than transmission_mean')
+
+        for i in range(100):
+            self.sky.transmission_instance = np.random.normal(self.sky.transmission_mean, self.sky.transmission_std)
+            if self.sky.transmission_instance > self.sky.transmission_minimum:
+                break
+        else:
+            raise RuntimeError('Could not generate a transmission instance above the minimum value')
 
         self.sky.seeing_mean = self.pars.seeing_mean
         self.sky.seeing_std = self.pars.seeing_std
-        self.sky.seeing_instance = np.random.normal(self.sky.seeing_mean, self.sky.seeing_std)
+        self.sky.seeing_minimum = self.pars.seeing_minimum
+        if self.sky.seeing_minimum > self.sky.seeing_mean:
+            raise ValueError('seeing_minimum must be less than seeing_mean')
+
+        for i in range(100):
+            self.sky.seeing_instance = np.random.normal(self.sky.seeing_mean, self.sky.seeing_std)
+            if self.sky.seeing_instance > self.sky.seeing_minimum:
+                break
+        else:
+            raise RuntimeError('Could not generate a seeing instance above the minimum value')
 
         self.sky.atmos_psf_mode = self.pars.atmos_psf_mode
         self.sky.atmos_psf_pars = self.pars.atmos_psf_pars
 
         # update the PSF parameters based on the seeing
-        if self.sky.atmos_psf_mode == 'gauss':
+        if self.sky.atmos_psf_mode.lower().startswith('gauss'):
             self.sky.atmos_psf_pars['sigma'] = self.sky.seeing_instance / 2.355
 
     def make_stars(self):
@@ -622,7 +668,6 @@ class Simulator:
 
         self.camera.make_optic_psf(oversampling)
         self.sky.make_atmos_psf(oversampling)
-
         self.psf = scipy.signal.convolve(self.sky.atmos_psf_image, self.camera.optic_psf_image, mode='full')
 
         imsize = self.pars.imsize
@@ -715,16 +760,19 @@ class Simulator:
         that will be read out.
         """
         self.average_counts = self.electrons * self.sensor.pixel_gain_map
-        self.noise_var_map = self.average_counts + self.sensor.read_noise ** 2
+        self.noise_var_map = self.electrons + self.sensor.read_noise ** 2
 
     def add_noise(self):
         """
         Combine the noise variance map and the counts without noise to make
         an image of the counts, including also the bias map.
         """
+        # read noise is included in the variance, but should not add to the baseline (bias)
         self.image = self.sensor.pixel_bias_map - self.sensor.read_noise ** 2 + np.random.poisson(
             self.noise_var_map, size=self.pars.imsize
-        )  # read noise is included in the variance, but should not add to the baseline (bias)
+        )
+        self.image *= self.sensor.pixel_gain_map
+        self.noise_var_map *= self.sensor.pixel_gain_map ** 2
         self.image = np.round(self.image).astype(int)
 
     def apply_bias_correction(self, image):
@@ -781,14 +829,17 @@ class Simulator:
 
         t.background_mean = self.sky.background_mean
         t.background_std = self.sky.background_std
+        t.background_minimum = self.sky.background_minimum
         t.background_instance = self.sky.background_instance
 
         t.transmission_mean = self.sky.transmission_mean
         t.transmission_std = self.sky.transmission_std
+        t.transmission_minimum = self.sky.transmission_minimum
         t.transmission_instance = self.sky.transmission_instance
 
         t.seeing_mean = self.sky.seeing_mean
         t.seeing_std = self.sky.seeing_std
+        t.seeing_minimum = self.sky.seeing_minimum
         t.seeing_instance = self.sky.seeing_instance
 
         t.atmos_psf_mode = self.sky.atmos_psf_mode
