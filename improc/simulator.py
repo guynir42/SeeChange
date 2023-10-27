@@ -191,6 +191,13 @@ class SimTruth:
 
         # TODO: add satellite trails
 
+        # the noise and PSF info used to make the image
+        self.psf = None  # the PSF used to make this image
+        self.psf_downsampled = None  # the PSF, correctly downsampled as to retain the symmetric single peak pixel
+        self.average_counts = None  # the final counts, not including noise
+        self.noise_var_map = None  # the total variance from read, dark, sky b/g, and source noise
+        self.total_bkg_var = None  # the total variance from read, dark, and sky b/g (not including source noise)
+
 
 class SimSensor:
     """
@@ -329,7 +336,7 @@ class SimSky:
         """
         self.oversampling = oversampling
 
-        if self.atmos_psf_mode.lower() == 'gaussian':
+        if self.atmos_psf_mode.lower().startswith('gauss'):
             self.atmos_psf_image = make_gaussian(self.atmos_psf_pars['sigma'] * self.oversampling)
             self.atmos_psf_fwhm = self.atmos_psf_pars['sigma'] * 2.355
         else:
@@ -423,6 +430,7 @@ class Simulator:
         self.star_f = None
 
         self.psf = None  # we are cheating because this includes both the optical and atmospheric PSFs
+        self.psf_downsampled = None # the PSF, correctly downsampled as to retain the symmetric single peak pixel
         self.oversampling = None  # how much oversampling (integer) do we need to express fluxes?
         self.flux_top = None  # this is the mean number of photons hitting the top of the atmosphere
 
@@ -437,6 +445,7 @@ class Simulator:
 
         self.average_counts = None  # the final counts, not including noise
         self.noise_var_map = None  # the total variance from read, dark, sky b/g, and source noise
+        self.total_bkg_var = None  # the total variance from read, dark, and sky b/g (not including source noise)
 
         # outputs:
         self.image = None
@@ -606,6 +615,28 @@ class Simulator:
             if self.pars.show_runtimes:
                 print(f'time to make stars: {time.time() - t0:.2f}s')
 
+        # make a PSF
+        fwhm = np.sqrt(self.camera.optic_psf_fwhm ** 2 + self.sky.seeing_instance ** 2)
+        oversample_estimate = int(np.ceil(10 / fwhm))  # allow 10 pixels across the PSF's width
+        oversample_estimate += (oversample_estimate + 1) % 2  # make sure the oversampling is an odd number
+        oversampling = max(1, oversample_estimate)  # must be at least x1 oversampling
+        # oversampling = 5  # debug only!
+        self.oversampling = oversampling
+
+        # make sure to produce the atmospheric and optical PSF using the new oversampling value
+        self.camera.make_optic_psf(oversampling)
+        self.sky.make_atmos_psf(oversampling)
+
+        self.psf = scipy.signal.convolve(self.sky.atmos_psf_image, self.camera.optic_psf_image, mode='full')
+        self.psf /= np.sum(self.psf)
+
+        # correctly downsample the PSF to retain the symmetric single peak pixel
+        psf_conv = scipy.signal.convolve(self.psf, np.ones((oversampling, oversampling), dtype=float), mode='same')
+        peak_indices = np.unravel_index(np.argmax(psf_conv), psf_conv.shape)
+        offset = tuple(p % oversampling for p in peak_indices)
+        self.psf_downsampled = self.psf[offset[0]::oversampling, offset[1]::oversampling].copy()
+        self.psf_downsampled /= np.sum(self.psf_downsampled)
+
         # stars:
         self.star_x = self.stars.get_star_x_values()
         self.star_y = self.stars.get_star_y_values()
@@ -661,15 +692,6 @@ class Simulator:
         Will calculate the oversampled instrumental, atmospheric and total PSF.
         Will calculate the flux_top image.
         """
-        fwhm = np.sqrt(self.camera.optic_psf_fwhm ** 2 + self.sky.seeing_instance ** 2)
-        oversample_estimate = int(np.ceil(10 / fwhm))  # allow 10 pixels across the PSF's width
-        oversampling = max(1, oversample_estimate)
-        self.oversampling = oversampling
-
-        self.camera.make_optic_psf(oversampling)
-        self.sky.make_atmos_psf(oversampling)
-        self.psf = scipy.signal.convolve(self.sky.atmos_psf_image, self.camera.optic_psf_image, mode='full')
-
         imsize = self.pars.imsize
         buffer = (int(np.ceil(imsize[0] * 0.02)), int(np.ceil(imsize[1] * 0.02)))
         imsize = (imsize[0] + buffer[0] * 2, imsize[1] + buffer[1] * 2)
@@ -682,12 +704,15 @@ class Simulator:
         self.flux_top = scipy.signal.convolve(self.flux_top, self.psf, mode='same')
 
         # downsample back to pixel resolution
-        if oversampling > 1:
+        if self.oversampling > 1:
             # this convolution means that each new pixel is the SUM of all the pixels in the kernel
-            kernel = np.ones((oversampling, oversampling), dtype=float)
+            kernel = np.ones((self.oversampling, self.oversampling), dtype=float)
             self.flux_top = scipy.signal.convolve(self.flux_top, kernel, mode='same')
-            self.flux_top = self.flux_top[oversampling//2::oversampling, oversampling//2::oversampling]
-            self.flux_top = self.flux_top[buffer[0]:-buffer[0], buffer[1]:-buffer[1]]
+            self.flux_top = self.flux_top[
+                                self.oversampling//2::self.oversampling,
+                                self.oversampling//2::self.oversampling,
+                            ].copy()
+            self.flux_top = self.flux_top[buffer[0]:-buffer[0], buffer[1]:-buffer[1]].copy()
 
     def add_atmosphere(self):
         """
@@ -762,6 +787,11 @@ class Simulator:
         self.average_counts = self.electrons * self.sensor.pixel_gain_map
         self.noise_var_map = self.electrons + self.sensor.read_noise ** 2
 
+        # this is the background noise variance, not including source noise
+        self.total_bkg_var = self.sensor.read_noise ** 2
+        self.total_bkg_var += self.sensor.dark_current * self.pars.exposure_time
+        self.total_bkg_var += self.sky.background_instance
+
     def add_noise(self):
         """
         Combine the noise variance map and the counts without noise to make
@@ -773,6 +803,7 @@ class Simulator:
         )
         self.image *= self.sensor.pixel_gain_map
         self.noise_var_map *= self.sensor.pixel_gain_map ** 2
+        self.total_bkg_var *= self.sensor.pixel_gain_map ** 2
         self.image = np.round(self.image).astype(int)
 
     def apply_bias_correction(self, image):
@@ -854,6 +885,12 @@ class Simulator:
         t.star_mean_x_pos = self.stars.star_mean_x_pos
         t.star_mean_y_pos = self.stars.star_mean_y_pos
         t.star_position_std = self.stars.star_position_std
+
+        t.psf = self.psf
+        t.psf_downsampled = self.psf_downsampled
+        t.average_counts = self.average_counts
+        t.noise_var_map = self.noise_var_map
+        t.total_bkg_var = self.total_bkg_var
 
         self.truth = t
 

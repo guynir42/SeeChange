@@ -60,8 +60,10 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
         The PSF of the new image. Must be normalized to have unit sum. Will be zero-padded to size of images.
     noise_ref : float or numpy.ndarray
         The noise RMS of the background in the reference image (given as a map or a single average value).
+        Does not include source noise!
     noise_new : float or numpy.ndarray
         The noise RMS of the background in the new image (given as a map or a single average value).
+        Does not include source noise!
     flux_ref : float
         The flux normalization of the reference image.
     flux_new : float
@@ -96,7 +98,7 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     # make sure all masked pixels in one image are masked in the other
     nan_mask = np.isnan(R) | np.isnan(N)
     if np.sum(~nan_mask) == 0:
-        raise ValueError("All pixels are masked  or no overlap between images.")
+        raise ValueError("All pixels are masked or no overlap between images.")
 
     # must replace all NaNs with zeros, otherwise the FFT will be all NaNs
     N[nan_mask] = 0
@@ -254,39 +256,6 @@ def pad_to_shape(arr, shape, value=0):
     new_arr[tuple(slice(p, -pa) for p, pa in zip(pad, pad_after))] = arr
 
     return new_arr
-
-
-def downsample(img, ovs, norm='sum'):
-    """Downsample an image from a high resolution to a lower one.
-
-    Parameters
-    ----------
-    img: numpy.ndarray
-        The image to downsample.
-    ovs: int
-        The oversampling factor. Must be an integer.
-    norm: str
-        The normalization to use. Can be 'sum' or 'mean'. Default is 'sum'.
-        Using 'sum' is like adding together all the values in the pixels
-        into a single value (preserves total count) while 'mean' takes
-        the average of those pixels (preserves normalization/surface brightness).
-
-    Returns
-    -------
-    new_img: numpy.ndarray
-        The downsampled image.
-    """
-    kernel = np.ones((ovs, ovs), dtype=float)
-
-    if norm.lower() == 'mean':
-        kernel /= ovs ** 2
-
-    offset = [(s % ovs) // 2 for s in img.shape]
-
-    new_img = scipy.signal.convolve(img, kernel, mode='same')
-    new_img = new_img[offset[0]::ovs, offset[1]::ovs]
-
-    return new_img
 
 
 if __name__ == "__main__":
