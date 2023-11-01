@@ -45,8 +45,11 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
        have the same size (use NaNs to pad areas of the image that are not overlapping).
      * They should also be background subtracted and gain corrected, i.e., in units of electrons,
        such that the noise is Poissonian (the variance is equal to the value of each pixel).
-     * The background noise is input to this function (including the noise RMS of the sky and read noise).
+     * The background noise is input to this function (including the noise RMS of the sky and read noise,
+       but no source noise!).
      * Users may input a scalar background RMS or a map of the background RMS with the same shape as the image.
+     * The "flux-based zero point" is the flux needed to provide a S/N=1, measure in a matched-filter image with
+       the correct PSF. For a sum(P)=1 normalized PSF, use 1/sqrt(sum(P**2)/B), where B is the background variance.
 
     Parameters
     ----------
@@ -65,9 +68,9 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
         The noise RMS of the background in the new image (given as a map or a single average value).
         Does not include source noise!
     flux_ref : float
-        The flux normalization of the reference image.
+        The flux-based zero point of the reference (the flux at which S/N=1).
     flux_new : float
-        The flux normalization of the new image.
+        The flux-based zero point of the new image (the flux at which S/N=1).
     dx : float
 
     dy : float
@@ -90,10 +93,10 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     """
 
     # make copies to avoid modifying the input arrays
-    N = np.fft.fftshift(np.copy(image_new))
-    R = np.fft.fftshift(np.copy(image_ref))
-    Pn = np.fft.fftshift(pad_to_shape(psf_new, N.shape))
-    Pr = np.fft.fftshift(pad_to_shape(psf_ref, R.shape))
+    N = np.copy(image_new)
+    R = np.copy(image_ref)
+    Pn = pad_to_shape(psf_new, N.shape)
+    Pr = pad_to_shape(psf_ref, R.shape)
 
     # make sure all masked pixels in one image are masked in the other
     nan_mask = np.isnan(R) | np.isnan(N)
@@ -119,7 +122,6 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     F_n = flux_new
 
     # Fourier transform the images and the PSFs
-    # TODO: do we need to zero pad the PSFs to the same size as the images?
     R_f = np.fft.fft2(R)
     N_f = np.fft.fft2(N)
     P_r_f = np.fft.fft2(Pr)
@@ -149,7 +151,9 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     # get the variance maps, assuming the N/R images are background subtracted,
     # so that the noise maps give the background noise and the images contain only the source noise
     V_r = R + sigma_r ** 2
+    V_r[V_r < 0] = 0  # make sure we don't have negative values
     V_n = N + sigma_n ** 2
+    V_n[V_n < 0] = 0  # make sure we don't have negative values
 
     # this kernel is used to estimate the reference source noise
     k_r_f = F_r * F_n ** 2 * np.conj(P_r_f) * P_n_f_abs2 / denominator
@@ -259,7 +263,18 @@ def pad_to_shape(arr, shape, value=0):
 
 
 if __name__ == "__main__":
-    arr = np.ones((4, 3))
-    shape = (6, 7)
-    new_arr = pad_to_shape(arr, shape)
-    print(new_arr)
+    from improc.simulator import make_gaussian
+    for i in range(10):
+        B_r = 10.0
+        B_n = 10.0
+        R = np.random.normal(0, np.sqrt(B_r), size=(1000, 1000))
+        N = np.random.normal(0, np.sqrt(B_n), size=(1000, 1000))
+        P_r = make_gaussian(2.0)
+        P_r /= np.sum(P_r)
+        P_n = make_gaussian(3.0)
+        P_n /= np.sum(P_n)
+        F_r = 1 / np.sqrt(np.sum(P_r ** 2) / B_r)
+        F_n = 1 / np.sqrt(np.sum(P_n ** 2) / B_n)
+        D, P, S, Sc, al, al_err = zogy_subtract(R, N, P_r, P_n, np.sqrt(B_r), np.sqrt(B_n), F_r, F_n)
+        print(f'std(D)= {np.std(D)}, std(S)= {np.std(S)}, std(Sc)= {np.std(Sc)}')
+

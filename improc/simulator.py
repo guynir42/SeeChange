@@ -81,6 +81,7 @@ class SimPars(Parameters):
 
         self.atmos_psf_mode = self.add_par('atmos_psf_mode', 'gaussian', str, 'Atmospheric PSF mode')
         self.atmos_psf_pars = self.add_par('atmos_psf_pars', {'sigma': 1.0}, dict, 'Atmospheric PSF parameters')
+        self.oversampling = self.add_par('oversampling', 5, int, 'Oversampling of the PSF')
 
         self.star_number = self.add_par('star_number', 1000, int, 'Number of stars (on average) to simulate')
         self.star_min_flux = self.add_par('star_min_flux', 100, (int, float), 'Minimum flux for the star power law')
@@ -268,7 +269,7 @@ class SimCamera:
         self.optic_psf_image = None  # the final shape of the PSF for this image
         self.optic_psf_fwhm = None  # e.g., the total effect of optical aberrations on the width
 
-    def make_optic_psf(self, oversampling):
+    def make_optic_psf(self):
         """
         Make the optical PSF.
         Uses the optic_psf_mode to generate the PSF map
@@ -277,9 +278,7 @@ class SimCamera:
         Saves the results into optic_psf_image and optic_psf_fwhm.
 
         """
-        self.oversampling = oversampling
-
-        if self.optic_psf_mode.lower() == 'gaussian':
+        if self.optic_psf_mode.lower().startswith('gauss'):
             self.optic_psf_image = make_gaussian(self.optic_psf_pars['sigma'] * self.oversampling)
             self.optic_psf_fwhm = self.optic_psf_pars['sigma'] * 2.355
         else:
@@ -327,15 +326,13 @@ class SimSky:
         self.atmos_psf_image = None  # the final shape of the PSF for this image
         self.atmos_psf_fwhm = None  # e.g., the seeing
 
-    def make_atmos_psf(self, oversampling):
+    def make_atmos_psf(self):
         """
         Use the psf mode, pars and the seeing_instance
         to produce an atmospheric PSF.
         This PSF is used to convolve the optical PSF to get the total PSF.
 
         """
-        self.oversampling = oversampling
-
         if self.atmos_psf_mode.lower().startswith('gauss'):
             self.atmos_psf_image = make_gaussian(self.atmos_psf_pars['sigma'] * self.oversampling)
             self.atmos_psf_fwhm = self.atmos_psf_pars['sigma'] * 2.355
@@ -431,7 +428,6 @@ class Simulator:
 
         self.psf = None  # we are cheating because this includes both the optical and atmospheric PSFs
         self.psf_downsampled = None # the PSF, correctly downsampled as to retain the symmetric single peak pixel
-        self.oversampling = None  # how much oversampling (integer) do we need to express fluxes?
         self.flux_top = None  # this is the mean number of photons hitting the top of the atmosphere
 
         # adding the sky into the mix
@@ -506,9 +502,6 @@ class Simulator:
 
         self.camera.optic_psf_mode = self.pars.optic_psf_mode
         self.camera.optic_psf_pars = self.pars.optic_psf_pars
-
-        oversampling = 10
-        self.camera.make_optic_psf(oversampling)  # use a large oversampling just to get the FWHM
 
     def make_sky(self):
         """
@@ -616,26 +609,18 @@ class Simulator:
                 print(f'time to make stars: {time.time() - t0:.2f}s')
 
         # make a PSF
-        fwhm = np.sqrt(self.camera.optic_psf_fwhm ** 2 + self.sky.seeing_instance ** 2)
-        oversample_estimate = int(np.ceil(10 / fwhm))  # allow 10 pixels across the PSF's width
-        oversample_estimate += (oversample_estimate + 1) % 2  # make sure the oversampling is an odd number
-        oversampling = max(1, oversample_estimate)  # must be at least x1 oversampling
-        # oversampling = 5  # debug only!
-        self.oversampling = oversampling
+        # fwhm = np.sqrt(self.camera.optic_psf_fwhm ** 2 + self.sky.seeing_instance ** 2)
+        # oversample_estimate = int(np.ceil(10 / fwhm))  # allow 10 pixels across the PSF's width
+        # oversample_estimate += (oversample_estimate + 1) % 2  # make sure the oversampling is an odd number
+        self.camera.oversampling = self.pars.oversampling
+        self.sky.oversampling = self.pars.oversampling
 
-        # make sure to produce the atmospheric and optical PSF using the new oversampling value
-        self.camera.make_optic_psf(oversampling)
-        self.sky.make_atmos_psf(oversampling)
+        # produce the atmospheric and optical PSF
+        self.camera.make_optic_psf()
+        self.sky.make_atmos_psf()
 
         self.psf = scipy.signal.convolve(self.sky.atmos_psf_image, self.camera.optic_psf_image, mode='full')
         self.psf /= np.sum(self.psf)
-
-        # correctly downsample the PSF to retain the symmetric single peak pixel
-        psf_conv = scipy.signal.convolve(self.psf, np.ones((oversampling, oversampling), dtype=float), mode='same')
-        peak_indices = np.unravel_index(np.argmax(psf_conv), psf_conv.shape)
-        offset = tuple(p % oversampling for p in peak_indices)
-        self.psf_downsampled = self.psf[offset[0]::oversampling, offset[1]::oversampling].copy()
-        self.psf_downsampled /= np.sum(self.psf_downsampled)
 
         # stars:
         self.star_x = self.stars.get_star_x_values()
@@ -692,27 +677,38 @@ class Simulator:
         Will calculate the oversampled instrumental, atmospheric and total PSF.
         Will calculate the flux_top image.
         """
+        ovsmp = self.pars.oversampling
         imsize = self.pars.imsize
         buffer = (int(np.ceil(imsize[0] * 0.02)), int(np.ceil(imsize[1] * 0.02)))
         imsize = (imsize[0] + buffer[0] * 2, imsize[1] + buffer[1] * 2)
-        imsize = (imsize[0] * self.oversampling, imsize[1] * self.oversampling)
+        imsize = (imsize[0] * ovsmp, imsize[1] * ovsmp)
         self.flux_top = np.zeros(imsize, dtype=float)
 
         for x, y, f in zip(self.star_x, self.star_y, self.star_f):
-            self.flux_top[round((y + buffer[0]) * self.oversampling), round((x + buffer[1]) * self.oversampling)] += f
+            self.flux_top[round((y + buffer[0]) * ovsmp), round((x + buffer[1]) * ovsmp)] += f
 
         self.flux_top = scipy.signal.convolve(self.flux_top, self.psf, mode='same')
 
         # downsample back to pixel resolution
-        if self.oversampling > 1:
+        if ovsmp > 1:
             # this convolution means that each new pixel is the SUM of all the pixels in the kernel
-            kernel = np.ones((self.oversampling, self.oversampling), dtype=float)
+            kernel = np.ones((ovsmp, ovsmp), dtype=float)
+
+            # correctly downsample the PSF to retain the symmetric single peak pixel
+            psf_conv = scipy.signal.convolve(self.psf, kernel, mode='same')
+            peak_indices = np.unravel_index(np.argmax(psf_conv), psf_conv.shape)
+            offset = tuple(p % ovsmp for p in peak_indices)
+
+            self.psf_downsampled = self.psf[offset[0]::ovsmp, offset[1]::ovsmp].copy()
+            self.psf_downsampled /= np.sum(self.psf_downsampled)
+
+            # now downsample the flux image
             self.flux_top = scipy.signal.convolve(self.flux_top, kernel, mode='same')
-            self.flux_top = self.flux_top[
-                                self.oversampling//2::self.oversampling,
-                                self.oversampling//2::self.oversampling,
-                            ].copy()
+            self.flux_top = self.flux_top[ovsmp // 2::ovsmp, ovsmp // 2::ovsmp].copy()
             self.flux_top = self.flux_top[buffer[0]:-buffer[0], buffer[1]:-buffer[1]].copy()
+
+        else:
+            self.psf_downsampled = self.psf.copy()
 
     def add_atmosphere(self):
         """
@@ -852,7 +848,7 @@ class Simulator:
         t.vignette_offset_y = self.camera.vignette_offset_y
         t.vignette_map = self.camera.vignette_map
 
-        t.oversampling = self.oversampling
+        t.oversampling = self.camera.oversampling
         t.optic_psf_mode = self.camera.optic_psf_mode
         t.optic_psf_pars = self.camera.optic_psf_pars
         t.optic_psf_image = self.camera.optic_psf_image
