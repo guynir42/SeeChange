@@ -163,6 +163,7 @@ RUN pip install \
       astropy==5.2.1 \
       astroquery==0.4.6 \
       fitsio==0.9.12 \
+      flaky>=3.7.0 \
       gitdb==4.0.10 \
       GitPython==3.1.31 \
       numpy==1.24.2 \
