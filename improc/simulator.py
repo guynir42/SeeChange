@@ -366,6 +366,39 @@ class SimStars:
         self.star_mean_x_pos = rng.uniform(-0.01, 1.01, self.star_number) * imsize[1]
         self.star_mean_y_pos = rng.uniform(-0.01, 1.01, self.star_number) * imsize[0]
 
+    def add_extra_stars(self, imsize, flux=None, x=None, y=None, number=1):
+        """Add one more star to the star field. This is explicitly added by the user on top of the star_number.
+
+        Parameters
+        ----------
+        imsize: tuple
+            The size of the image (y, x)
+        flux: float (optional)
+            The flux of the new star. If None (default), will randomly choose a flux from the power law.
+        x: float (optional)
+            The x position of the new star. If None (default), will randomly choose a position.
+        y: float (optional)
+            The y position of the new star. If None (default), will randomly choose a position.
+        number: int
+            The number of stars to add. Default is 1.
+
+        """
+        rng = np.random.default_rng()
+        alpha = abs(self.star_flux_power_law) - 1
+        flux = self.star_min_flux / rng.power(alpha, number) if flux is None else flux
+        x = rng.uniform(-0.01, 1.01, number) * imsize[1] if x is None else x
+        y = rng.uniform(-0.01, 1.01, number) * imsize[0] if y is None else y
+
+        self.star_mean_fluxes = np.append(self.star_mean_fluxes, flux)
+        self.star_mean_x_pos = np.append(self.star_mean_x_pos, x)
+        self.star_mean_y_pos = np.append(self.star_mean_y_pos, y)
+
+    def remove_stars(self, number=1):
+        """Remove the latest few stars (default is only one) from the star field. """
+        self.star_mean_fluxes = self.star_mean_fluxes[:-number]
+        self.star_mean_x_pos = self.star_mean_x_pos[:-number]
+        self.star_mean_y_pos = self.star_mean_y_pos[:-number]
+
     def get_star_x_values(self):
         """
         Return the positions of the stars (in pixel coordinates)
@@ -375,7 +408,7 @@ class SimStars:
         """
         x = self.star_mean_x_pos
         if self.star_position_std is not None:
-            x += np.random.normal(0, self.star_position_std, self.star_number)
+            x += np.random.normal(0, self.star_position_std, len(x))
 
         return x
 
@@ -388,7 +421,7 @@ class SimStars:
         """
         y = self.star_mean_y_pos
         if self.star_position_std is not None:
-            y += np.random.normal(0, self.star_position_std, self.star_number)
+            y += np.random.normal(0, self.star_position_std, len(y))
 
         return y
 
@@ -571,6 +604,26 @@ class Simulator:
         self.stars.star_position_std = self.pars.star_position_std
 
         self.stars.make_star_field(self.pars.imsize)
+
+    def add_extra_stars(self, flux=None, x=None, y=None, number=1):
+        """Add one more star to the star field. This is explicitly added by the user on top of the star_number.
+
+        Parameters
+        ----------
+        flux: float (optional)
+            The flux of the new star. If None (default), will randomly choose a flux from the power law.
+        x: float (optional)
+            The x position of the new star. If None (default), will randomly choose a position.
+        y: float (optional)
+            The y position of the new star. If None (default), will randomly choose a position.
+        number: int
+            The number of stars to add. Default is 1.
+
+        """
+        if self.stars is None:
+            self.make_stars()
+
+        self.stars.add_extra_stars(self.pars.imsize, flux, x, y, number)
 
     def make_image(self, new_sensor=False, new_camera=False, new_sky=False, new_stars=False):
         """

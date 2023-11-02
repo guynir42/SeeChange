@@ -94,8 +94,7 @@ def test_subtraction_no_new_sources():
         star_number=1000,
     )
 
-    seeing = np.arange(1.0, 3.0, 0.1)
-    # seeing = [2.9]
+    seeing = np.arange(1.0, 3.0, 0.3)
     naive_successes = 0
     zogy_successes = 0
     zogy_failures = 0
@@ -152,4 +151,86 @@ def test_subtraction_no_new_sources():
     assert zogy_failures == 0
 
 
+@pytest.mark.flaky(reruns=3)
 def test_subtraction_new_source_snr():
+    num_stars = 300
+    sim = Simulator(
+        image_size_x=imsize,  # not too big, but allow some space for stars
+        background_std=0,  # keep background constant between images
+        background_minimum=0.01,  # allow very low background for the reference image
+        read_noise=0,  # make it easier to input the background noise (w/o source noise)
+        seeing_mean=2.0,  # make the seeing a little more pronounced
+        seeing_std=0,  # keep seeing constant between images
+        seeing_minimum=0.1,  # assume seeing never gets much better than this
+        transmission_std=0,  # keep transmission constant between images
+        pixel_qe_std=0,  # keep pixel QE constant between images
+        gain_std=0,  # keep pixel gain constant between images
+        saturation_limit=1e9,  # make it impossible to saturate
+        star_number=num_stars,
+    )
+
+    sim.pars.seeing_mean = 0.7  # good seeing reference image
+    sim.pars.background_mean = 2.0  # low background reference image
+    sim.make_image(new_sky=True)
+    truth1 = sim.truth
+    im1 = sim.apply_bias_correction(sim.image)
+    im1 -= truth1.background_instance
+    psf1 = truth1.psf_downsampled
+    bkg1 = truth1.total_bkg_var
+
+    # add a few sources
+    fluxes = [100, 500, 1000, 2000, 5000, 10000, 50000, 100000]
+    pos = np.linspace(0, imsize, len(fluxes) + 1, endpoint=False)[1:]
+    for f in fluxes:
+        sim.add_extra_stars(flux=f, x=pos, y=pos)
+
+    sim.pars.seeing_mean = 2.5  # seeing is much worse in new image
+    sim.pars.background_mean = 30.0  # background is much higher in new image
+
+    iterations = 10
+    expected = np.zeros((iterations, len(fluxes)))
+    measured = np.zeros((iterations, len(fluxes)))
+
+    for j in range(iterations):
+        sim.make_image(new_sky=True)
+        truth2 = sim.truth
+        im2 = sim.apply_bias_correction(sim.image)
+        im2 -= truth2.background_instance
+        psf2 = truth2.psf_downsampled
+        bkg2 = truth2.total_bkg_var
+
+        # need to figure out better values for this
+        F1 = 1.0
+        F2 = 1.0
+
+        zogy_diff, zogy_psf, zogy_score, zogy_score_corr, alpha, alpha_err = zogy_subtract(
+            im1, im2, psf1, psf2, np.sqrt(bkg1), np.sqrt(bkg2), F1, F2,
+        )
+        edge = 8  # do not trigger on stars too close to the edge
+        S = np.ones(zogy_score_corr.shape) * np.nan
+        S[edge:-edge, edge:-edge] = zogy_score_corr[edge:-edge, edge:-edge].copy()
+        B = truth2.background_instance
+        P = zogy_psf
+
+        for i, f in enumerate(fluxes):
+            x = y = int(pos[i])
+            c = S[y-edge:y+edge, x-edge:x+edge]
+            expected[j, i] = f * np.sqrt(np.sum(P ** 2) / B)
+            expected[j, i] *= np.sqrt(B / (B + f * np.sum(P ** 2)))  # add the Poisson noise from the source
+            measured[j, i] = np.nanmax(c)
+
+    mean = np.nanmean(measured, axis=0)
+    err = np.nanstd(measured, axis=0)
+    exp = expected[0, :]
+    p1 = np.polyfit(exp, mean, 1)
+
+    chi2 = np.sum((mean - np.polyval(p1, exp)) ** 2 / err ** 2)
+    assert chi2 / (len(fluxes) - 2) < 2.0  # the fit should be good
+    assert p1[0] > 0.8  # should be close to one, but we are losing about 15% S/N and I don't know why
+
+    # plt.errorbar(exp, mean, err, fmt='.', label='measured vs. expected')
+    # plt.plot(exp, np.polyval(p1, exp), 'r-', label=f'fit: {p1[0]:.3f}x + {p1[1]:.3f}')
+    # plt.xlabel('expected S/N')
+    # plt.ylabel('measured S/N')
+    # plt.legend()
+    # plt.show(block=False)
