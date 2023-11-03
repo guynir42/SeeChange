@@ -79,7 +79,7 @@ def test_subtraction_no_stars():
     assert abs( np.max(abs(zogy_score_corr)) - low_threshold ) < 1.5  # the peak should be close to the low threshold
 
 
-@pytest.mark.flaky(reruns=3)
+@pytest.mark.flaky(max_runs=3)
 def test_subtraction_no_new_sources():
     sim = Simulator(
         image_size_x=imsize,  # not too big, but allow some space for stars
@@ -152,7 +152,7 @@ def test_subtraction_no_new_sources():
     assert zogy_failures == 0
 
 
-@pytest.mark.flaky(reruns=3)
+@pytest.mark.flaky(max_runs=3)
 def test_subtraction_new_sources_snr():
     num_stars = 300
     sim = Simulator(
@@ -235,7 +235,5 @@ def test_subtraction_new_sources_snr():
     # plt.ylabel('measured S/N')
     # plt.legend()
     # plt.show(block=True)
-
-
 
 
