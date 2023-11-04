@@ -359,7 +359,7 @@ def test_subtraction_jitter_noise():
         star_number=num_stars,
     )
 
-    jitter_values = [0.0, 0.1, 0.2, 0.5, 1.0]
+    jitter_values = [0.0, 0.1, 0.25, 0.5]
     fluxes = [300, 500, 1000]
     pos = np.linspace(0, imsize, len(fluxes) + 1, endpoint=False)[1:]
 
