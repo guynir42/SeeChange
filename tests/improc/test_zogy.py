@@ -335,3 +335,102 @@ def test_subtraction_seeing_background():
                                 f'expected/measured: ({expected:.3f}, {measured:.3f})'
                             )
 
+
+@pytest.mark.flaky(max_runs=3)
+def test_subtraction_jitter_noise():
+    num_stars = 300
+    ref_seeing = 2.0
+    ref_bkg = 1.0
+    new_seeing = 3.0
+    new_bkg = 10.0
+    sim = Simulator(
+        image_size_x=imsize,  # not too big, but allow some space for stars
+        background_mean=ref_bkg,  # the ref image has a low background
+        background_std=0,  # keep background constant between images
+        background_minimum=0.01,  # allow very low background for the reference image
+        read_noise=0,  # make it easier to input the background noise (w/o source noise)
+        seeing_mean=ref_seeing,  # make the seeing a little more pronounced
+        seeing_std=0,  # keep seeing constant between images
+        seeing_minimum=0.1,  # assume seeing never gets much better than this
+        transmission_std=0,  # keep transmission constant between images
+        pixel_qe_std=0,  # keep pixel QE constant between images
+        gain_std=0,  # keep pixel gain constant between images
+        saturation_limit=1e9,  # make it impossible to saturate
+        star_number=num_stars,
+    )
+
+    jitter_values = [0.0, 0.1, 0.2, 0.5, 1.0]
+    fluxes = [300, 500, 1000]
+    pos = np.linspace(0, imsize, len(fluxes) + 1, endpoint=False)[1:]
+
+    sim.make_stars()
+    # verify no stars are on top of our injection positions
+    # ZOGY still detects the new source on top of the star, but the S/N is reduced
+    for p in pos:
+        for i in range(len(sim.stars.star_mean_fluxes)):
+            if abs(p - sim.stars.star_mean_x_pos[i]) < 10:
+                sim.stars.star_mean_x_pos[i] += 15  # bump this star out of the way
+            if abs(p - sim.stars.star_mean_y_pos[i]) < 10:
+                sim.stars.star_mean_y_pos[i] += 15  # bump this star out of the way
+
+    sim.make_image(new_sky=True)
+    truth1 = sim.truth
+    im1 = sim.apply_bias_correction(sim.image)
+    im1 -= truth1.background_instance
+    psf1 = truth1.psf_downsampled
+    bkg1 = truth1.total_bkg_var
+
+    # add a few sources
+    for f, p in zip(fluxes, pos):
+        sim.add_extra_stars(flux=f, x=p, y=p)
+
+    for jitter in jitter_values:
+        # print(f'jitter: {jitter}')
+        sim.pars.seeing_mean = new_seeing  # a little worse seeing than the ref
+        sim.pars.background_mean = new_bkg  # a little worse background than the ref
+        sim.pars.star_position_std = jitter  # add some jitter to the star positions
+
+        sim.make_image(new_sky=True)
+        truth2 = sim.truth
+        im2 = sim.apply_bias_correction(sim.image)
+        im2 -= truth2.background_instance
+        psf2 = truth2.psf_downsampled
+        bkg2 = truth2.total_bkg_var
+
+        # need to figure out better values for this
+        F1 = 1.0
+        F2 = 1.0
+
+        zogy_diff, zogy_psf, zogy_score, zogy_score_corr, alpha, alpha_err = zogy_subtract(
+            im1, im2, psf1, psf2, np.sqrt(bkg1), np.sqrt(bkg2), F1, F2, dx=jitter,
+        )
+
+        edge = 8  # do not trigger on stars too close to the edge
+        S = np.ones(zogy_score_corr.shape) * np.nan
+        S[edge:-edge, edge:-edge] = zogy_score_corr[edge:-edge, edge:-edge].copy()
+        B = np.sqrt(ref_bkg ** 2 + new_bkg ** 2)
+        P = zogy_psf
+
+        # check that the background stars are not detected
+        S2 = S.copy()
+        for i, f in enumerate(fluxes):
+            x = y = int(pos[i])
+            S2[y - edge:y + edge, x - edge:x + edge] = np.nan  # remove the injected sources
+
+        assert np.nanmax(abs(S2)) < threshold  # we should not have anything get to the high threshold
+
+        # check that the sources are recovered correctly
+        for i, f in enumerate(fluxes):
+            x = y = int(pos[i])
+            c = S[y - edge:y + edge, x - edge:x + edge]
+            expected = f * np.sqrt(np.sum(P ** 2) / B)
+            expected *= np.sqrt(B / (B + f * np.sum(P ** 2)))  # add the Poisson noise from the source
+            measured = np.nanmax(c)
+            # print((expected - measured) / expected)
+            # TODO: figure out why we still have cases where the S/N is reduced by 50%
+            if abs((expected - measured) / expected) > 0.5:
+                raise ValueError(
+                    f'seeing: ({ref_seeing:.2f}, {new_seeing:.2f}), '
+                    f'background: ({ref_bkg:.2f}, {new_bkg:.2f}), '
+                    f'expected/measured: ({expected:.3f}, {measured:.3f})'
+                )

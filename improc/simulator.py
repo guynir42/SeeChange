@@ -185,6 +185,9 @@ class SimTruth:
         self.star_mean_x_pos = None  # for each star, the mean x position
         self.star_mean_y_pos = None  # for each star, the mean y position
         self.star_position_std = None  # for each star, the variation in position (in both x and y)
+        self.star_real_x_pos = None  # for each star, the real position on the image plane
+        self.star_real_y_pos = None  # for each star, the real position on the image plane
+        self.star_real_flux = None  # for each star, the real flux measured on the sky (before vignette, etc.)
 
         # additional random things that are unique to each image
         self.cosmic_ray_x_pos = None  # where each cosmic ray was
@@ -420,7 +423,7 @@ class SimStars:
         to the mean star positions.
 
         """
-        x = self.star_mean_x_pos
+        x = self.star_mean_x_pos.copy()
         if self.star_position_std is not None:
             x += np.random.normal(0, self.star_position_std, len(x))
 
@@ -433,7 +436,7 @@ class SimStars:
         to the mean star positions.
 
         """
-        y = self.star_mean_y_pos
+        y = self.star_mean_y_pos.copy()
         if self.star_position_std is not None:
             y += np.random.normal(0, self.star_position_std, len(y))
 
@@ -690,6 +693,9 @@ class Simulator:
         self.psf /= np.sum(self.psf)
 
         # stars:
+
+        # make sure to update this parameter before calling get_star_x_values and get_star_y_values
+        self.stars.star_position_std = self.pars.star_position_std
         self.star_x = self.stars.get_star_x_values()
         self.star_y = self.stars.get_star_y_values()
         self.star_f = self.stars.get_star_flux_values()
@@ -752,7 +758,11 @@ class Simulator:
         self.flux_top = np.zeros(imsize, dtype=float)
 
         for x, y, f in zip(self.star_x, self.star_y, self.star_f):
-            self.flux_top[round((y + buffer[0]) * ovsmp), round((x + buffer[1]) * ovsmp)] += f
+            x_im = round((x + buffer[1]) * ovsmp)
+            y_im = round((y + buffer[0]) * ovsmp)
+            if x_im < 0 or x_im >= imsize[1] or y_im < 0 or y_im >= imsize[0]:
+                continue
+            self.flux_top[y_im, x_im] += f
 
         self.flux_top = scipy.signal.convolve(self.flux_top, self.psf, mode='same')
 
@@ -948,6 +958,9 @@ class Simulator:
         t.star_mean_x_pos = self.stars.star_mean_x_pos
         t.star_mean_y_pos = self.stars.star_mean_y_pos
         t.star_position_std = self.stars.star_position_std
+        t.star_real_x_pos = self.star_x
+        t.star_real_y_pos = self.star_y
+        t.star_real_flux = self.star_f
 
         t.psf = self.psf
         t.psf_downsampled = self.psf_downsampled

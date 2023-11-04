@@ -72,9 +72,13 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     flux_new : float
         The flux-based zero point of the new image (the flux at which S/N=1).
     dx : float
-
+        The measure of the uncertainty in the astrometric registration in the x direction.
+        This is in units of pixels. If given as None (default), will ignore astrometric noise.
     dy : float
-
+        The measure of the uncertainty in the astrometric registration in the y direction.
+        This is in units of pixels. If given as None (default), will use the value of dx,
+        which will be either None (so no astrometric noise correction) or a float value,
+        which is applied to both x and y equally.
 
     Returns
     -------
@@ -91,6 +95,8 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     alpha_std: numpy.ndarray
         The PSF-photometry noise image
     """
+    if dy is None:
+        dy = dx  # assume equal astrometric noise if only dx is given
 
     # make copies to avoid modifying the input arrays
     N = np.copy(image_new)
@@ -178,13 +184,13 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     if dx is not None and dx != 0 and dy is not None and dy != 0:
         # and calculate astrometric variance
         S_n = np.real(np.fft.ifft2(k_n_f * N_f))
-        dS_n_dy = S_n - np.roll(S_n, 1, axis=0)
-        dS_n_dx = S_n - np.roll(S_n, 1, axis=1)
+        dS_n_dy = S_n - np.roll(S_n, 1, axis=0)  # calculate the gradients
+        dS_n_dx = S_n - np.roll(S_n, 1, axis=1)  # calculate the gradients
         V_S_n_ast = dx ** 2 * dS_n_dx ** 2 + dy ** 2 * dS_n_dy ** 2
 
         S_r = np.real(np.fft.ifft2(k_r_f * R_f))
-        dS_r_dy = S_r - np.roll(S_r, 1, axis=0)
-        dS_r_dx = S_r - np.roll(S_r, 1, axis=1)
+        dS_r_dy = S_r - np.roll(S_r, 1, axis=0)  # calculate the gradients
+        dS_r_dx = S_r - np.roll(S_r, 1, axis=1)  # calculate the gradients
         V_S_r_ast = dx ** 2 * dS_r_dx ** 2 + dy ** 2 * dS_r_dy ** 2
 
         V_ast = V_S_r_ast + V_S_n_ast
