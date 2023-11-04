@@ -183,8 +183,8 @@ def test_subtraction_new_sources_snr():
     # add a few sources
     fluxes = [100, 500, 1000, 2000, 5000, 10000, 50000, 100000]
     pos = np.linspace(0, imsize, len(fluxes) + 1, endpoint=False)[1:]
-    for f in fluxes:
-        sim.add_extra_stars(flux=f, x=pos, y=pos)
+    for f, p in zip(fluxes, pos):
+        sim.add_extra_stars(flux=f, x=p, y=p)
 
     sim.pars.seeing_mean = 2.5  # seeing is much worse in new image
     sim.pars.background_mean = 30.0  # background is much higher in new image
