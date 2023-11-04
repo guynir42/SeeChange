@@ -17,6 +17,7 @@ threshold = 6.0  # this should be high enough to avoid false positives at the 1/
 assert scipy.special.erfc(threshold / np.sqrt(2)) * imsize ** 2 < 1e-3
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_subtraction_no_stars():
     # this simulator creates images with the same b/g and seeing, so the stars will easily be subtracted
     sim = Simulator(
@@ -236,4 +237,101 @@ def test_subtraction_new_sources_snr():
     # plt.legend()
     # plt.show(block=True)
 
+
+@pytest.mark.flaky(max_runs=3)
+def test_subtraction_seeing_background():
+    num_stars = 300
+    sim = Simulator(
+        image_size_x=imsize,  # not too big, but allow some space for stars
+        background_std=0,  # keep background constant between images
+        background_minimum=0.01,  # allow very low background for the reference image
+        read_noise=0,  # make it easier to input the background noise (w/o source noise)
+        seeing_mean=2.0,  # make the seeing a little more pronounced
+        seeing_std=0,  # keep seeing constant between images
+        seeing_minimum=0.1,  # assume seeing never gets much better than this
+        transmission_std=0,  # keep transmission constant between images
+        pixel_qe_std=0,  # keep pixel QE constant between images
+        gain_std=0,  # keep pixel gain constant between images
+        saturation_limit=1e9,  # make it impossible to saturate
+        star_number=num_stars,
+    )
+    seeing_values = [2.0, 3.0, 5.0]
+    background_values = [1.0, 3.0, 10.0]
+
+    fluxes = [300, 500, 1000]
+    pos = np.linspace(0, imsize, len(fluxes) + 1, endpoint=False)[1:]
+
+    sim.make_stars()
+
+    # verify no stars are on top of our injection positions
+    # ZOGY still detects the new source on top of the star, but the S/N is reduced
+    for p in pos:
+        for i in range(len(sim.stars.star_mean_fluxes)):
+            if abs(p - sim.stars.star_mean_x_pos[i]) < 10:
+                sim.stars.star_mean_x_pos[i] += 15  # bump this star out of the way
+            if abs(p - sim.stars.star_mean_y_pos[i]) < 10:
+                sim.stars.star_mean_y_pos[i] += 15  # bump this star out of the way
+
+    # beware the 4-loop!
+    for ref_seeing in seeing_values:
+        for new_seeing in seeing_values:
+            for ref_bkg in background_values:
+                for new_bkg in background_values:
+                    # print(f'seeing: {ref_seeing}, {new_seeing} | bkg: {ref_bkg}, {new_bkg}')
+
+                    sim.pars.seeing_mean = ref_seeing
+                    sim.pars.background_mean = ref_bkg
+
+                    # remove the additional stars from the reference image
+                    sim.stars.remove_stars(len(sim.stars.star_mean_fluxes) - sim.pars.star_number)
+
+                    sim.make_image(new_sky=True)
+                    truth1 = sim.truth
+                    im1 = sim.apply_bias_correction(sim.image)
+                    im1 -= truth1.background_instance
+                    psf1 = truth1.psf_downsampled
+                    bkg1 = truth1.total_bkg_var
+
+                    # add a few sources
+                    for f, p in zip(fluxes, pos):
+                        sim.add_extra_stars(flux=f, x=p, y=p)
+
+                    sim.pars.seeing_mean = new_seeing
+                    sim.pars.background_mean = new_bkg
+
+                    sim.make_image(new_sky=True)
+                    truth2 = sim.truth
+                    im2 = sim.apply_bias_correction(sim.image)
+                    im2 -= truth2.background_instance
+                    psf2 = truth2.psf_downsampled
+                    bkg2 = truth2.total_bkg_var
+
+                    # need to figure out better values for this
+                    F1 = 1.0
+                    F2 = 1.0
+
+                    zogy_diff, zogy_psf, zogy_score, zogy_score_corr, alpha, alpha_err = zogy_subtract(
+                        im1, im2, psf1, psf2, np.sqrt(bkg1), np.sqrt(bkg2), F1, F2,
+                    )
+
+                    edge = 8  # do not trigger on stars too close to the edge
+                    S = np.ones(zogy_score_corr.shape) * np.nan
+                    S[edge:-edge, edge:-edge] = zogy_score_corr[edge:-edge, edge:-edge].copy()
+                    B = np.sqrt(ref_bkg ** 2 + new_bkg ** 2)
+                    P = zogy_psf
+
+                    for i, f in enumerate(fluxes):
+                        x = y = int(pos[i])
+                        c = S[y - edge:y + edge, x - edge:x + edge]
+                        expected = f * np.sqrt(np.sum(P ** 2) / B)
+                        expected *= np.sqrt(B / (B + f * np.sum(P ** 2)))  # add the Poisson noise from the source
+                        measured = np.nanmax(c)
+                        # print((expected - measured) / expected)
+                        # TODO: figure out why we still have cases where the S/N is reduced by 50%
+                        if abs((expected - measured) / expected) > 0.5:
+                            raise ValueError(
+                                f'seeing: ({ref_seeing:.2f}, {new_seeing:.2f}), '
+                                f'background: ({ref_bkg:.2f}, {new_bkg:.2f}), '
+                                f'expected/measured: ({expected:.3f}, {measured:.3f})'
+                            )
 

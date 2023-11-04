@@ -353,7 +353,7 @@ class SimStars:
         self.star_mean_y_pos = None  # for each star, the mean y position
         self.star_position_std = None  # for each star, the variation in position (in both x and y)
 
-    def make_star_field(self, imsize):
+    def make_star_list(self, imsize):
         """
         Make a field of stars.
         Uses the power law to draw random mean fluxes,
@@ -381,6 +381,9 @@ class SimStars:
             The y position of the new star. If None (default), will randomly choose a position.
         number: int
             The number of stars to add. Default is 1.
+            If any of (flux, x, y) are given as an array, then
+            the number must match the length of that array.
+            If all are given, number is ignored.
 
         """
         rng = np.random.default_rng()
@@ -389,15 +392,26 @@ class SimStars:
         x = rng.uniform(-0.01, 1.01, number) * imsize[1] if x is None else x
         y = rng.uniform(-0.01, 1.01, number) * imsize[0] if y is None else y
 
-        self.star_mean_fluxes = np.append(self.star_mean_fluxes, flux)
-        self.star_mean_x_pos = np.append(self.star_mean_x_pos, x)
-        self.star_mean_y_pos = np.append(self.star_mean_y_pos, y)
+        if not isinstance(x, np.ndarray):
+            x = np.array([x])
+        if not isinstance(y, np.ndarray):
+            y = np.array([y])
+        if not isinstance(flux, np.ndarray):
+            flux = np.array([flux])
+
+        if len(x) != len(y) or len(flux) != len(x):
+            raise ValueError(f'Size mismatch between flux ({len(flux)}), x ({len(x)}) and y ({len(y)}).')
+
+        self.star_mean_fluxes = np.append(self.star_mean_fluxes, np.array(flux))
+        self.star_mean_x_pos = np.append(self.star_mean_x_pos, np.array(x))
+        self.star_mean_y_pos = np.append(self.star_mean_y_pos, np.array(y))
 
     def remove_stars(self, number=1):
         """Remove the latest few stars (default is only one) from the star field. """
-        self.star_mean_fluxes = self.star_mean_fluxes[:-number]
-        self.star_mean_x_pos = self.star_mean_x_pos[:-number]
-        self.star_mean_y_pos = self.star_mean_y_pos[:-number]
+        if number > 0:
+            self.star_mean_fluxes = self.star_mean_fluxes[:-number]
+            self.star_mean_x_pos = self.star_mean_x_pos[:-number]
+            self.star_mean_y_pos = self.star_mean_y_pos[:-number]
 
     def get_star_x_values(self):
         """
@@ -603,7 +617,7 @@ class Simulator:
         self.stars.star_flux_power_law = self.pars.star_flux_power_law
         self.stars.star_position_std = self.pars.star_position_std
 
-        self.stars.make_star_field(self.pars.imsize)
+        self.stars.make_star_list(self.pars.imsize)
 
     def add_extra_stars(self, flux=None, x=None, y=None, number=1):
         """Add one more star to the star field. This is explicitly added by the user on top of the star_number.
