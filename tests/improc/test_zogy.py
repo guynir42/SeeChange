@@ -217,13 +217,14 @@ def test_subtraction_new_sources_snr():
         for i, f in enumerate(fluxes):
             x = y = int(pos[i])
             c = S[y-edge:y+edge, x-edge:x+edge]
-            expected[j, i] = f * np.sqrt(np.sum(P ** 2) / B)
-            expected[j, i] *= np.sqrt(B / (B + f * np.sum(P ** 2)))  # add the Poisson noise from the source
+            # In the denominator we replace B with B + f * np.sum(P ** 2) to account for
+            # the combination of background variance with source-noise variance
+            expected[j, i] = f * np.sqrt(np.sum(P ** 2) / (B + f * np.sum(P ** 2)))
             measured[j, i] = np.nanmax(c)
 
     mean = np.nanmean(measured, axis=0)
     err = np.nanstd(measured, axis=0)
-    exp = expected[0, :]
+    exp = np.nanmean(expected, axis=0)
     p1 = np.polyfit(exp, mean, 1)
 
     chi2 = np.sum((mean - np.polyval(p1, exp)) ** 2 / err ** 2)

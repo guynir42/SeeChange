@@ -254,9 +254,7 @@ def pad_to_shape(arr, shape, value=0):
             f"The shape must be larger/equal to the array shape on all dimensions. Got {shape} and {arr.shape}."
         )
 
-    new_arr = np.zeros(shape, dtype=arr.dtype)
-    if value != 0:
-        new_arr[:] = value
+    new_arr = np.full(shape, value, dtype=arr.dtype)
 
     # calculate the padding on each side
     pad = [(s - a) // 2 for s, a in zip(shape, arr.shape)]
