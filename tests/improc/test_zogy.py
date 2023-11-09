@@ -1,11 +1,13 @@
+import os
 import pytest
 
 import numpy as np
 import scipy
 
+import matplotlib
 import matplotlib.pyplot as plt
 
-
+from models.base import CODE_ROOT, safe_mkdir
 from improc.simulator import Simulator
 from improc.zogy import zogy_subtract
 
@@ -153,6 +155,120 @@ def test_subtraction_no_new_sources():
     assert zogy_failures == 0
 
 
+def test_subtraction_snr_histograms(headless_plots):
+    background = 5.0
+    seeing = 3.0
+    iterations = 300
+
+    sim = Simulator(
+        image_size_x=imsize,  # not too big, but allow some space for stars
+        background_mean=background,  # some average background value
+        background_std=0.0,  # keep background constant between images
+        background_minimum=1.0,  # allow very low background for the reference image
+        read_noise=0,  # make it easier to input the background noise (w/o source noise)
+        seeing_mean=seeing,  # make the seeing a little more pronounced
+        seeing_std=0,  # keep seeing constant between images
+        seeing_minimum=0.1,  # assume seeing never gets much better than this
+        transmission_std=0,  # keep transmission constant between images
+        pixel_qe_std=0,  # keep pixel QE constant between images
+        gain_std=0,  # keep pixel gain constant between images
+        saturation_limit=1e9,  # make it impossible to saturate
+        star_number=0,
+    )
+
+    # add a few sources
+    fluxes = [100, 1000, 10000, 100000]
+    pos = np.linspace(0, imsize, len(fluxes) + 1, endpoint=False)[1:]
+
+    sim.make_stars()
+    # make a new image, with transients
+    for f, p in zip(fluxes, pos):
+        sim.add_extra_stars(flux=f, x=p, y=p)
+
+    sim.make_image()
+
+    transients_overlay = sim.flux_top  # no noise, only the transients
+
+    expected = np.zeros((iterations, len(fluxes)))
+    measured = np.zeros((iterations, len(fluxes)))
+
+    for j in range(iterations):
+
+        # remove the additional stars from the reference image
+        # sim.stars.remove_stars(len(sim.stars.star_mean_fluxes) - sim.pars.star_number)
+
+        # make a reference image
+        # sim.make_image(new_sky=True)
+        # truth1 = sim.truth
+        # im1 = sim.apply_bias_correction(sim.image)
+        # im1 -= truth1.background_instance
+        # psf1 = truth1.psf_downsampled
+        # bkg1 = truth1.total_bkg_var
+
+        psf1 = sim.psf_downsampled
+        bkg1 = background  # TODO: make this slightly variable?
+        im1 = np.random.normal(0, np.sqrt(bkg1), size=transients_overlay.shape)
+
+        # # make a new image, with transients
+        # for f, p in zip(fluxes, pos):
+        #     sim.add_extra_stars(flux=f, x=p, y=p)
+
+        # sim.make_image(new_sky=True)
+        # truth2 = sim.truth
+        # im2 = sim.apply_bias_correction(sim.image)
+        # im2 -= truth2.background_instance
+        # psf2 = truth2.psf_downsampled
+        # bkg2 = truth2.total_bkg_var
+
+        psf2 = sim.psf_downsampled
+        bkg2 = background  # TODO: make this slightly variable?
+        im2 = np.random.normal(transients_overlay, np.sqrt(bkg2 + transients_overlay))
+
+        # need to figure out better values for this
+        F1 = 1.0
+        F2 = 1.0
+
+        zogy_diff, zogy_psf, zogy_score, zogy_score_corr, alpha, alpha_err = zogy_subtract(
+            im1, im2, psf1, psf2, np.sqrt(bkg1), np.sqrt(bkg2), F1, F2,
+        )
+        edge = 8  # do not trigger on stars too close to the edge
+        S = np.ones(zogy_score_corr.shape) * np.nan
+        S[edge:-edge, edge:-edge] = zogy_score_corr[edge:-edge, edge:-edge].copy()
+        B = bkg1 + bkg2
+        P = zogy_psf
+
+        for i, f in enumerate(fluxes):
+            x = y = int(pos[i])
+            c = S[y - edge:y + edge, x - edge:x + edge]
+            # In the denominator we replace B with B + f * np.sum(P ** 2) to account for
+            # the combination of background variance with source-noise variance
+            expected[j, i] = f * np.sqrt(np.sum(P ** 2) / (B + f * np.sum(P ** 2)))
+            measured[j, i] = np.nanmax(c)
+
+    # exp = np.mean(expected, axis=0)
+    # mea = np.mean(measured, axis=0)
+    # p1 = np.polyfit(exp, mea, 1)
+    # print(p1)
+
+    matplotlib.rcParams["font.size"] = 22
+    fig, axes = plt.subplots(2, 2, figsize=[14, 10], )
+    for i, ax in enumerate(axes.flatten()):
+        ax.hist(measured[:, i], bins=20, label='measured')
+        ylim = ax.get_ylim()
+        ax.plot(np.nanmean(expected[:, i])*np.array([1, 1]), ylim, label='expected')
+        ax.set_title(f'flux: {fluxes[i]}')
+        ax.set_xlabel('Measured S/N')
+        ax.legend(loc='upper right')
+        plt.subplots_adjust(hspace=0.5)
+    plt.show()
+
+    plot_path = os.path.join(CODE_ROOT, "tests/plots")
+    if not os.path.isdir(plot_path):
+        os.mkdir(plot_path)
+    plt.savefig(os.path.join(plot_path, "zogy_snr_histograms.pdf"))
+    plt.savefig(os.path.join(plot_path, "zogy_snr_histograms.png"))
+
+
 @pytest.mark.flaky(max_runs=3)
 def test_subtraction_new_sources_snr():
     num_stars = 300
@@ -211,7 +327,7 @@ def test_subtraction_new_sources_snr():
         edge = 8  # do not trigger on stars too close to the edge
         S = np.ones(zogy_score_corr.shape) * np.nan
         S[edge:-edge, edge:-edge] = zogy_score_corr[edge:-edge, edge:-edge].copy()
-        B = truth2.background_instance
+        B = truth1.background_instance + truth2.background_instance
         P = zogy_psf
 
         for i, f in enumerate(fluxes):
@@ -318,18 +434,19 @@ def test_subtraction_seeing_background():
                     edge = 8  # do not trigger on stars too close to the edge
                     S = np.ones(zogy_score_corr.shape) * np.nan
                     S[edge:-edge, edge:-edge] = zogy_score_corr[edge:-edge, edge:-edge].copy()
-                    B = np.sqrt(ref_bkg ** 2 + new_bkg ** 2)
+                    B = ref_bkg + new_bkg
                     P = zogy_psf
 
                     for i, f in enumerate(fluxes):
                         x = y = int(pos[i])
                         c = S[y - edge:y + edge, x - edge:x + edge]
-                        expected = f * np.sqrt(np.sum(P ** 2) / B)
-                        expected *= np.sqrt(B / (B + f * np.sum(P ** 2)))  # add the Poisson noise from the source
+                        # In the denominator we replace B with B + f * np.sum(P ** 2) to account for
+                        # the combination of background variance with source-noise variance
+                        expected = f * np.sqrt(np.sum(P ** 2) / (B + f * np.sum(P ** 2)))
                         measured = np.nanmax(c)
                         # print((expected - measured) / expected)
-                        # TODO: figure out why we still have cases where the S/N is reduced by 50%
-                        if abs((expected - measured) / expected) > 0.5:
+                        # TODO: figure out why we still have cases where the S/N is reduced by 35%
+                        if abs((expected - measured) / expected) > 0.35:
                             raise ValueError(
                                 f'seeing: ({ref_seeing:.2f}, {new_seeing:.2f}), '
                                 f'background: ({ref_bkg:.2f}, {new_bkg:.2f}), '
@@ -409,7 +526,7 @@ def test_subtraction_jitter_noise():
         edge = 8  # do not trigger on stars too close to the edge
         S = np.ones(zogy_score_corr.shape) * np.nan
         S[edge:-edge, edge:-edge] = zogy_score_corr[edge:-edge, edge:-edge].copy()
-        B = np.sqrt(ref_bkg ** 2 + new_bkg ** 2)
+        B = ref_bkg + new_bkg
         P = zogy_psf
 
         # check that the background stars are not detected
@@ -424,8 +541,9 @@ def test_subtraction_jitter_noise():
         for i, f in enumerate(fluxes):
             x = y = int(pos[i])
             c = S[y - edge:y + edge, x - edge:x + edge]
-            expected = f * np.sqrt(np.sum(P ** 2) / B)
-            expected *= np.sqrt(B / (B + f * np.sum(P ** 2)))  # add the Poisson noise from the source
+            # In the denominator we replace B with B + f * np.sum(P ** 2) to account for
+            # the combination of background variance with source-noise variance
+            expected = f * np.sqrt(np.sum(P ** 2) / (B + f * np.sum(P ** 2)))
             measured = np.nanmax(c)
             # print((expected - measured) / expected)
             # TODO: figure out why we still have cases where the S/N is reduced by 50%

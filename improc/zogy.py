@@ -246,7 +246,8 @@ def pad_to_shape(arr, shape, value=0):
 
     if len(shape) != len(arr.shape):
         raise ValueError(
-            f"The shape must have the same number of dimensions as the array. Got {len(shape)} and {len(arr.shape)}."
+            f"The shape must have the same number of dimensions as the shape of the array. "
+            f"Got {len(shape)} and {len(arr.shape)}."
         )
 
     if any(s < a for s, a in zip(shape, arr.shape)):
