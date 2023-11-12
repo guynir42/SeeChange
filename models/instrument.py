@@ -48,6 +48,70 @@ class InstrumentOrientation(Enum):
     NleftEup = 7          # flip-x, then 270° clockwise
 
 
+class Bandpass:
+    """A helper class to keep track of the bandpass of filters.
+
+    This is currently only used for determining which filter in the instrument
+    is most similar to a filter in a reference catalog.
+    For example, is a V filter closer to Gaia G or to Gaia B_P or R_P?
+    """
+    def __init__(self, *args):
+        """Create a new Bandpass object.
+
+        Currently, initialize using lower/upper wavelength in nm.
+        This assumes all filters have a simple, top-hat bandpass.
+        This is good enough for comparing a discrete list of filters
+        (e.g., the Gaia filters vs. the DECam filters) but not for
+        more complicated things like finding the flux from a spectrum.
+
+        Additional initializations could be possible in the future.
+
+        """
+        self.lower_wavelength = args[0]
+        self.upper_wavelength = args[1]
+
+    def __getitem__(self, idx):
+        """A shortcut for getting the lower/upper wavelength.
+        band[0] gives the lower wavelength, band[1] gives the upper wavelength.
+        """
+        if idx == 0:
+            return self.lower_wavelength
+        elif idx == 1:
+            return self.upper_wavelength
+        else:
+            raise IndexError("Bandpass index must be 0 or 1. ")
+
+    def get_overlap(self, other):
+        """Find the overlap between two bandpasses.
+
+        Will accept another Bandpass object, or a tuple of (lower, upper) wavelengths.
+        By definition, all wavelengths are given in nm, but this works just as well
+        if all the bandpasses are defined in other units (as long as they are consistent!).
+
+        """
+
+        return max(0, min(self.upper_wavelength, other[1]) - max(self.lower_wavelength, other[0]))
+
+    def find_best_match(self, bandpass_dict):
+        """Find the best match for this bandpass in a dictionary of bandpasses.
+
+        If dict is empty or all bandpasses have a zero match to this bandpass,
+        returns None.
+
+        # TODO: should we have another way to match based on the "nearest central wavelength"
+           or somthing like that? Seems like a corner case and not a very interesting one.
+        """
+        best_match = None
+        best_overlap = 0
+        for k, v in bandpass_dict.items():
+            overlap = self.get_overlap(v)
+            if overlap > best_overlap:
+                best_match = k
+                best_overlap = overlap
+
+        return best_match
+
+
 # from: https://stackoverflow.com/a/5883218
 def get_inheritors(klass):
     """Get all classes that inherit from klass. """
@@ -312,6 +376,7 @@ class SensorSection(Base, AutoIDMixin):
                 return False
 
         return True
+
 
 class Instrument:
     """
@@ -979,8 +1044,9 @@ class Instrument:
             return self.get_section( image.section_id ).gain
         elif section_id is not None:
             return self.get_section( section_id ).gain
-        elif sec.gain is not None:
-            return self.gain
+        # Can we remove this case? What is "sec" in this case??
+        # elif sec.gain is not None:
+        #     return self.gain
         else:
             return 1.
 
@@ -1155,6 +1221,33 @@ class Instrument:
     # in pipeline/preprocessing.py because individual instruments
     # may need specific overrides for some of the steps.  For many
     # instruments, the defaults should work.
+
+    @classmethod
+    def get_filter_bandpasses(cls):
+        """
+        Get a dictionary of filter name -> Bandpass object for a list of common filters.
+        The default Instrument just gives some generic filters and their bandpasses,
+        but subclasses should override (or update) this dictionary with their own
+        filters and bandpasses.
+        """
+
+        # we can probably do better than this, but I don't know if it makes any difference
+        # ref: https://en.wikipedia.org/wiki/Photometric_system
+        values = dict(
+            U=Bandpass(332, 398),
+            R=Bandpass(589, 727),
+            V=Bandpass(507, 595),
+            G=Bandpass(400, 528),
+            B=Bandpass(398, 492),
+            I=Bandpass(731, 880),
+            Z=Bandpass(824, 976),
+            Y=Bandpass(960, 1080),
+            J=Bandpass(1110, 1326),
+            H=Bandpass(1476, 1784),
+            K=Bandpass(1995, 2385),
+            L=Bandpass(3214, 3686),
+        )
+        return values
 
     def _get_default_calibrator( self, mjd, section, calibtype='dark', filter=None, session=None ):
         """Acquire (if possible) the default externally-supplied CalibratorFile.
@@ -1384,7 +1477,6 @@ class Instrument:
                                           'y0': int(datamatch.group('y0'))-1, 'y1': int(datamatch.group('y1')) }
                             } )
         return retval
-
 
     def overscan_and_data_sections( self, header ):
         """Return the data sections where they appear in the image after trimming.
@@ -1784,6 +1876,7 @@ class DemoInstrument(Instrument):
         raise NotImplementedError( f"Instrument class {self.__class__.__name__} hasn't "
                                    f"implemented find_origin_exposures." )
 
+
 class InstrumentOriginExposures:
     """A class encapsulating the response from Instrument.find_origin_exposures()
 
@@ -1886,8 +1979,6 @@ class InstrumentOriginExposures:
     def __len__( self ):
         """The number of exposures this object encapsulates."""
         raise NotImplementedError( f"Instrument class {self.__class__.__name__} hasn't implemented __len__." )
-
-
 
 
 if __name__ == "__main__":

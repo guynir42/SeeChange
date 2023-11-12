@@ -16,6 +16,7 @@ import healpy
 from util import ldac
 from util.exceptions import CatalogNotFoundError, SubprocessFailure, BadMatchException
 from models.base import SmartSession, FileOnDiskMixin, _logger
+from models.instrument import Bandpass
 from models.catalog_excerpt import CatalogExcerpt
 from models.world_coordinates import WorldCoordinates
 from pipeline.parameters import Parameters
@@ -151,6 +152,15 @@ class AstroCalibrator:
 
     # ----------------------------------------------------------------------
 
+    # TODO: should we move all of these catalog fetches into a separate file?
+    #  probably need to when doing the photometric calibration
+
+    @staticmethod
+    def get_bandpasses_Gaia():
+        """Get a dictionary of Bandpass objects for each filter in Gaia.
+        """
+        return dict(G=Bandpass(400, 850), BP=Bandpass(380, 650), RP=Bandpass(620, 900))
+
     def download_GaiaDR3( self, minra, maxra, mindec, maxdec, padding=0.1, minmag=18., maxmag=22. ):
         """Download objects from GaiaDR3 as served by Noirlab Astro Data Lab
 
@@ -179,7 +189,7 @@ class AstroCalibrator:
         Returns
         -------
         CatalogExcerpt
-          A new CatalogExceprt object
+          A new CatalogExcerpt object
         str
           The absolute path where the catalog was saved
         str
@@ -189,6 +199,9 @@ class AstroCalibrator:
         properly save things to the database.
 
         """
+        # TODO: should add another parameter to say which filter to use?
+        #  Should the choosing of filters happen in this function or
+        #  in the calling function?
 
         # Sanity check
         if maxra < minra:
@@ -231,7 +244,7 @@ class AstroCalibrator:
                     _logger.info( "Sleeping 5s and retrying gaia query after failed attempt." )
                     time.sleep(5)
         else:
-            errstr = f"Gaia query failed after {countdown} repeated failures."
+            errstr = f"Gaia query failed after {i} repeated failures."
             _logger.error( errstr )
             raise RuntimeError( errstr )
 
@@ -295,7 +308,7 @@ class AstroCalibrator:
 
     def fetch_GaiaDR3_excerpt( self, image, maxmags=(22.,), magrange=4.,
                                 numstars=200, session=None, onlycached=False ):
-        """Search catalog exertps for a compatible GaiaDR3 excerpt; if not found, make one.
+        """Search catalog excerpts for a compatible GaiaDR3 excerpt; if not found, make one.
 
         If multiple matching catalogs are found, will return the first
         one that the database happens to return.  (TODO: perhaps return
