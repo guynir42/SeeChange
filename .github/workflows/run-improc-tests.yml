@@ -1,4 +1,4 @@
-name: Run Model Tests
+name: Run Image Processing Tests
 
 on:
   push:
@@ -59,4 +59,4 @@ jobs:
 
       - name: run test
         run: |
-          TEST_SUBFOLDER=models docker compose run runtests
+          TEST_SUBFOLDER=improc docker compose run runtests
