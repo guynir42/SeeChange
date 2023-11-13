@@ -97,7 +97,7 @@ class Bandpass:
 
         The input can be another Bandpass object, or a tuple of (lower, upper) wavelengths.
         The score is calculated by the overlap between the two bandpasses,
-        divided by the sqrt of the width of the other badnpass.
+        divided by the sqrt of the width of the other bandpass.
         This means that if two filters have similar overlap with this filter,
         the one with a much wider total bandpass gets a lower score.
 
