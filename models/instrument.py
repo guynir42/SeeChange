@@ -92,6 +92,23 @@ class Bandpass:
 
         return max(0, min(self.upper_wavelength, other[1]) - max(self.lower_wavelength, other[0]))
 
+    def get_score(self, other):
+        """Find the score (goodness) of the overlap between two bandpasses.
+
+        The input can be another Bandpass object, or a tuple of (lower, upper) wavelengths.
+        The score is calculated by the overlap between the two bandpasses,
+        divided by the sqrt of the width of the other badnpass.
+        This means that if two filters have similar overlap with this filter,
+        the one with a much wider total bandpass gets a lower score.
+
+        This can happen when one potentially matching filter is very wide
+        and another potential filter covers only part of it (as in Gaia G,
+        which is very broad) but the narrower filter has good overlap,
+        so it is a better match.
+        """
+        width = other[1] - other[0]
+        return self.get_overlap(other) / np.sqrt(width)
+
     def find_best_match(self, bandpass_dict):
         """Find the best match for this bandpass in a dictionary of bandpasses.
 
@@ -102,12 +119,12 @@ class Bandpass:
            or somthing like that? Seems like a corner case and not a very interesting one.
         """
         best_match = None
-        best_overlap = 0
+        best_score = 0
         for k, v in bandpass_dict.items():
-            overlap = self.get_overlap(v)
-            if overlap > best_overlap:
+            score = self.get_score(v)
+            if score > best_score:
                 best_match = k
-                best_overlap = overlap
+                best_score = score
 
         return best_match
 
@@ -1393,7 +1410,7 @@ class Instrument:
                     else:
                         if calibquery.count() > 1:
                             _logger.warning( f"Found {calibquery.count()} valid {calibtype}s for "
-                                             f"{instrument.name} {section}, randomly using one." )
+                                             f"{self.name} {section}, randomly using one." )
                         calib = calibquery.first()
                 finally:
                     # Make sure that the calibrator_files table gets
