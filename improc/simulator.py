@@ -84,6 +84,15 @@ class SimPars(Parameters):
         self.oversampling = self.add_par('oversampling', 5, int, 'Oversampling of the PSF')
 
         self.star_number = self.add_par('star_number', 1000, int, 'Number of stars (on average) to simulate')
+
+        self.exact_star_number = self.add_par(
+            'exact_star_number', True, bool,
+            'If True, will use star_number as the exact number of stars'
+            'in each image. If False, will choose from a Poisson distribution '
+            'using star_number as the mean, every time make_stars is called, '
+            'or when using make_image(new_stars=True).'
+        )
+
         self.star_min_flux = self.add_par('star_min_flux', 100, (int, float), 'Minimum flux for the star power law')
         self.star_flux_power_law = self.add_par(
             'star_flux_power_law', -2.0, float,
@@ -92,6 +101,45 @@ class SimPars(Parameters):
         self.star_position_std = self.add_par(
             'star_position_std', 0.0, float,
             'Standard deviation of the position of stars between images (in both x and y)'
+        )
+
+        self.galaxy_number = self.add_par(
+            'galaxy_number', 0, int,
+            'Number of galaxies (on average) to simulate'
+        )
+
+        self.exact_galaxy_number = self.add_par(
+            'exact_galaxy_number', True, bool,
+            'If True, will use galaxy_number as the exact number of galaxies'
+            'in each image. If False, will choose from a Poisson distribution '
+            'using galaxy_number as the mean, every time make_galaxies is called, '
+            'or when using make_image(new_galaxies=True).'
+        )
+
+        self.galaxy_min_flux = self.add_par(
+            'galaxy_min_flux', 100, (int, float),
+            'Minimum flux for the galaxy power law'
+        )
+
+        self.galaxy_flux_power_law = self.add_par(
+            'galaxy_flux_power_law', -2.0, float,
+            'Power law index for the flux distribution of galaxies'
+        )
+
+        # use the star position std for the galaxy position (same scintillation motion)
+        # self.galaxy_position_std = self.add_par(
+        #     'galaxy_position_std', 0.0, float,
+        #     'Standard deviation of the position of galaxies between images (in both x and y)'
+        # )
+
+        self.galaxy_min_width = self.add_par(
+            'galaxy_min_width', 1.0, float,
+            'Minimum width for the galaxy power law'
+        )
+
+        self.galaxy_width_power_law = self.add_par(
+            'galaxy_width_power_law', -2.0, float,
+            'Power law index for the width distribution of galaxies'
         )
 
         self.cosmic_ray_number = self.add_par('cosmic_ray_number', 0, int, 'Average number of cosmic rays per image')
@@ -513,7 +561,7 @@ class SimGalaxies:
         self.galaxy_rotations = rng.uniform(0, 360, self.galaxy_number)
         self.galaxy_sersic_flux_ratios = 10 ** rng.uniform(-2, -1, self.galaxy_number)
         self.galaxy_sersic_scale_ratios = rng.uniform(0.5, 2, self.galaxy_number) * self.galaxy_width_values
-        self.galaxy_exp_scale_ratios = rng.uniform(0.5, 2, self.galaxy_number) * self.galaxy_width_values
+        self.galaxy_exp_scale_ratios = rng.uniform(0.5, 2, self.galaxy_number)
 
     def add_extra_galaxies(
             self,
@@ -791,6 +839,7 @@ class Simulator:
         self.camera = None
         self.sky = None
         self.stars = None
+        self.galaxies = None
 
         # holds the truth values for this image
         self.truth = None
@@ -800,6 +849,10 @@ class Simulator:
         self.star_x = None
         self.star_y = None
         self.star_f = None
+
+        self.galaxy_x = None
+        self.galaxy_y = None
+        self.galaxy_f = None
 
         self.psf = None  # we are cheating because this includes both the optical and atmospheric PSFs
         self.psf_downsampled = None # the PSF, correctly downsampled as to retain the symmetric single peak pixel
@@ -957,7 +1010,7 @@ class Simulator:
         self.galaxies.galaxy_number = self.pars.galaxy_number
         self.galaxies.galaxy_min_flux = self.pars.galaxy_min_flux
         self.galaxies.galaxy_flux_power_law = self.pars.galaxy_flux_power_law
-        self.galaxies.galaxy_position_std = self.pars.galaxy_position_std
+        # self.galaxies.galaxy_position_std = self.pars.galaxy_position_std
         self.galaxies.galaxy_min_width = self.pars.galaxy_min_width
         self.galaxies.galaxy_width_power_law = self.pars.galaxy_width_power_law
 
@@ -983,7 +1036,61 @@ class Simulator:
 
         self.stars.add_extra_stars(self.pars.imsize, flux, x, y, number)
 
-    def make_image(self, new_sensor=False, new_camera=False, new_sky=False, new_stars=False):
+    def add_extra_galaxies(
+            self,
+            mean_x_pos=None,
+            mean_y_pos=None,
+            fluxes=None,
+            widths=None,
+            exp_scale_ratios=None,
+            sersic_scale_ratios=None,
+            sersic_flux_ratios=None,
+            cos_is=None,
+            rotations=None,
+    ):
+        """
+        Add a galaxy (or multiple galaxies) to the list of galaxies
+
+        Parameters
+        ----------
+        mean_x_pos: float, list or ndarray of floats (optional)
+            The mean x position of the galaxy. If None (default), will randomly choose a position.
+        mean_y_pos: float, list or ndarray of floats (optional)
+            The mean y position of the galaxy. If None (default), will randomly choose a position.
+        fluxes: float, list or ndarray of floats (optional)
+            The flux of the exponential profile. If None (default), will randomly choose a flux.
+        widths: float, list or ndarray of floats (optional)
+            The width of the galaxy. If None (default), will randomly choose a width.
+        exp_scale_ratios: float, list or ndarray of floats (optional)
+            The ratio of the exponential scale length to the width. If None (default), will randomly choose a ratio.
+        sersic_scale_ratios: float, list or ndarray of floats (optional)
+            The ratio of the sersic scale length to the width. If None (default), will randomly choose a ratio.
+        sersic_flux_ratios: float, list or ndarray of floats (optional)
+            The flux of the sersic profile relative to the main flux. If None (default), will randomly choose a flux.
+        cos_is: float , list or ndarray of floats (optional)
+            The inclination angle cosine that determines how flat and narrow
+            the disk of the galaxy will be. One means face-on, zero means edge-on.
+            If not given, will choose a uniform cos_i in range [0.1,1].
+        rotations: float , list or ndarray of floats (optional)
+            The rotation angle of the galaxy, in degrees.
+            Zero means the galaxy is oriented North-South, and the angle increases
+            towards East. If not given, will choose a uniform rotation in range [0,360].
+
+        """
+        self.galaxies.add_extra_galaxies(
+            self.pars.imsize,
+            mean_x_pos,
+            mean_y_pos,
+            fluxes,
+            widths,
+            exp_scale_ratios,
+            sersic_scale_ratios,
+            sersic_flux_ratios,
+            cos_is,
+            rotations,
+        )
+
+    def make_image(self, new_sensor=False, new_camera=False, new_sky=False, new_stars=False, new_galaxies=False):
         """
         Generate a single image.
         Will add new instance of noise, and possibly shift the stars' positions
@@ -1019,6 +1126,12 @@ class Simulator:
             if self.pars.show_runtimes:
                 print(f'time to make stars: {time.time() - t0:.2f}s')
 
+        t0 = time.time()
+        if new_galaxies or self.galaxies is None:
+            self.make_galaxies()
+            if self.pars.show_runtimes:
+                print(f'time to make galaxies: {time.time() - t0:.2f}s')
+
         # make a PSF
         # fwhm = np.sqrt(self.camera.optic_psf_fwhm ** 2 + self.sky.seeing_instance ** 2)
         # oversample_estimate = int(np.ceil(10 / fwhm))  # allow 10 pixels across the PSF's width
@@ -1040,6 +1153,11 @@ class Simulator:
         self.star_x = self.stars.get_star_x_values()
         self.star_y = self.stars.get_star_y_values()
         self.star_f = self.stars.get_star_flux_values()
+
+        # galaxies:
+        self.galaxy_x = self.galaxies.get_galaxy_x_values()
+        self.galaxy_y = self.galaxies.get_galaxy_y_values()
+        self.galaxy_f = self.galaxies.get_galaxy_flux_values()
 
         t0 = time.time()
         self.make_raw_star_flux_map()  # image of the flux of stars after PSF convolution (no sky, no noise)
@@ -1081,9 +1199,9 @@ class Simulator:
 
     def make_raw_star_flux_map(self):
         """
-        Take the star positions and fluxes and place a star,
-        including the combined atmospheric and instrumental PSF,
-        on the image plane.
+        Take the star/galaxy positions and fluxes and place them,
+        including the effects of the combined atmospheric and
+        instrumental PSF, on the image plane.
         This image does not include sky transmission/background,
         noise of any kind, or the effects of the sensor.
         It will represent the raw photon number coming from the stars.
@@ -1104,6 +1222,21 @@ class Simulator:
             if x_im < 0 or x_im >= imsize[1] or y_im < 0 or y_im >= imsize[0]:
                 continue
             self.flux_top[y_im, x_im] += f
+
+        for i, (x, y, f) in enumerate(zip(self.galaxy_x, self.galaxy_y, self.galaxy_f)):
+            x_im = round((x + buffer[1]) * ovsmp)
+            y_im = round((y + buffer[0]) * ovsmp)
+            self.flux_top += self.galaxies.make_galaxy_image(
+                imsize=imsize,
+                center_x=x_im,
+                center_y=y_im,
+                exp_scale=self.galaxies.galaxy_exp_scale_ratios[i] * self.galaxies.galaxy_width_values[i],
+                sersic_scale=self.galaxies.galaxy_sersic_scale_ratios[i] * self.galaxies.galaxy_width_values[i],
+                exp_flux=f,  # the galaxy flux is just the flux of the disk, without any ratio modifier
+                sersic_flux=f * self.galaxies.galaxy_sersic_flux_ratios[i],  # the sersic flux is much smaller
+                cos_i=self.galaxies.galaxy_cos_is[i],
+                rotation=self.galaxies.galaxy_rotations[i],
+            )
 
         self.flux_top = scipy.signal.convolve(self.flux_top, self.psf, mode='same')
 
@@ -1303,6 +1436,20 @@ class Simulator:
         t.star_real_y_pos = self.star_y
         t.star_real_flux = self.star_f
 
+        t.galaxy_number = self.galaxies.galaxy_number
+        t.galaxy_min_flux = self.galaxies.galaxy_min_flux
+        t.galaxy_flux_power_law = self.galaxies.galaxy_flux_power_law
+        t.galaxy_mean_fluxes = self.galaxies.galaxy_mean_fluxes
+        t.galaxy_mean_x_pos = self.galaxies.galaxy_mean_x_pos
+        t.galaxy_mean_y_pos = self.galaxies.galaxy_mean_y_pos
+        t.galaxy_position_std = self.galaxies.galaxy_position_std
+        t.galaxy_min_width = self.galaxies.galaxy_min_width
+        t.galaxy_width_power_law = self.galaxies.galaxy_width_power_law
+        t.galaxy_real_x_pos = self.galaxy_x
+        t.galaxy_real_y_pos = self.galaxy_y
+        t.galaxy_real_flux = self.galaxy_f
+        t.galaxy_real_width = self.galaxies.galaxy_width_values
+
         t.psf = self.psf
         t.psf_downsampled = self.psf_downsampled
         t.average_counts = self.average_counts
@@ -1381,16 +1528,16 @@ def make_gaussian(sigma_x=2.0, sigma_y=None, rotation=0.0, norm=1, imsize=None):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    # s = Simulator()
-    # s.pars.image_size_y = 600
-    # s.make_image()
-    #
-    # plt.imshow(s.image)
-    # plt.figure()
-    # # plt.imshow(s.camera.vignette_map)
-    # plt.imshow(s.image, vmin=0, vmax=1000)
+    s = Simulator(star_number=0, galaxy_number=100, galaxy_min_flux=1000, galaxy_min_width=2.0)
+    s.pars.image_size_y = 600
+    s.make_image()
 
-    g = SimGalaxies()
-    im = g.make_galaxy_image()
-    plt.imshow(im)
-    plt.show()
+    plt.imshow(s.image)
+    plt.figure()
+    # plt.imshow(s.camera.vignette_map)
+    plt.imshow(s.image, vmin=100, vmax=1000)
+
+    # g = SimGalaxies()
+    # im = g.make_galaxy_image()
+    # plt.imshow(im)
+    # plt.show()
