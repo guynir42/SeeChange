@@ -453,6 +453,331 @@ class SimStars:
         return self.star_mean_fluxes
 
 
+class SimGalaxies:
+    """
+    Container for the properties of a set of simulated galaxies.
+
+    Galaxies here are a very simple object,
+    a bulge with a Sersic profile, and a disk with an exponential profile.
+    The bulge is spherically symmetric, while the disk is very thin
+    and has a uniformly chosen cos(i) inclination.
+    The ratio of total flux in the bulge vs disk is chosen randomly
+    (from???)
+    as is the ratio of the bulge length scale vs. the disk length scale.
+    (we need to figure out if the ranges for these ratios are fixed or
+    a user-defined parameter).
+
+    """
+    def __init__(self):
+        self.galaxy_number = None  # average number of galaxies in each field
+
+        self.galaxy_min_flux = None  # minimal flux for the galaxy power law
+        self.galaxy_flux_power_law = None  # power law index of the flux of galaxies
+        self.galaxy_mean_fluxes = None  # for each galaxy, the mean flux (in photons per total exposure time)
+
+        self.galaxy_mean_x_pos = None  # for each galaxy, the mean x position
+        self.galaxy_mean_y_pos = None  # for each galaxy, the mean y position
+        self.galaxy_position_std = None  # for each galaxy, the variation in position (in both x and y)
+
+        self.galaxy_min_width = None  # minimal width for the galaxy power law
+        self.galaxy_width_power_law = None  # power law index of the width of galaxies
+        self.galaxy_width_values = None  # for each galaxy, the width (in pixels)
+
+        self.galaxy_cos_is = None  # for each galaxy, the cos(inclination), 1 means face on, 0 means edge on
+        self.galaxy_rotations = None  # for each galaxy, the position angle (rotation) from North, towards East, in deg
+
+        self.galaxy_sersic_flux_ratios = None  # the ratio of sersic flux to exponential flux for each galaxy
+        self.galaxy_sersic_scale_ratios = None  # the length scale of the sersic profile relative to width, per galaxy
+        self.galaxy_exp_scale_ratios = None  # the length scale of the exponential profile relative to width, per galaxy
+
+    def make_galaxy_list(self, imsize):
+        """
+        Make a field of galaxies.
+        Uses the power law to draw random mean fluxes
+        and widths, and uniform orientations (both in inclination
+        and in position angle) and positions.
+        The input, imsize, is a tuple of (imsize_x, imsize_y).
+        """
+        rng = np.random.default_rng()
+        alpha_f = abs(self.galaxy_flux_power_law) - 1
+        self.galaxy_mean_fluxes = self.galaxy_min_flux / rng.power(alpha_f, self.galaxy_number)
+
+        self.galaxy_mean_x_pos = rng.uniform(-0.01, 1.01, self.galaxy_number) * imsize[1]
+        self.galaxy_mean_y_pos = rng.uniform(-0.01, 1.01, self.galaxy_number) * imsize[0]
+
+        alpha_w = abs(self.galaxy_flux_power_law) - 1
+        self.galaxy_width_values = self.galaxy_min_width / rng.power(alpha_w, self.galaxy_number)
+
+        # use a minimal cos_i>0.1 to prevent very edge-on galaxies (as galaxies also have some thickness)
+        self.galaxy_cos_is = rng.uniform(0.1, 1, self.galaxy_number)
+        self.galaxy_rotations = rng.uniform(0, 360, self.galaxy_number)
+        self.galaxy_sersic_flux_ratios = 10 ** rng.uniform(-2, -1, self.galaxy_number)
+        self.galaxy_sersic_scale_ratios = rng.uniform(0.5, 2, self.galaxy_number) * self.galaxy_width_values
+        self.galaxy_exp_scale_ratios = rng.uniform(0.5, 2, self.galaxy_number) * self.galaxy_width_values
+
+    def add_extra_galaxies(
+            self,
+            imsize=(100, 100),
+            mean_x_pos=None,
+            mean_y_pos=None,
+            fluxes=None,
+            widths=None,
+            exp_scale_ratios=None,
+            sersic_scale_ratios=None,
+            sersic_flux_ratios=None,
+            cos_is=None,
+            rotations=None,
+            number=1,
+    ):
+        """Add a galaxy (or multiple galaxies) to the list of galaxies
+
+        Parameters
+        ----------
+        imsize: tuple, default (100, 100)
+            The size of the image (y, x).
+        mean_x_pos: float, list or ndarray of floats (optional)
+            The mean x position of the galaxy. If None (default), will randomly choose a position.
+        mean_y_pos: float, list or ndarray of floats (optional)
+            The mean y position of the galaxy. If None (default), will randomly choose a position.
+        fluxes: float, list or ndarray of floats (optional)
+            The flux of the exponential profile. If None (default), will randomly choose a flux.
+        widths: float, list or ndarray of floats (optional)
+            The width of the galaxy. If None (default), will randomly choose a width.
+        exp_scale_ratios: float, list or ndarray of floats (optional)
+            The ratio of the exponential scale length to the width. If None (default), will randomly choose a ratio.
+        sersic_scale_ratios: float, list or ndarray of floats (optional)
+            The ratio of the sersic scale length to the width. If None (default), will randomly choose a ratio.
+        sersic_flux_ratios: float, list or ndarray of floats (optional)
+            The flux of the sersic profile relative to the main flux. If None (default), will randomly choose a flux.
+        cos_is: float (optional)
+            The inclination angle cosine that determines how flat and narrow
+            the disk of the galaxy will be. One means face-on, zero means edge-on.
+            If not given, will choose a uniform cos_i in range [0.1,1].
+        rotations: float (optional)
+            The rotation angle of the galaxy, in degrees.
+            Zero means the galaxy is oriented North-South, and the angle increases
+            towards East. If not given, will choose a uniform rotation in range [0,360].
+        number: int, (optional) default 1
+            The number of galaxies to add.
+            If any of the above parameters (except imsize) is given as a
+            list/ndarray then this number will be determined by the length
+            of that list/ndarray.
+            Any scalars given will be broadcast to this number.
+            If all inputs are given as scalars, or none are given,
+            will assume number=1.
+        """
+        rng = np.random.default_rng()
+
+        pars = [
+            mean_x_pos,
+            mean_y_pos,
+            fluxes,
+            widths,
+            exp_scale_ratios,
+            sersic_scale_ratios,
+            sersic_flux_ratios,
+            cos_is,
+            rotations,
+        ]
+        # if any parameters are given as lists/arrays, use the length of the first parameter as number
+        new_number = next((len(p) for p in pars if isinstance(p, (list, np.ndarray))), None)
+        if new_number is not None:
+            number = new_number
+
+        # check all list/array parameters are of consistent length
+        for p, i in enumerate(pars):
+            if isinstance(p, (list, np.ndarray)) and len(p) != number:
+                raise ValueError(
+                    f'Size mismatch between parameters: {len(p)} vs {number} (parameter {i+2}).')
+
+        if mean_x_pos is None:
+            mean_x_pos = rng.uniform(-0.01, 1.01, self.galaxy_number) * imsize[1]
+        elif isinstance(mean_x_pos, (int, float)):
+            mean_x_pos = np.full(number, mean_x_pos)
+        if mean_y_pos is None:
+            mean_y_pos = rng.uniform(-0.01, 1.01, self.galaxy_number) * imsize[0]
+        elif isinstance(mean_y_pos, (int, float)):
+            mean_y_pos = np.full(number, mean_y_pos)
+
+        self.galaxy_mean_x_pos = np.append(self.galaxy_mean_x_pos, mean_x_pos)
+        self.galaxy_mean_y_pos = np.append(self.galaxy_mean_y_pos, mean_y_pos)
+
+        if fluxes is None:
+            alpha_f = abs(self.galaxy_flux_power_law) - 1
+            fluxes = self.galaxy_min_flux / rng.power(alpha_f, number)
+        elif isinstance(fluxes, (int, float)):
+            fluxes = np.full(number, fluxes)
+        self.galaxy_mean_fluxes = np.append(self.galaxy_mean_fluxes, fluxes)
+
+        if widths is None:
+            alpha_w = abs(self.galaxy_flux_power_law) - 1
+            widths = self.galaxy_min_width / rng.power(alpha_w, number)
+        elif isinstance(widths, (int, float)):
+            widths = np.full(number, widths)
+        self.galaxy_width_values = np.append(self.galaxy_width_values, widths)
+
+        if exp_scale_ratios is None:
+            exp_scale_ratios = rng.uniform(0.5, 2, number) * widths
+        elif isinstance(exp_scale_ratios, (int, float)):
+            exp_scale_ratios = np.full(number, exp_scale_ratios)
+        self.galaxy_exp_scale_ratios = np.append(self.galaxy_exp_scale_ratios, exp_scale_ratios)
+
+        if sersic_scale_ratios is None:
+            sersic_scale_ratios = rng.uniform(0.5, 2, number) * widths
+        elif isinstance(sersic_scale_ratios, (int, float)):
+            sersic_scale_ratios = np.full(number, sersic_scale_ratios)
+        self.galaxy_sersic_scale_ratios = np.append(self.galaxy_sersic_scale_ratios, sersic_scale_ratios)
+
+        if sersic_flux_ratios is None:
+            sersic_flux_ratios = 10 ** rng.uniform(-2, -1, number)
+        elif isinstance(sersic_flux_ratios, (int, float)):
+            sersic_flux_ratios = np.full(number, sersic_flux_ratios)
+        self.galaxy_sersic_flux_ratios = np.append(self.galaxy_sersic_flux_ratios, sersic_flux_ratios)
+
+        if cos_is is None:
+            cos_is = rng.uniform(0.1, 1, number)
+        elif isinstance(cos_is, (int, float)):
+            cos_is = np.full(number, cos_is)
+        self.galaxy_cos_is = np.append(self.galaxy_cos_is, cos_is)
+
+        if rotations is None:
+            rotations = rng.uniform(0, 360, number)
+        elif isinstance(rotations, (int, float)):
+            rotations = np.full(number, rotations)
+        self.galaxy_rotations = np.append(self.galaxy_rotations, rotations)
+
+    def remove_galaxies(self, number=1):
+        """Remove the latest few galaxies (default is only one) from the galaxy field. """
+        if number > 0:
+            self.galaxy_mean_fluxes = self.galaxy_mean_fluxes[:-number]
+            self.galaxy_mean_x_pos = self.galaxy_mean_x_pos[:-number]
+            self.galaxy_mean_y_pos = self.galaxy_mean_y_pos[:-number]
+            self.galaxy_width_values = self.galaxy_width_values[:-number]
+            self.galaxy_cos_is = self.galaxy_cos_is[:-number]
+            self.galaxy_rotations = self.galaxy_rotations[:-number]
+            self.galaxy_sersic_flux_ratios = self.galaxy_sersic_flux_ratios[:-number]
+            self.galaxy_sersic_scale_ratios = self.galaxy_sersic_scale_ratios[:-number]
+            self.galaxy_exp_scale_ratios = self.galaxy_exp_scale_ratios[:-number]
+
+    def get_galaxy_x_values(self):
+        """
+        Return the positions of the galaxies (in pixel coordinates)
+        after possibly applying small astrometric shifts (e.g., scintillations)
+        to the mean galaxy positions.
+
+        """
+        x = self.galaxy_mean_x_pos.copy()
+        if self.galaxy_position_std is not None:
+            x += np.random.normal(0, self.galaxy_position_std, len(x))
+
+        return x
+
+    def get_galaxy_y_values(self):
+        """
+        Return the positions of the galaxies (in pixel coordinates)
+        after possibly applying small astrometric shifts (e.g., scintillations)
+        to the mean galaxy positions.
+
+        """
+        y = self.galaxy_mean_y_pos.copy()
+        if self.galaxy_position_std is not None:
+            y += np.random.normal(0, self.galaxy_position_std, len(y))
+
+        return y
+
+    def get_galaxy_flux_values(self):
+        """
+        Return the fluxes of the galaxies (in photons per total exposure time).
+        """
+        return self.galaxy_mean_fluxes  # do we ever need to add noise to this?
+
+    @staticmethod
+    def make_galaxy_image(
+            imsize=(100, 100),
+            center_x=None,
+            center_y=None,
+            exp_scale=1.0,
+            sersic_scale=1.0,
+            exp_flux=10,
+            sersic_flux=0.1,
+            cos_i=None,
+            rotation=None,
+    ):
+        """Make an image of a galaxy, with a bulge and disk.
+
+        Parameters
+        ----------
+        imsize: tuple, default (100, 100)
+            The size of the image (y, x).
+        center_x: float, default None
+            The x position of the galaxy center inside the image.
+            If given as None, will position at the center of the image.
+        center_y: float, default None
+            The y position of the galaxy center inside the image.
+            If given as None, will position at the center of the image.
+        exp_scale: float, default 1.0
+            The length scale used to make the disk.
+        sersic_scale: float, default 1.0
+            The length scale used to make the bulge.
+        exp_flux: float, default 1.0
+            The total flux of the disk. The disk flux is modulated
+            by a factor cos_i, so the total flux of the disk,
+            if it were viewed face-on, is exp_flux, but we only
+            see a fraction of it, depending on the inclination.
+        sersic_flux: float, default 0.01
+            The total flux of the bulge.
+            Note that this is a very sharp profile,
+            so its contribution to the flux is usually small.
+        cos_i: float, default None
+            The inclination angle cosine that determines how flat and narrow
+            the disk of the galaxy will be. One means face-on, zero means edge-on.
+            If not given, will choose a uniform cos_i in range [0.1,1].
+        rotation: float, default None
+            The rotation angle of the galaxy, in degrees.
+            Zero means the galaxy is oriented North-South, and the angle increases
+            towards East. If not given, will choose a uniform rotation in range [0,360].
+
+        Returns
+        -------
+        galaxy_image: np.ndarray
+            The image of the galaxy, normalized to total_flux.
+        """
+        if center_x is None:
+            center_x = imsize[1] // 2
+        if center_y is None:
+            center_y = imsize[0] // 2
+        if cos_i is None:
+            cos_i = np.random.uniform(0.1, 1)
+        if rotation is None:
+            rotation = np.random.uniform(0, 360)
+
+        rotation = np.deg2rad(rotation)
+
+        # regular coordinate grid
+        x0, y0 = np.meshgrid(np.arange(imsize[1]), np.arange(imsize[0]))
+
+        # transform the coordinates using rotation and translation
+        x = (x0 - center_x) * np.cos(rotation) + (y0 - center_y) * np.sin(rotation)
+        y = (y0 - center_y) * np.cos(rotation) - (x0 - center_x) * np.sin(rotation)
+        r = np.sqrt(x ** 2 + y ** 2)
+
+        # first make the bulge using a sersic profile
+        r0 = sersic_scale
+        bulge = np.exp(-7.67 * (r / r0) ** (1 / 4))
+        bulge *= sersic_flux / np.sum(bulge)
+
+        # now make the disk
+        r0 = exp_scale
+        disk = np.exp(-1.67 * np.sqrt((x / r0 / cos_i) ** 2 + (y / r0) ** 2))
+        disk *= exp_flux / np.sum(disk)
+        disk *= cos_i  # correct for the projection of the disk
+
+        # add them together
+        galaxy_image = bulge + disk
+
+        return galaxy_image
+
+
 class Simulator:
     """
     Make simulated images for testing image processing techniques.
@@ -621,6 +946,22 @@ class Simulator:
         self.stars.star_position_std = self.pars.star_position_std
 
         self.stars.make_star_list(self.pars.imsize)
+
+    def make_galaxies(self):
+        """
+        Generate a galaxy field. This will usually stay the same
+        when taking a series of images at the same pointing.
+
+        """
+        self.galaxies = SimGalaxies()
+        self.galaxies.galaxy_number = self.pars.galaxy_number
+        self.galaxies.galaxy_min_flux = self.pars.galaxy_min_flux
+        self.galaxies.galaxy_flux_power_law = self.pars.galaxy_flux_power_law
+        self.galaxies.galaxy_position_std = self.pars.galaxy_position_std
+        self.galaxies.galaxy_min_width = self.pars.galaxy_min_width
+        self.galaxies.galaxy_width_power_law = self.pars.galaxy_width_power_law
+
+        self.galaxies.make_galaxy_list(self.pars.imsize)
 
     def add_extra_stars(self, flux=None, x=None, y=None, number=1):
         """Add one more star to the star field. This is explicitly added by the user on top of the star_number.
@@ -1040,11 +1381,16 @@ def make_gaussian(sigma_x=2.0, sigma_y=None, rotation=0.0, norm=1, imsize=None):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    s = Simulator()
-    s.pars.image_size_y = 600
-    s.make_image()
+    # s = Simulator()
+    # s.pars.image_size_y = 600
+    # s.make_image()
+    #
+    # plt.imshow(s.image)
+    # plt.figure()
+    # # plt.imshow(s.camera.vignette_map)
+    # plt.imshow(s.image, vmin=0, vmax=1000)
 
-    plt.imshow(s.image)
-    plt.figure()
-    # plt.imshow(s.camera.vignette_map)
-    plt.imshow(s.image, vmin=0, vmax=1000)
+    g = SimGalaxies()
+    im = g.make_galaxy_image()
+    plt.imshow(im)
+    plt.show()
