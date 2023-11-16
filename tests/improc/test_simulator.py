@@ -109,3 +109,50 @@ def test_making_galaxy_in_image(exp_scale, blocking_plots):
 
     assert peak1 == peak2
     assert np.max(diff) < 1e-5
+
+
+def test_bleeding_pixels(blocking_plots):
+    s = Simulator(bleed_fraction_up=0.1, bleed_fraction_down=0.5, saturation_limit=1000)
+    s.make_sensor()
+    im = np.random.normal(0, 1, (256, 256))  # no saturated pixels
+
+    # when no saturated pixels exist, the bleeds should be a no-op
+    im_bleed = s.add_bleeds_to_image(im)
+
+    diff = im_bleed - im
+    assert np.max(diff) < 1e-5
+
+    # add a saturated pixel
+    im[100, 20] = 1000 * 53
+    im_bleed = s.add_bleeds_to_image(im)
+
+    expected_down_electrons = 1000 * 53 * 0.1 - 1000
+    expected_up_electrons = 1000 * 53 * 0.5 - 1000
+    original_electrons_in_pixel = 1000
+    expected_total_electrons = expected_down_electrons + expected_up_electrons + original_electrons_in_pixel
+    standard_deviation = 256  # one per pixel, 256*256 pixels, sqrt
+    # print(expected_total_electrons)
+    # print(np.sum(im_bleed))
+    assert abs(np.sum(im_bleed) - expected_total_electrons) < 3 * standard_deviation
+
+    # add another pixel
+    im[101, 20] = 1000 * 130
+    im_bleed = s.add_bleeds_to_image(im)
+
+    expected_down_electrons = 1000 * 183 * 0.1 - 2000
+    expected_up_electrons = 1000 * 183 * 0.5 - 2000
+    original_electrons_in_pixel = 2000
+    expected_total_electrons = expected_down_electrons + expected_up_electrons + original_electrons_in_pixel
+    # print(expected_total_electrons)
+    # print(np.sum(im_bleed))
+    assert abs(np.sum(im_bleed) - expected_total_electrons) < 3 * standard_deviation
+
+    # test horizontal bleeding
+    s.sensor.bleed_vertical = False
+
+    im_bleed = s.add_bleeds_to_image(im)
+    assert abs(np.sum(im_bleed) - expected_total_electrons) < 3 * standard_deviation
+
+    if blocking_plots:
+        plt.imshow(im_bleed)
+        plt.show(block=True)

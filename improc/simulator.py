@@ -1457,9 +1457,58 @@ class Simulator:
         self.electrons = self.flux_vignette * self.sensor.pixel_qe_map
         self.electrons += self.sensor.dark_current * self.pars.exposure_time
 
-        # add saturation and bleeding:
-        # TODO: add bleeding before clipping
+        # add bleeding before clipping
+        self.electrons = self.add_bleeds_to_image(self.electrons)
+
+        # clip any remaining saturated values
         self.electrons[self.electrons > self.sensor.saturation_limit] = self.sensor.saturation_limit
+
+    def add_bleeds_to_image(self, image):
+        """Take an image and add bleeding trails to saturated pixels.
+
+        Assumes "image" is in electrons, and uses the bleed_fraction_up and bleed_fraction_down,
+        as well as the bleed_vertical flag, to determine how much charge is transferred to the
+        pixels above and below the saturated pixel (or left and right of it).
+
+        Charge that is released in either direction from each pixel is added to the next pixel,
+        and the new charge can continue to roll down (or up) until it drops below saturation.
+        """
+        # for horizontal bleeds, just transpose and transpose at the end
+        if not self.sensor.bleed_vertical:
+            image = image.T
+
+        # going down:
+        charge1 = image * self.sensor.bleed_fraction_down  # charge that tends to move down when saturated
+        leftovers = image - charge1  # the remaining electrons that do not participate
+        excess = np.zeros(image.shape[1], dtype=float)  # a row of charges accumulated above saturation
+        satlim = self.sensor.saturation_limit # * self.sensor.bleed_fraction_down  # the saturation limit for the charge
+
+        for i in range(image.shape[0]):
+            charge1[i] += excess  # add the excess charge from the previous row
+            overload = np.maximum(charge1[i] - satlim, 0)  # the charge above saturation accumulated
+            charge1[i] -= overload  # some charge got shaved off
+            excess = overload  # the excess charge is added to the next row
+
+        # going up:
+        charge2 = image * self.sensor.bleed_fraction_up  # charge that tends to move up when saturated
+        leftovers = leftovers - charge2  # remaining electrons after taking the up and down charges
+        excess = np.zeros(image.shape[1], dtype=float)  # a row of charges accumulated above saturation
+        satlim = self.sensor.saturation_limit #  * self.sensor.bleed_fraction_up  # the saturation limit for the charge
+
+        for i in range(image.shape[0] - 1, -1, -1):
+            charge2[i] += excess
+            overload = np.maximum(charge2[i] - satlim, 0)
+            charge2[i] -= overload
+            excess = overload
+
+        new_image = charge1 + charge2 + leftovers
+
+        if not self.sensor.bleed_vertical:
+            new_image = new_image.T
+
+        new_image[new_image > self.sensor.saturation_limit] = self.sensor.saturation_limit
+
+        return new_image
 
     def add_artefacts(self):
         """
