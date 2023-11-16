@@ -26,13 +26,17 @@ class SimPars(Parameters):
         )
         self.read_noise = self.add_par('read_noise', 1.0, (int, float), 'Read noise rms per pixel')
         self.saturation_limit = self.add_par('saturation_limit', 5e4, (int, float), 'Saturation limit')
-        self.bleed_fraction_x = self.add_par(
-            'bleed_fraction_x', 0.0, float,
-            'Fraction of electrons that bleed in the x direction if saturation is reached'
+        self.bleed_fraction_up = self.add_par(
+            'bleed_fraction_up', 0.0, float,
+            'Fraction of electrons that bleed to higher pixel positions if saturation is reached'
         )
-        self.bleed_fraction_y = self.add_par(
-            'bleed_fraction_y', 0.0, float,
-            'Fraction of electrons that bleed in the y direction if saturation is reached'
+        self.bleed_fraction_down = self.add_par(
+            'bleed_fraction_down', 0.0, float,
+            'Fraction of electrons that bleed to lower pixel positions if saturation is reached'
+        )
+        self.bleed_vertical = self.add_par(
+            'bleed_vertical', True, bool,
+            'If True, will bleed vertically (up and down). If False, will bleed horizontally (left and right).'
         )
         self.pixel_qe_std = self.add_par(
             'pixel_qe_std', 0.01, float,
@@ -272,8 +276,9 @@ class SimSensor:
         self.dark_current = None  # counts per second per pixel (mean and variance)
         self.read_noise = None  # read noise per pixel, added to the background_std
         self.saturation_limit = None  # pixels above this value will be clipped to this number
-        self.bleed_fraction_x = None  # fraction of electrons that bleed in the x direction if saturation is reached
-        self.bleed_fraction_y = None  # fraction of electrons that bleed in the y direction if saturation is reached
+        self.bleed_fraction_up = None  # fraction of electrons that bleed in the x direction if saturation is reached
+        self.bleed_fraction_down = None  # fraction of electrons that bleed in the y direction if saturation is reached
+        self.bleed_vertical = None  # if True, bleed vertically (up and down). If False, horizontally (left and right).
 
     def show_bias(self):
         """
@@ -1067,8 +1072,9 @@ class Simulator:
         self.sensor.dark_current = self.pars.dark_current
         self.sensor.read_noise = self.pars.read_noise
         self.sensor.saturation_limit = self.pars.saturation_limit
-        self.sensor.bleed_fraction_x = self.pars.bleed_fraction_x
-        self.sensor.bleed_fraction_y = self.pars.bleed_fraction_y
+        self.sensor.bleed_fraction_up = self.pars.bleed_fraction_up
+        self.sensor.bleed_fraction_down = self.pars.bleed_fraction_down
+        self.sensor.bleed_vertical = self.pars.bleed_vertical
 
     def make_camera(self):
         """
@@ -1150,7 +1156,11 @@ class Simulator:
 
         """
         self.stars = SimStars()
-        self.stars.star_number = self.pars.star_number
+        if self.pars.exact_star_number:
+            self.stars.star_number = self.pars.star_number
+        else:
+            self.stars.star_number = np.random.poisson(self.pars.star_number)
+
         self.stars.star_min_flux = self.pars.star_min_flux
         self.stars.star_flux_power_law = self.pars.star_flux_power_law
         self.stars.star_position_std = self.pars.star_position_std
@@ -1164,7 +1174,11 @@ class Simulator:
 
         """
         self.galaxies = SimGalaxies()
-        self.galaxies.galaxy_number = self.pars.galaxy_number
+        if self.pars.exact_galaxy_number:
+            self.galaxies.galaxy_number = self.pars.galaxy_number
+        else:
+            self.galaxies.galaxy_number = np.random.poisson(self.pars.galaxy_number)
+
         self.galaxies.galaxy_min_flux = self.pars.galaxy_min_flux
         self.galaxies.galaxy_flux_power_law = self.pars.galaxy_flux_power_law
         # self.galaxies.galaxy_position_std = self.pars.galaxy_position_std
@@ -1551,8 +1565,8 @@ class Simulator:
         t.dark_current = self.sensor.dark_current
         t.read_noise = self.sensor.read_noise
         t.saturation_limit = self.sensor.saturation_limit
-        t.bleed_fraction_x = self.sensor.bleed_fraction_x
-        t.bleed_fraction_y = self.sensor.bleed_fraction_y
+        t.bleed_fraction_up = self.sensor.bleed_fraction_up
+        t.bleed_fraction_down = self.sensor.bleed_fraction_down
 
         t.vignette_amplitude = self.camera.vignette_amplitude
         t.vignette_radius = self.camera.vignette_radius
@@ -1587,6 +1601,7 @@ class Simulator:
         t.atmos_psf_fwhm = self.sky.atmos_psf_fwhm
 
         t.star_number = self.stars.star_number
+        t.requested_star_number = self.pars.star_number
         t.star_min_flux = self.stars.star_min_flux
         t.star_flux_power_law = self.stars.star_flux_power_law
         t.star_mean_fluxes = self.stars.star_mean_fluxes
@@ -1598,6 +1613,7 @@ class Simulator:
         t.star_real_flux = self.star_f
 
         t.galaxy_number = self.galaxies.galaxy_number
+        t.requested_galaxy_number = self.pars.galaxy_number
         t.galaxy_min_flux = self.galaxies.galaxy_min_flux
         t.galaxy_flux_power_law = self.galaxies.galaxy_flux_power_law
         t.galaxy_mean_fluxes = self.galaxies.galaxy_mean_fluxes
