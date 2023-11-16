@@ -11,7 +11,7 @@ from improc.simulator import Simulator, SimGalaxies
 from improc.sky_flat import sigma_clipping
 
 # uncomment this to run the plotting tests interactively
-os.environ['INTERACTIVE'] = '1'
+# os.environ['INTERACTIVE'] = '1'
 
 
 @pytest.mark.skipif( os.getenv('INTERACTIVE') is None, reason='Set INTERACTIVE to run this test' )

@@ -156,7 +156,8 @@ def test_subtraction_no_new_sources():
     assert zogy_failures == 0
 
 
-def test_subtraction_snr_histograms(headless_plots):
+@pytest.mark.skipif( os.getenv('INTERACTIVE') is None, reason='Set INTERACTIVE to run this test' )
+def test_subtraction_snr_histograms(blocking_plots):
     background = 5.0
     seeing = 3.0
     iterations = 300
@@ -261,13 +262,11 @@ def test_subtraction_snr_histograms(headless_plots):
         ax.set_xlabel('Measured S/N')
         ax.legend(loc='upper right')
         plt.subplots_adjust(hspace=0.5)
-    plt.show()
+    plt.show(block=blocking_plots)
 
-    plot_path = os.path.join(CODE_ROOT, "tests/plots")
-    if not os.path.isdir(plot_path):
-        os.mkdir(plot_path)
-    plt.savefig(os.path.join(plot_path, "zogy_snr_histograms.pdf"))
-    plt.savefig(os.path.join(plot_path, "zogy_snr_histograms.png"))
+    filename = os.path.join(CODE_ROOT, "tests/plots/zogy_snr_histograms")
+    plt.savefig(filename + ".png")
+    plt.savefig(filename + ".pdf")
 
 
 @pytest.mark.skip( reason="This test frequently fails even with the flaky.  Can we use a random seed?" )
