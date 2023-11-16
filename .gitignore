@@ -9,6 +9,7 @@ tests/local_augments.yaml
 tests/improc/cache/*
 data/DECam_examples/c4d_221104_074232_ori.fits.fz
 .pytest.ini
+tests/plots/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,6 +1,7 @@
 import time
 import numpy as np
 import scipy
+from collections import defaultdict
 
 from pipeline.parameters import Parameters
 
@@ -516,6 +517,9 @@ class SimGalaxies:
     a user-defined parameter).
 
     """
+
+    runtime = defaultdict(float)
+
     def __init__(self):
         self.galaxy_number = None  # average number of galaxies in each field
 
@@ -686,6 +690,10 @@ class SimGalaxies:
             cos_is = rng.uniform(0.1, 1, number)
         elif isinstance(cos_is, (int, float)):
             cos_is = np.full(number, cos_is)
+
+        if not all(0.1 <= c <= 1 for c in cos_is):
+            raise ValueError(f'Invalid cos_i values (outside [0.1,1]): {cos_is}')
+
         self.galaxy_cos_is = np.append(self.galaxy_cos_is, cos_is)
 
         if rotations is None:
@@ -739,8 +747,9 @@ class SimGalaxies:
         """
         return self.galaxy_mean_fluxes  # do we ever need to add noise to this?
 
-    @staticmethod
+    @classmethod
     def make_galaxy_image(
+            cls,
             imsize=(100, 100),
             center_x=None,
             center_y=None,
@@ -750,6 +759,7 @@ class SimGalaxies:
             sersic_flux=0.1,
             cos_i=None,
             rotation=None,
+            cutoff_radius=None,
     ):
         """Make an image of a galaxy, with a bulge and disk.
 
@@ -768,10 +778,7 @@ class SimGalaxies:
         sersic_scale: float, default 1.0
             The length scale used to make the bulge.
         exp_flux: float, default 1.0
-            The total flux of the disk. The disk flux is modulated
-            by a factor cos_i, so the total flux of the disk,
-            if it were viewed face-on, is exp_flux, but we only
-            see a fraction of it, depending on the inclination.
+            The total flux of the disk.
         sersic_flux: float, default 0.01
             The total flux of the bulge.
             Note that this is a very sharp profile,
@@ -784,7 +791,11 @@ class SimGalaxies:
             The rotation angle of the galaxy, in degrees.
             Zero means the galaxy is oriented North-South, and the angle increases
             towards East. If not given, will choose a uniform rotation in range [0,360].
-
+        cutoff_radius: float, default None
+            If given, will add an external edge to the galaxy
+            (should be at least a few times larger than the other scales)
+            that adds an exponential multiplier with a short scale length
+            to all pixels outside the cutoff scale.
         Returns
         -------
         galaxy_image: np.ndarray
@@ -802,28 +813,174 @@ class SimGalaxies:
         rotation = np.deg2rad(rotation)
 
         # regular coordinate grid
+        t0 = time.time()
         x0, y0 = np.meshgrid(np.arange(imsize[1]), np.arange(imsize[0]))
+        cls.runtime['meshgrid'] += time.time() - t0
 
         # transform the coordinates using rotation and translation
+        t0 = time.time()
         x = (x0 - center_x) * np.cos(rotation) + (y0 - center_y) * np.sin(rotation)
         y = (y0 - center_y) * np.cos(rotation) - (x0 - center_x) * np.sin(rotation)
         r = np.sqrt(x ** 2 + y ** 2)
+        cls.runtime['transform'] += time.time() - t0
 
         # first make the bulge using a sersic profile
+        t0 = time.time()
         r0 = sersic_scale
-        bulge = np.exp(-7.67 * (r / r0) ** (1 / 4))
+        bulge = np.exp( -7.67 * np.power(r / r0, 1 / 4) )
         bulge *= sersic_flux / np.sum(bulge)
+        cls.runtime['bulge'] += time.time() - t0
 
         # now make the disk
+        t0 = time.time()
         r0 = exp_scale
-        disk = np.exp(-1.67 * np.sqrt((x / r0 / cos_i) ** 2 + (y / r0) ** 2))
+        disk = np.exp(-1.67 * np.sqrt( (x / r0 / cos_i) ** 2 + (y / r0) ** 2) )
         disk *= exp_flux / np.sum(disk)
-        disk *= cos_i  # correct for the projection of the disk
+        cls.runtime['disk'] += time.time() - t0
 
         # add them together
+        t0 = time.time()
         galaxy_image = bulge + disk
+        cls.runtime['add'] += time.time() - t0
+
+        # add cutoff
+        if cutoff_radius is not None:
+            t0 = time.time()
+            cutoff = np.ones(galaxy_image.shape)  # inside the radius there is no change
+            # use the disk scale as the length scale for the cutoff
+            cutoff[r > cutoff_radius] = np.exp(-5.0 * (r[r > cutoff_radius] - cutoff_radius) / exp_scale)
+            galaxy_image *= cutoff
+            cls.runtime['cutoff'] += time.time() - t0
 
         return galaxy_image
+
+    @classmethod
+    def add_galaxy_to_image(
+            cls,
+            image,
+            center_x=None,
+            center_y=None,
+            exp_scale=1.0,
+            sersic_scale=1.0,
+            exp_flux=10,
+            sersic_flux=0.1,
+            cos_i=None,
+            rotation=None,
+            cutoff_radius=None,
+    ):
+        """Add a galaxy to an existing image, by making a small stamp image with the galaxy and placing it in the image.
+
+        Parameters
+        ----------
+        image: np.ndarray
+            The image to add the galaxy to.
+        center_x: float, default None
+            The x position of the galaxy center inside the image.
+            If given as None, will position at a random place in the image.
+        center_y: float, default None
+            The y position of the galaxy center inside the image.
+            If given as None, will position at a random place in the image.
+        exp_scale: float, default 1.0
+            The length scale used to make the disk.
+        sersic_scale: float, default 1.0
+            The length scale used to make the bulge.
+        exp_flux: float, default 1.0
+            The total flux of the disk.
+        sersic_flux: float, default 0.01
+            The total flux of the bulge.
+            Note that this is a very sharp profile,
+            so its contribution to the flux is usually small.
+        cos_i: float, default None
+            The inclination angle cosine that determines how flat and narrow
+            the disk of the galaxy will be. One means face-on, zero means edge-on.
+            If not given, will choose a uniform cos_i in range [0.1,1].
+        rotation: float, default None
+            The rotation angle of the galaxy, in degrees.
+            Zero means the galaxy is oriented North-South, and the angle increases
+            towards East. If not given, will choose a uniform rotation in range [0,360].
+        cutoff_radius: float, default None
+            If given, will add an external edge to the galaxy
+            (should be at least a few times larger than the other scales)
+            that adds an exponential multiplier with a short scale length
+            to all pixels outside the cutoff scale.
+        """
+        if center_x is None:
+            center_x = np.random.uniform(0, image.shape[1])
+        if center_y is None:
+            center_y = np.random.uniform(0, image.shape[0])
+
+        # the sub-pixel shift of this galaxy
+        offset_x = center_x - int(center_x)
+        offset_y = center_y - int(center_y)
+
+        # make sure we have all the parameters set to something
+        if cos_i is None:
+            cos_i = np.random.uniform(0.1, 1)
+        if rotation is None:
+            rotation = np.random.uniform(0, 360)
+
+        # estimate the size of the image needed to make this galaxy
+        imsize = int(np.ceil(12 * max(exp_scale, sersic_scale))) + 1
+        new_center_x = imsize // 2 + offset_x
+        new_center_y = imsize // 2 + offset_y
+
+        # in some cases the required "stamp" is larger than the original image!
+        if imsize > image.shape[0] or imsize > image.shape[1]:
+            imsize = image.shape
+            use_assignment = False
+            new_center_x = center_x
+            new_center_y = center_y
+        else:
+            imsize = (imsize, imsize)
+            use_assignment = True
+
+        # make the galaxy image
+        galaxy_image = cls.make_galaxy_image(
+            imsize=imsize,
+            center_x=new_center_x,
+            center_y=new_center_y,
+            exp_scale=exp_scale,
+            sersic_scale=sersic_scale,
+            exp_flux=exp_flux,
+            sersic_flux=sersic_flux,
+            cos_i=cos_i,
+            rotation=rotation,
+            cutoff_radius=cutoff_radius,
+        )
+
+        # add it to the image
+        if use_assignment:
+            x_trim_start = 0
+            x_start = int(center_x) - imsize[1] // 2
+            x_trim_end = imsize[1]
+            x_end = x_start + imsize[1]
+
+            if x_end > image.shape[1]:
+                x_trim_end = imsize[1] - (x_end - image.shape[1])
+                x_end = image.shape[1]
+
+            if x_start < 0:
+                x_trim_start = -x_start
+                x_start = 0
+
+            y_trim_start = 0
+            y_start = int(center_y) - imsize[0] // 2
+            y_trim_end = imsize[0]
+            y_end = y_start + imsize[0]
+
+            if y_start < 0:
+                y_trim_start = -y_start
+                y_start = 0
+
+            if y_end > image.shape[0]:
+                y_trim_end = imsize[0] - (y_end - image.shape[0])
+                y_end = image.shape[0]
+
+            # galaxy_image += 1  # debug only!
+            image[y_start:y_end, x_start:x_end] += galaxy_image[y_trim_start:y_trim_end, x_trim_start:x_trim_end]
+
+        else:
+            image += galaxy_image  # the required galaxy image is so big we just make it on the same size as the image
 
 
 class Simulator:
@@ -1226,16 +1383,20 @@ class Simulator:
         for i, (x, y, f) in enumerate(zip(self.galaxy_x, self.galaxy_y, self.galaxy_f)):
             x_im = round((x + buffer[1]) * ovsmp)
             y_im = round((y + buffer[0]) * ovsmp)
-            self.flux_top += self.galaxies.make_galaxy_image(
-                imsize=imsize,
+            # uncomment these two lines (and comment the next two) to use the old method
+            # self.flux_top += self.galaxies.make_galaxy_image(
+            #     imsize=imsize,
+            self.galaxies.add_galaxy_to_image(
+                self.flux_top,
                 center_x=x_im,
                 center_y=y_im,
-                exp_scale=self.galaxies.galaxy_exp_scale_ratios[i] * self.galaxies.galaxy_width_values[i],
-                sersic_scale=self.galaxies.galaxy_sersic_scale_ratios[i] * self.galaxies.galaxy_width_values[i],
+                exp_scale=self.galaxies.galaxy_exp_scale_ratios[i] * self.galaxies.galaxy_width_values[i] * ovsmp,
+                sersic_scale=self.galaxies.galaxy_sersic_scale_ratios[i] * self.galaxies.galaxy_width_values[i] * ovsmp,
                 exp_flux=f,  # the galaxy flux is just the flux of the disk, without any ratio modifier
                 sersic_flux=f * self.galaxies.galaxy_sersic_flux_ratios[i],  # the sersic flux is much smaller
                 cos_i=self.galaxies.galaxy_cos_is[i],
                 rotation=self.galaxies.galaxy_rotations[i],
+                cutoff_radius=self.galaxies.galaxy_width_values[i] * ovsmp * 5,
             )
 
         self.flux_top = scipy.signal.convolve(self.flux_top, self.psf, mode='same')
