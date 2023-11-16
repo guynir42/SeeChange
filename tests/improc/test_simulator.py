@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from models.base import CODE_ROOT
-from improc.simulator import Simulator, SimGalaxies
+from improc.simulator import Simulator, SimGalaxies, SimStreaks
 from improc.sky_flat import sigma_clipping
 
 # uncomment this to run the plotting tests interactively
@@ -156,3 +156,20 @@ def test_bleeding_pixels(blocking_plots):
     if blocking_plots:
         plt.imshow(im_bleed)
         plt.show(block=True)
+
+
+@pytest.mark.skipif( os.getenv('INTERACTIVE') is None, reason='Set INTERACTIVE to run this test' )
+def test_streak_images(blocking_plots):
+    im = SimStreaks.make_streak_image(center_x=50.3, length=25)
+
+    # if blocking_plots:
+    #     plt.imshow(im)
+    #     plt.show(block=True)
+
+    s = Simulator(streak_number=10, star_number=0, galaxy_number=0)
+    s.make_image()
+
+    if blocking_plots:
+        plt.imshow(s.image)
+        plt.show(block=True)
+

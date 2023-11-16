@@ -88,6 +88,7 @@ class SimPars(Parameters):
         self.atmos_psf_pars = self.add_par('atmos_psf_pars', {'sigma': 1.0}, dict, 'Atmospheric PSF parameters')
         self.oversampling = self.add_par('oversampling', 5, int, 'Oversampling of the PSF')
 
+        # stars
         self.star_number = self.add_par('star_number', 1000, int, 'Number of stars (on average) to simulate')
 
         self.exact_star_number = self.add_par(
@@ -108,6 +109,7 @@ class SimPars(Parameters):
             'Standard deviation of the position of stars between images (in both x and y)'
         )
 
+        # galaxies
         self.galaxy_number = self.add_par(
             'galaxy_number', 0, int,
             'Number of galaxies (on average) to simulate'
@@ -145,6 +147,33 @@ class SimPars(Parameters):
         self.galaxy_width_power_law = self.add_par(
             'galaxy_width_power_law', -2.0, float,
             'Power law index for the width distribution of galaxies'
+        )
+
+        # streaks
+        self.streak_number = self.add_par('streak_number', 0, int, 'Number of streaks (on average) to simulate')
+
+        self.exact_streak_number = self.add_par(
+            'exact_streak_number', True, bool,
+            'If True, will use streak_number as the exact number of streaks'
+            'in each image. If False, will choose from a Poisson distribution '
+            'using streak_number as the mean, every time make_streaks is called, '
+            'or when using make_image(new_streaks=True).'
+        )
+        self.streak_min_flux = self.add_par(
+            'streak_min_flux', 300, (int, float),
+            'Minimum flux for the streak power law'
+        )
+        self.streak_flux_power_law = self.add_par(
+            'streak_flux_power_law', -2.0, float,
+            'Power law index for the flux distribution of streaks'
+        )
+        self.streak_min_length = self.add_par(
+            'streak_min_length', 10.0, float,
+            'Minimum length for the streak uniform distribution'
+        )
+        self.streak_max_length = self.add_par(
+            'streak_max_length', 300.0, float,
+            'Maximum length for the streak uniform distribution'
         )
 
         self.cosmic_ray_number = self.add_par('cosmic_ray_number', 0, int, 'Average number of cosmic rays per image')
@@ -988,6 +1017,196 @@ class SimGalaxies:
             image += galaxy_image  # the required galaxy image is so big we just make it on the same size as the image
 
 
+class SimStreaks:
+    """A container for the properties of a set of simulated streaks
+    (e.g., from low Earth orbit satellites).
+    Keeps track of the positions and brightness of the streaks,
+    as well as the length and orientation of each streak.
+    """
+    def __init__(self):
+        self.streak_number = None  # average number of streaks in each field
+        self.streak_mid_x = None  # for each streak, the mean x position
+        self.streak_mid_y = None  # for each streak, the mean y position
+        self.streak_lengths = None  # for each streak, the length
+        self.streak_angles = None  # for each streak, the angle (in degrees, from North towards East)
+        self.streak_flux_values = None  # for each streak, the mean flux (in photons per total exposure time)
+
+        self.streak_min_flux = None  # minimal brightness for the streak power law
+        self.streak_flux_power_law = None  # power law index of the brightness of streaks
+        self.streak_min_length = None  # minimal length of streaks (for uniform distribution)
+        self.streak_max_length = None  # maximal length of streaks (for uniform distribution)
+
+    def make_streak_list(self, imsize):
+        """Make a list of all the required properties for a set of streaks.
+        The given imsize is a tuple that helps determine the x/y positions.
+        """
+        rng = np.random.default_rng()
+        alpha = abs(self.streak_flux_power_law) - 1
+        self.streak_flux_values = self.streak_min_flux / rng.power(alpha, self.streak_number)
+        self.streak_mid_x = rng.uniform(-0.01, 1.01, self.streak_number) * imsize[1]
+        self.streak_mid_y = rng.uniform(-0.01, 1.01, self.streak_number) * imsize[0]
+        self.streak_lengths = rng.uniform(self.streak_min_length, self.streak_max_length, self.streak_number)
+        self.streak_angles = rng.uniform(0, 360, self.streak_number)
+
+    @classmethod
+    def make_streak_image(cls, imsize=(100, 100), center_x=None, center_y=None, flux=1.0, length=10.0, rotation=None):
+        """Make an image of a streak with a narrow (single pixel) profile
+
+        Parameters
+        ----------
+        imsize: tuple (default (100, 100))
+            The size of the image (y, x).
+        center_x: float (optional)
+            The x position of the streak center inside the image.
+            If not given, will position at the center of the image.
+        center_y: float (optional)
+            The y position of the streak center inside the image.
+            If not given, will position at the center of the image.
+        flux: float (default 1.0)
+            The total flux of the streak.
+        length: float (default 10)
+            The length of the streak.
+        rotation: float (optional)
+            The rotation angle of the streak, in degrees.
+            Zero means the streak is oriented North-South, and the angle increases
+            towards East.
+            If not given, will choose a uniform rotation in range [0,360].
+
+        Returns
+        -------
+        streak_image: np.ndarray
+            The image of the streak, normalized to total_flux.
+        """
+        if center_x is None:
+            center_x = imsize[1] // 2
+        if center_y is None:
+            center_y = imsize[0] // 2
+        if rotation is None:
+            rotation = np.random.uniform(0, 360)
+
+        rotation = np.deg2rad(rotation)
+
+        # regular coordinate grid
+        x0, y0 = np.meshgrid(np.arange(imsize[1]), np.arange(imsize[0]))
+
+        # transform the coordinates using rotation and translation
+        x = (x0 - center_x) * np.cos(rotation) + (y0 - center_y) * np.sin(rotation)
+        y = (y0 - center_y) * np.cos(rotation) - (x0 - center_x) * np.sin(rotation)
+
+        # make the streak
+        streak_image = np.zeros(imsize)
+        streak_image[(abs(y) < length + 0.5) & (abs(x) < 0.5)] = 1.0
+
+        # normalize the streak
+        streak_image *= flux / np.sum(streak_image)
+
+        return streak_image
+
+    @classmethod
+    def add_streak_to_image(
+            cls,
+            image,
+            center_x=None,
+            center_y=None,
+            flux=1.0,
+            length=10.0,
+            rotation=None,
+    ):
+        """Add a streak to an existing image, by making a small stamp image with the streak and placing it in the image.
+
+        Parameters
+        ----------
+        image: np.ndarray
+            The image to add the streak to.
+        center_x: float, default None
+            The x position of the streak center inside the image.
+            If given as None, will position at a random place in the image.
+        center_y: float, default None
+            The y position of the streak center inside the image.
+            If given as None, will position at a random place in the image.
+        flux: float (default 1.0)
+            The total flux of the streak.
+        length: float (default 10)
+            The length of the streak.
+        rotation: float (optional)
+            The rotation angle of the streak, in degrees.
+            Zero means the streak is oriented North-South, and the angle increases
+            towards East.
+            If not given, will choose a uniform rotation in range [0,360].
+        """
+        if center_x is None:
+            center_x = np.random.uniform(0, image.shape[1])
+        if center_y is None:
+            center_y = np.random.uniform(0, image.shape[0])
+
+        # the sub-pixel shift of this galaxy
+        offset_x = center_x - int(center_x)
+        offset_y = center_y - int(center_y)
+
+        if rotation is None:
+            rotation = np.random.uniform(0, 360)
+
+        # estimate the size of the image needed to make this streak
+        width = int(abs(length * np.sin(np.deg2rad(rotation)))) + 1
+        height = int(abs(length * np.cos(np.deg2rad(rotation)))) + 1
+        imsize = (height, width)
+        new_center_x = imsize[1] // 2 + offset_x
+        new_center_y = imsize[0] // 2 + offset_y
+
+        # in some cases the required "stamp" is larger than the original image!
+        if imsize[0] > image.shape[0] or imsize[1] > image.shape[1]:
+            imsize = image.shape
+            use_assignment = False
+            new_center_x = center_x
+            new_center_y = center_y
+        else:
+            use_assignment = True
+
+        # make the streak image
+        streak_image = cls.make_streak_image(
+            imsize=imsize,
+            center_x=new_center_x,
+            center_y=new_center_y,
+            flux=flux,
+            length=length,
+            rotation=rotation,
+        )
+
+        # add it to the image
+        if use_assignment:
+            x_trim_start = 0
+            x_start = int(center_x) - imsize[1] // 2
+            x_trim_end = imsize[1]
+            x_end = x_start + imsize[1]
+
+            if x_end > image.shape[1]:
+                x_trim_end = imsize[1] - (x_end - image.shape[1])
+                x_end = image.shape[1]
+
+            if x_start < 0:
+                x_trim_start = -x_start
+                x_start = 0
+
+            y_trim_start = 0
+            y_start = int(center_y) - imsize[0] // 2
+            y_trim_end = imsize[0]
+            y_end = y_start + imsize[0]
+
+            if y_start < 0:
+                y_trim_start = -y_start
+                y_start = 0
+
+            if y_end > image.shape[0]:
+                y_trim_end = imsize[0] - (y_end - image.shape[0])
+                y_end = image.shape[0]
+
+            # streak_image += 1  # debug only!
+            image[y_start:y_end, x_start:x_end] += streak_image[y_trim_start:y_trim_end, x_trim_start:x_trim_end]
+
+        else:
+            image += streak_image  # the required streak image is so big we just make it on the same size as the image
+
+
 class Simulator:
     """
     Make simulated images for testing image processing techniques.
@@ -1002,6 +1221,7 @@ class Simulator:
         self.sky = None
         self.stars = None
         self.galaxies = None
+        self.streaks = None
 
         # holds the truth values for this image
         self.truth = None
@@ -1187,6 +1407,23 @@ class Simulator:
 
         self.galaxies.make_galaxy_list(self.pars.imsize)
 
+    def make_streaks(self):
+        """
+        Generate a set of streaks from LEO satellites.
+        """
+        self.streaks = SimStreaks()
+        if self.pars.exact_streak_number:
+            self.streaks.streak_number = self.pars.streak_number
+        else:
+            self.streaks.streak_number = np.random.poisson(self.pars.streak_number)
+
+        self.streaks.streak_min_flux = self.pars.streak_min_flux
+        self.streaks.streak_flux_power_law = self.pars.streak_flux_power_law
+        self.streaks.streak_min_length = self.pars.streak_min_length
+        self.streaks.streak_max_length = self.pars.streak_max_length
+
+        self.streaks.make_streak_list(self.pars.imsize)
+
     def add_extra_stars(self, flux=None, x=None, y=None, number=1):
         """Add one more star to the star field. This is explicitly added by the user on top of the star_number.
 
@@ -1261,7 +1498,16 @@ class Simulator:
             rotations,
         )
 
-    def make_image(self, new_sensor=False, new_camera=False, new_sky=False, new_stars=False, new_galaxies=False):
+    def make_image(
+            self,
+            new_sensor=False,
+            new_camera=False,
+            new_sky=False,
+            new_stars=False,
+            new_galaxies=False,
+            new_streaks=True,
+            new_cosmic_rays=True,
+    ):
         """
         Generate a single image.
         Will add new instance of noise, and possibly shift the stars' positions
@@ -1302,6 +1548,11 @@ class Simulator:
             self.make_galaxies()
             if self.pars.show_runtimes:
                 print(f'time to make galaxies: {time.time() - t0:.2f}s')
+
+        if new_streaks or self.streaks is None:
+            self.make_streaks()
+            if self.pars.show_runtimes:
+                print(f'time to make streaks: {time.time() - t0:.2f}s')
 
         # make a PSF
         # fwhm = np.sqrt(self.camera.optic_psf_fwhm ** 2 + self.sky.seeing_instance ** 2)
@@ -1413,6 +1664,18 @@ class Simulator:
                 cutoff_radius=self.galaxies.galaxy_width_values[i] * ovsmp * 5,
             )
 
+        for i in range(self.streaks.streak_number):
+            x_im = round((self.streaks.streak_mid_x[i] + buffer[1]) * ovsmp)
+            y_im = round((self.streaks.streak_mid_y[i] + buffer[0]) * ovsmp)
+            self.streaks.add_streak_to_image(
+                self.flux_top,
+                center_x=x_im,
+                center_y=y_im,
+                flux=self.streaks.streak_flux_values[i],
+                length=self.streaks.streak_lengths[i],
+                rotation=self.streaks.streak_angles[i],
+            )
+
         self.flux_top = scipy.signal.convolve(self.flux_top, self.psf, mode='same')
 
         # downsample back to pixel resolution
@@ -1481,7 +1744,7 @@ class Simulator:
         charge1 = image * self.sensor.bleed_fraction_down  # charge that tends to move down when saturated
         leftovers = image - charge1  # the remaining electrons that do not participate
         excess = np.zeros(image.shape[1], dtype=float)  # a row of charges accumulated above saturation
-        satlim = self.sensor.saturation_limit # * self.sensor.bleed_fraction_down  # the saturation limit for the charge
+        satlim = self.sensor.saturation_limit  # the saturation limit for the charge
 
         for i in range(image.shape[0]):
             charge1[i] += excess  # add the excess charge from the previous row
@@ -1493,7 +1756,7 @@ class Simulator:
         charge2 = image * self.sensor.bleed_fraction_up  # charge that tends to move up when saturated
         leftovers = leftovers - charge2  # remaining electrons after taking the up and down charges
         excess = np.zeros(image.shape[1], dtype=float)  # a row of charges accumulated above saturation
-        satlim = self.sensor.saturation_limit #  * self.sensor.bleed_fraction_up  # the saturation limit for the charge
+        satlim = self.sensor.saturation_limit  # the saturation limit for the charge
 
         for i in range(image.shape[0] - 1, -1, -1):
             charge2[i] += excess
@@ -1675,6 +1938,18 @@ class Simulator:
         t.galaxy_real_y_pos = self.galaxy_y
         t.galaxy_real_flux = self.galaxy_f
         t.galaxy_real_width = self.galaxies.galaxy_width_values
+
+        t.streak_number = self.streaks.streak_number
+        t.requested_streak_number = self.pars.streak_number
+        t.streak_min_flux = self.streaks.streak_min_flux
+        t.streak_flux_power_law = self.streaks.streak_flux_power_law
+        t.streak_min_length = self.streaks.streak_min_length
+        t.streak_max_length = self.streaks.streak_max_length
+        t.streak_mid_x = self.streaks.streak_mid_x
+        t.streak_mid_y = self.streaks.streak_mid_y
+        t.streak_flux_values = self.streaks.streak_flux_values
+        t.streak_lengths = self.streaks.streak_lengths
+        t.streak_angles = self.streaks.streak_angles
 
         t.psf = self.psf
         t.psf_downsampled = self.psf_downsampled
