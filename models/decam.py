@@ -16,6 +16,8 @@ import pandas
 import astropy.time
 from astropy.io import fits
 
+import sqlalchemy as sa
+
 from models.base import _logger, SmartSession, FileOnDiskMixin
 from models.instrument import Instrument, InstrumentOrientation, SensorSection
 from models.image import Image
@@ -312,6 +314,26 @@ class DECam(Instrument):
         """
         return filter[0:1]
 
+    @classmethod
+    def get_GaiaDR3_transformation( cls, filter ):
+        """Return a polynomial transformation from Gaia MAG_G to instrument magnitude.
+
+        See Instrument.get_GaiaDR3_transformation.
+
+        """
+
+        # Emily Ramey came up with these by fitting polynomials to Gaia
+        # magnitudes and DECaLS magnitudes
+        transformations = {
+            'g': np.array( [  0.07926061, -0.18958323, -0.50588824, 0.11476034 ] ),
+            'r': np.array( [ -0.28526417, 0.65444024, -0.25415955, -0.00204337 ] ),
+            'i': np.array( [ -0.2491122, 0.51709843, 0.02919352, -0.02097517 ] ),
+            'z': np.array( [ -0.38939061, 0.70406435, 0.04190059, -0.01617815 ] )
+        }
+        if filter not in transformations:
+            raise ValueError( f"Unknown short DECam filter name {filter}" )
+        return transformations[ filter ]
+
     def _get_default_calibrator( self, mjd, section, calibtype='dark', filter=None, session=None ):
         # Just going to use the 56876 versions for everything
         # (configured in the yaml files), even though there are earlier
@@ -353,7 +375,7 @@ class DECam(Instrument):
 
         with SmartSession( session ) as dbsess:
             if calibtype in [ 'flat', 'fringe' ]:
-                dbtype = 'Fringe' if calibtype=='fringe' else 'SkyFlat'
+                dbtype = 'Fringe' if calibtype == 'fringe' else 'SkyFlat'
                 mjd = float( cfg.value( "DECam.calibfiles.mjd" ) )
                 image = Image( format='fits', type=dbtype, provenance=prov, instrument='DECam',
                                telescope='CTIO4m', filter=filter, section_id=section, filepath=str(filepath),
@@ -379,10 +401,14 @@ class DECam(Instrument):
                 dbsess.add( calfile )
                 dbsess.commit()
             else:
-                datafile = DataFile( filepath=str(filepath), provenance=prov )
-                datafile.save( str(fileabspath) )
-                datafile = datafile.recursive_merge( dbsess )
-                dbsess.add( datafile )
+                datafile = dbsess.scalars(sa.select(DataFile).where(DataFile.filepath == str(filepath))).first()
+                # TODO: what happens if the provenance doesn't match??
+
+                if datafile is None:
+                    datafile = DataFile( filepath=str(filepath), provenance=prov )
+                    datafile.save( str(fileabspath) )
+                    datafile = datafile.recursive_merge( dbsess )
+                    dbsess.add( datafile )
                 # Linearity file applies for all chips, so load the database accordingly
                 for ssec in self._chip_radec_off.keys():
                     calfile = CalibratorFile( type='Linearity',
@@ -390,7 +416,8 @@ class DECam(Instrument):
                                               flat_type=None,
                                               instrument='DECam',
                                               sensor_section=ssec,
-                                              datafile=datafile )
+                                              datafile=datafile
+                                              )
                     calfile = calfile.recursive_merge( dbsess )
                     dbsess.add( calfile )
                 dbsess.commit()
