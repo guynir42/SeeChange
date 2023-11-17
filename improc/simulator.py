@@ -3,6 +3,10 @@ import numpy as np
 import scipy
 from collections import defaultdict
 
+from scipy.ndimage import gaussian_filter
+
+import pylandau
+
 from pipeline.parameters import Parameters
 
 
@@ -176,8 +180,42 @@ class SimPars(Parameters):
             'Maximum length for the streak uniform distribution'
         )
 
-        self.cosmic_ray_number = self.add_par('cosmic_ray_number', 0, int, 'Average number of cosmic rays per image')
-        self.satellite_number = self.add_par('satellite_number', 0, int, 'Average number of satellites per image')
+        # cosmic rays
+        self.track_number = self.add_par('track_number', 0, int, 'Average number of track cosmic rays per image')
+        self.worm_number = self.add_par('worm_number', 0, int, 'Average number of worm cosmic rays per image')
+        self.exact_cosmic_ray_number = self.add_par(
+            'exact_cosmic_ray_number', True, bool,
+            'If True, will use track_number as the exact number of track cosmic rays '
+            'and worm_number as the exact number of worm cosmic rays in each image. '
+        )
+
+        self.tracks_pixel_ratio = self.add_par(
+            'tracks_pixel_ratio', 10, int,
+            'The ratio between the depth width and width, used for calculating'
+            'the muon track length through the sensor.'
+        )
+
+        self.tracks_min_energy = self.add_par(
+            'tracks_min_energy', 100, (int, float),
+            'Minimum flux for the track cosmic ray power law'
+        )
+
+        self.tracks_energy_power_law = self.add_par(
+            'tracks_energy_power_law', -2.0, float,
+            'Power law index for the energy distribution of track cosmic rays'
+        )
+
+        self.worms_min_energy = self.add_par(
+            'worm_min_energy', 100, (int, float),
+            'Minimum energy for the worm cosmic ray power law'
+        )
+
+        self.worms_energy_power_law = self.add_par(
+            'worm_energy_power_law', -2.0, float,
+            'Power law index for the energy distribution of worm cosmic rays'
+        )
+
+        # TODO: more parameters are needed for worms bouncing around in the silicon
 
         self.exposure_time = self.add_par('exposure_time', 1, (int, float), 'Exposure time in seconds')
 
@@ -272,8 +310,13 @@ class SimTruth:
         self.star_real_flux = None  # for each star, the real flux measured on the sky (before vignette, etc.)
 
         # additional random things that are unique to each image
-        self.cosmic_ray_x_pos = None  # where each cosmic ray was
-        self.cosmic_ray_y_pos = None  # where each cosmic ray was
+        self.track_mid_x = None  # where each cosmic ray was
+        self.track_mid_y = None  # where each cosmic ray was
+        self.track_rotations = None  # the rotation of each cosmic ray
+        self.track_lengths = None  # the length of each cosmic ray
+        self.track_energies = None  # the energy of each cosmic ray
+
+        # TODO: add worms
 
         # TODO: add satellite trails
 
@@ -1207,6 +1250,223 @@ class SimStreaks:
             image += streak_image  # the required streak image is so big we just make it on the same size as the image
 
 
+class SimCosmicRays:
+    """A container for the properties of a set of simulated cosmic rays.
+    This includes both muon tracks and worms from high energy electrons.
+    """
+    _landau = None
+    _x = None
+
+    @classmethod
+    def get_landau_dist(cls):
+        if cls._x is None or cls._landau is None:
+            cls._x = np.arange(-5, 20, 0.01)
+            cls._landau = pylandau.langau(cls._x)
+            cls._landau /= np.sum(cls._landau)
+        return cls._x, cls._landau
+
+    def __init__(self):
+        self.track_number = None  # average number of muon tracks in each field
+        self.tracks_pixel_ratio = None  # ratio of pixel height to width
+        self.tracks_min_energy = None  # minimal energy for the muon power law
+        self.tracks_energy_power_law = None  # power law index of the energy of muons
+
+        self.number_worms = None  # average number of worms in each field
+        self.worms_min_energy = None  # minimal energy for the worm power law
+        self.worms_energy_power_law = None  # power law index of the energy of worms
+
+        self.track_rotations = None  # the phi angle of rotation of the track in the sensor plane
+        self.track_entry_angles = None  # the theta angle of entry of the track into the sensor plane
+        self.track_lengths = None  # the length of the track (in pixels)
+        self.track_mid_x = None  # for each track, the mean x position
+        self.track_mid_y = None  # for each track, the mean y position
+        self.track_energies = None  # the most probable value in the landau distribution for this track
+
+    def make_track_list(self, imsize):
+        self.track_rotations = np.random.uniform(0, 360, self.track_number)
+        self.track_entry_angles = np.random.normal(0, 50, self.track_number)  # should this be parametrizable?
+        self.track_mid_x = np.random.uniform(-0.01, 1.01, self.track_number) * imsize[1]
+        self.track_mid_y = np.random.uniform(-0.01, 1.01, self.track_number) * imsize[0]
+
+        rng = np.random.default_rng()
+        alpha = abs(self.tracks_energy_power_law) - 1
+        self.track_energies = self.tracks_min_energy / rng.power(alpha, self.track_number)
+
+        self.track_entry_angles = np.random.normal(0, 50, self.track_number)  # should this be parametrizable?
+        self.track_lengths = self.tracks_pixel_ratio * np.tan(np.deg2rad(self.track_entry_angles))
+
+    def make_worm_list(self, imsize):
+        pass
+
+    @classmethod
+    def make_track_image(
+            cls,
+            imsize=(100, 100),
+            center_x=None,
+            center_y=None,
+            energy=1.0,
+            length=10.0,
+            rotation=None,
+    ):
+        """Make an image of a muon track.
+
+        Parameters
+        ----------
+        imsize: tuple, default (100, 100)
+            The size of the image (y, x).
+        center_x: float, default None
+            The x position of the track center inside the image.
+            If given as None, will position at the center of the image.
+        center_y: float, default None
+            The y position of the track center inside the image.
+            If given as None, will position at the center of the image.
+        energy: float, default 1.0
+            The energy of the muon. This is the offset of the Landau distribution
+            used to determine the number of electrons released in each pixel.
+        length: float, default 10.0
+            The length of the track.
+        rotation: float, default None
+            The phi angle of rotation of the track in the sensor plane.
+            If not given, will choose a uniform rotation in range [0,360].
+
+        Returns
+        -------
+        track_image: np.ndarray
+            The image of the track, in units of electrons.
+        """
+        if center_x is None:
+            center_x = imsize[1] // 2
+        if center_y is None:
+            center_y = imsize[0] // 2
+        if rotation is None:
+            rotation = np.random.uniform(0, 360)
+
+        rotation = np.deg2rad(rotation)
+
+        # regular coordinate grid
+        x0, y0 = np.meshgrid(np.arange(imsize[1]), np.arange(imsize[0]))
+
+        # transform the coordinates using rotation and translation
+        x = (x0 - center_x) * np.cos(rotation) + (y0 - center_y) * np.sin(rotation)
+        y = (y0 - center_y) * np.cos(rotation) - (x0 - center_x) * np.sin(rotation)
+
+        # make the track
+        track_positions = (abs(y) < length + 0.5) & (abs(x) < 0.5)
+        num_pixels = np.sum(track_positions)
+        track_image = np.zeros(imsize)
+        x, landau = cls.get_landau_dist()
+        track_image[track_positions] = np.random.choice(x, size=num_pixels, p=landau) + energy
+
+        # convolve with a narrow gaussian
+        track_image = gaussian_filter(track_image, sigma=0.5)
+
+        return track_image
+
+    @classmethod
+    def add_track_to_image(
+            cls,
+            image,
+            center_x=None,
+            center_y=None,
+            energy=1.0,
+            length=10.0,
+            rotation=None,
+    ):
+        """Add a muon track to an existing image, by making a small image with the track and placing it in the image.
+
+        Parameters
+        ----------
+        image: np.ndarray
+            The image to add the track to.
+            This should be the electron number image (not the flux image).
+        center_x: float (optional)
+            The x position of the track center inside the image.
+            If not given, will position at a random place in the image.
+        center_y: float (optional)
+            The y position of the track center inside the image.
+            If not given, will position at a random place in the image.
+        energy: float, default 1.0
+            The energy of the muon. This is the offset of the Landau distribution
+            used to determine the number of electrons released in each pixel.
+        length: float, default 10.0
+            The length of the track.
+        rotation: float (optional)
+            The phi angle of rotation of the track in the sensor plane.
+            If not given, will choose a uniform rotation in range [0,360].
+        """
+        if center_x is None:
+            center_x = np.random.uniform(0, image.shape[1])
+        if center_y is None:
+            center_y = np.random.uniform(0, image.shape[0])
+
+        # the sub-pixel shift of this galaxy
+        offset_x = center_x - int(center_x)
+        offset_y = center_y - int(center_y)
+
+        if rotation is None:
+            rotation = np.random.uniform(0, 360)
+
+        # estimate the size of the image needed to make this track
+        width = int(abs(length * np.sin(np.deg2rad(rotation)))) + 1
+        height = int(abs(length * np.cos(np.deg2rad(rotation)))) + 1
+        imsize = (height, width)
+        new_center_x = imsize[1] // 2 + offset_x
+        new_center_y = imsize[0] // 2 + offset_y
+
+        # in some cases the required "stamp" is larger than the original image!
+        if imsize[0] > image.shape[0] or imsize[1] > image.shape[1]:
+            imsize = image.shape
+            use_assignment = False
+            new_center_x = center_x
+            new_center_y = center_y
+        else:
+            use_assignment = True
+
+        # make the track image
+        track_image = cls.make_track_image(
+            imsize=imsize,
+            center_x=new_center_x,
+            center_y=new_center_y,
+            energy=energy,
+            length=length,
+            rotation=rotation,
+        )
+
+        # add it to the image
+        if use_assignment:
+            x_trim_start = 0
+            x_start = int(center_x) - imsize[1] // 2
+            x_trim_end = imsize[1]
+            x_end = x_start + imsize[1]
+
+            if x_end > image.shape[1]:
+                x_trim_end = imsize[1] - (x_end - image.shape[1])
+                x_end = image.shape[1]
+
+            if x_start < 0:
+                x_trim_start = -x_start
+                x_start = 0
+
+            y_trim_start = 0
+            y_start = int(center_y) - imsize[0] // 2
+            y_trim_end = imsize[0]
+            y_end = y_start + imsize[0]
+
+            if y_start < 0:
+                y_trim_start = -y_start
+                y_start = 0
+
+            if y_end > image.shape[0]:
+                y_trim_end = imsize[0] - (y_end - image.shape[0])
+                y_end = image.shape[0]
+
+            # track_image += 1  # debug only!
+            image[y_start:y_end, x_start:x_end] += track_image[y_trim_start:y_trim_end, x_trim_start:x_trim_end]
+
+        else:
+            image += track_image
+
+
 class Simulator:
     """
     Make simulated images for testing image processing techniques.
@@ -1222,6 +1482,7 @@ class Simulator:
         self.stars = None
         self.galaxies = None
         self.streaks = None
+        self.cosmic_rays = None
 
         # holds the truth values for this image
         self.truth = None
@@ -1424,6 +1685,21 @@ class Simulator:
 
         self.streaks.make_streak_list(self.pars.imsize)
 
+    def make_cosmic_rays(self):
+        """Make a set of cosmic rays (muon tracks and worms from high energy electrons).
+        """
+        self.cosmic_rays = SimCosmicRays()
+        if self.pars.exact_cosmic_ray_number:
+            self.cosmic_rays.track_number = self.pars.track_number
+        else:
+            self.cosmic_rays.track_number = np.random.poisson(self.pars.track_number)
+
+        self.cosmic_rays.tracks_min_energy = self.pars.tracks_min_energy
+        self.cosmic_rays.tracks_energy_power_law = self.pars.tracks_energy_power_law
+        self.cosmic_rays.tracks_pixel_ratio = self.pars.tracks_pixel_ratio
+
+        self.cosmic_rays.make_track_list(self.pars.imsize)
+
     def add_extra_stars(self, flux=None, x=None, y=None, number=1):
         """Add one more star to the star field. This is explicitly added by the user on top of the star_number.
 
@@ -1554,6 +1830,11 @@ class Simulator:
             if self.pars.show_runtimes:
                 print(f'time to make streaks: {time.time() - t0:.2f}s')
 
+        if new_cosmic_rays or self.cosmic_rays is None:
+            self.make_cosmic_rays()
+            if self.pars.show_runtimes:
+                print(f'time to make cosmic rays: {time.time() - t0:.2f}s')
+
         # make a PSF
         # fwhm = np.sqrt(self.camera.optic_psf_fwhm ** 2 + self.sky.seeing_instance ** 2)
         # oversample_estimate = int(np.ceil(10 / fwhm))  # allow 10 pixels across the PSF's width
@@ -1602,9 +1883,9 @@ class Simulator:
             print(f'time to convert flux to electrons: {time.time() - t0:.2f}s')
 
         t0 = time.time()
-        self.add_artefacts()
+        self.add_cosmic_rays()
         if self.pars.show_runtimes:
-            print(f'time to add artefacts: {time.time() - t0:.2f}s')
+            print(f'time to add cosmic rays: {time.time() - t0:.2f}s')
 
         t0 = time.time()
         self.electrons_to_adu()
@@ -1773,44 +2054,20 @@ class Simulator:
 
         return new_image
 
-    def add_artefacts(self):
+    def add_cosmic_rays(self):
         """
-        Add artefacts like cosmic rays, satellites, etc.
-        This should produce the final image.
+        Add cosmic rays, both tracks and worms.
         """
 
-        for i in range(np.random.poisson(self.pars.cosmic_ray_number)):
-            self.add_cosmic_ray(self.average_counts)  # add in place
-
-        # TODO: satellites should be moved to the stage above atmosphere where stars and galaxies are added!
-        for i in range(np.random.poisson(self.pars.satellite_number)):
-            self.add_satellite(self.average_counts)  # add in place
-
-        # add more artefacts here...
-
-    def add_cosmic_ray(self, image):
-        """
-        Add a cosmic ray to the image.
-
-        Parameters
-        ----------
-        image: array
-            The image to add the cosmic ray to.
-            This will be modified in place.
-        """
-        pass
-
-    def add_satellite(self, image):
-        """
-        Add a satellite trail to the image.
-
-        Parameters
-        ----------
-        image: array
-            The image to add the satellite trail to.
-            This will be modified in place.
-        """
-        pass
+        for i in range(self.cosmic_rays.track_number):
+            self.cosmic_rays.add_track_to_image(
+                image=self.electrons,
+                center_x=self.cosmic_rays.track_mid_x[i],
+                center_y=self.cosmic_rays.track_mid_y[i],
+                energy=self.cosmic_rays.track_energies[i],
+                length=self.cosmic_rays.track_lengths[i],
+                rotation=self.cosmic_rays.track_rotations[i],
+            )  # add in place
 
     def electrons_to_adu(self):
         """
@@ -1950,6 +2207,16 @@ class Simulator:
         t.streak_flux_values = self.streaks.streak_flux_values
         t.streak_lengths = self.streaks.streak_lengths
         t.streak_angles = self.streaks.streak_angles
+
+        t.track_number = self.cosmic_rays.track_number
+        t.requested_track_number = self.pars.track_number
+        t.tracks_min_energy = self.cosmic_rays.tracks_min_energy
+        t.tracks_energy_power_law = self.cosmic_rays.tracks_energy_power_law
+        t.tracks_mid_x = self.cosmic_rays.track_mid_x
+        t.tracks_mid_y = self.cosmic_rays.track_mid_y
+        t.tracks_energies = self.cosmic_rays.track_energies
+        t.tracks_lengths = self.cosmic_rays.track_lengths
+        t.tracks_rotations = self.cosmic_rays.track_rotations
 
         t.psf = self.psf
         t.psf_downsampled = self.psf_downsampled

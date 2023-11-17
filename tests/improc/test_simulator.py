@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from models.base import CODE_ROOT
-from improc.simulator import Simulator, SimGalaxies, SimStreaks
+from improc.simulator import Simulator, SimGalaxies, SimStreaks, SimCosmicRays
 from improc.sky_flat import sigma_clipping
 
 # uncomment this to run the plotting tests interactively
@@ -173,3 +173,18 @@ def test_streak_images(blocking_plots):
         plt.imshow(s.image)
         plt.show(block=True)
 
+
+@pytest.mark.skipif( os.getenv('INTERACTIVE') is None, reason='Set INTERACTIVE to run this test' )
+def test_track_images(blocking_plots):
+    im = SimCosmicRays.make_track_image(center_x=50.3, length=25, energy=10)
+
+    # if blocking_plots:
+    #     plt.imshow(im)
+    #     plt.show(block=True)
+
+    s = Simulator(streak_number=0, star_number=0, galaxy_number=0, track_number=30)
+    s.make_image()
+
+    if blocking_plots:
+        plt.imshow(s.image, vmin=100, vmax=200)
+        plt.show(block=True)
