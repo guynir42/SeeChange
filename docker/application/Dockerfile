@@ -13,7 +13,7 @@ SHELL ["/bin/bash", "-c"]
 #   bunch of different machines.  So, I'm punting on really doing ATLAS
 #   right here.
 # Note 2: the purge of some pythons below is because there's a
-#  version confict with stuff installed later as a dependency by pip3.
+#  version conflict with stuff installed later as a dependency by pip3.
 #  (Gotta love duelling package managers.)
 
 RUN DEBIAN_FRONTEND="nonintearctive" TZ="US/Pacific" \
@@ -164,7 +164,7 @@ RUN pip install --upgrade pip setuptools wheel
 # that are here only as dependencies of other things (as opposed to things
 # we explicitly use) and let pip resolve the dependencies.
 #
-RUN pip install -r requirements.txt && rm -rf /home/seechange/.cache/pip
+RUN pip install -r /seechange/requirements.txt && rm -rf /home/seechange/.cache/pip
 
 # Other pip packages I removed from above that were
 # previously there in the list, but that as of now
