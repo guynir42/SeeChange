@@ -164,34 +164,7 @@ RUN pip install --upgrade pip setuptools wheel
 # that are here only as dependencies of other things (as opposed to things
 # we explicitly use) and let pip resolve the dependencies.
 #
-RUN pip install \
-      alembic==1.9.3 \
-      astro-datalab==2.20.1 \
-      astropy==5.2.1 \
-      astroquery==0.4.6 \
-      fitsio==0.9.12 \
-      flaky>=3.7.0 \
-      gitdb==4.0.10 \
-      GitPython==3.1.31 \
-      healpy==1.16.5 \
-      numpy==1.24.2 \
-      pandas==1.5.3 \
-      photutils==1.6.0 \
-      psycopg2==2.9.5 \
-      pytest==7.2.2 \
-      pytest-timeout==2.1.0 \
-      python-dateutil==2.8.2 \
-      pytz==2022.7.1 \
-      pyyaml==6.0 \
-      requests==2.28.2 \
-      scipy==1.10.1 \
-      sep==1.2.1 \
-      simplejson==3.18.3 \
-      sqlalchemy==2.0.7 \
-      sqlalchemy-utils==0.40.0 \
-      urllib3==1.26.15 \
-      wget==3.2 \
-   && rm -rf /home/seechange/.cache/pip
+RUN pip install -r requirements.txt && rm -rf /home/seechange/.cache/pip
 
 # Other pip packages I removed from above that were
 # previously there in the list, but that as of now
