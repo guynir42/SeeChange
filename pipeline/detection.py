@@ -537,7 +537,6 @@ class Detector:
                 tmpparams.unlink( missing_ok=True )
                 if tempname is None: tmpsources.unlink( missing_ok=True )
 
-
     def _run_psfex( self, tempname, image_id, psf_size=None, do_not_cleanup=False ):
         """Create a PSF from a SExtractor catalog file.
 
@@ -595,7 +594,7 @@ class Detector:
             for i in range(2):
                 psfdatasize = int( usepsfsize / psf_sampling + 0.5 )
                 if psfdatasize % 2 == 0:
-                    psfdatsize += 1
+                    psfdatasize += 1
 
                 # TODO: make the fwhmmax tried configurable
                 # (This is just a range of things to try to see if we can
@@ -633,6 +632,7 @@ class Detector:
                 psfxml = votable.parse( psfxmlfile )
                 psfstats = psfxml.get_table_by_index( 1 )
                 psf_sampling = psfstats.array['Sampling_Mean'][0]
+                psf_sampling = max(1, psf_sampling)
                 if psf_size is None:
                     usepsfsize = int( np.ceil( psfstats.array['FWHM_FromFluxRadius_Mean'][0] * 5. ) )
                     if usepsfsize % 2 == 0:

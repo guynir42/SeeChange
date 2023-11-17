@@ -139,7 +139,7 @@ def test_parameters( config_test ):
 # have to figure out how to fix that for this PR.
 # --> Issue #105
 #
-@pytest.mark.skip( "Broken -- see comments" )
+# @pytest.mark.skip( "Broken -- see comments" )
 def test_data_flow(exposure, reference_entry):
     """Test that the pipeline runs end-to-end."""
     sec_id = reference_entry.section_id
