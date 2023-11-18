@@ -313,6 +313,7 @@ class SensorSection(Base, AutoIDMixin):
 
         return True
 
+
 class Instrument:
     """
     Base class for an instrument.
@@ -334,7 +335,7 @@ class Instrument:
     override the global parameter values.
     Sections can also be defined with a validity range,
     to reflect changes in the instrument (e.g., replacement of a CCD).
-    Thus the sensor sections act as a way to override the global
+    Thus, the sensor sections act as a way to override the global
     values either in time or in space.
 
     """
@@ -802,9 +803,8 @@ class Instrument:
 
         Returns
         -------
-        header: dict or astropy.io.fits.Header
-            The header from the exposure file, as a dictionary
-            (or the more complex astropy.io.fits.Header object).
+        header: astropy.io.fits.Header
+            The header from the exposure file, as a astropy.io.fits.Header object.
         """
         if isinstance(filepath, (str, pathlib.Path)):
             if section_id is None:
@@ -851,7 +851,7 @@ class Instrument:
 
         Parameters
         ----------
-        header: dict
+        header: fits.Header
             The raw header as loaded from the file.
         names: list of str
             The names of the columns to extract.
@@ -979,7 +979,7 @@ class Instrument:
             return self.get_section( image.section_id ).gain
         elif section_id is not None:
             return self.get_section( section_id ).gain
-        elif sec.gain is not None:
+        elif self.gain is not None:
             return self.gain
         else:
             return 1.
@@ -1220,7 +1220,7 @@ class Instrument:
           numpy array
 
         """
-        return NotImplementedError( f"{self.__class__.__name__} needs to implement get_GaiaDR3_transformation" )
+        return NotImplementedError( f"{cls.__class__.__name__} needs to implement get_GaiaDR3_transformation" )
 
     # ----------------------------------------
     # Preprocessing functions.  These live here rather than
@@ -1412,10 +1412,10 @@ class Instrument:
 
         Parameters
         ----------
-        header: dict
+        header: fits.Header
           The header of the image in question.
           NOTE: this needs to be the full header of the image,
-          i.e. Image.raw_header rahter than Image.header.
+          i.e. Image.raw_header rather than Image.header.
 
         Returns
         -------
@@ -1457,7 +1457,6 @@ class Instrument:
                             } )
         return retval
 
-
     def overscan_and_data_sections( self, header ):
         """Return the data sections where they appear in the image after trimming.
 
@@ -1468,7 +1467,7 @@ class Instrument:
 
         Parameters
         ----------
-        header: dict
+        header: fits.Header
           The header of the image in question; use Image.raw_header not Image.header.
 
         Returns
@@ -1565,7 +1564,7 @@ class Instrument:
 
         Parameters
         ----------
-        Can pass either one or two positional parmeters
+        Can pass either one or two positional parameters
 
         If one: image
         image: Image
@@ -1575,7 +1574,7 @@ class Instrument:
           --- OR ---
 
         If two: header, data
-        header: dict (NOTE THIS DOESN'T WORK -- SEE ISSUE #92)
+        header: fits.Header
           Image header.  Need the full header, i.e. Image.raw_header not Image.header.
         data: numpy array
           Image data.  Must not be trimmed, i.e. must include the overscan section
@@ -1612,8 +1611,8 @@ class Instrument:
             data = args[0].raw_data.astype( np.float32 )
             header = args[0].raw_header
         elif len(args) == 2:
-            # if not isinstance( args[0], <whatever the right header datatype is>:
-            #     raise TypeError( "header isn't a <header>" )
+            if not isinstance( args[0], fits.Header ):
+                raise TypeError( "header isn't a fits.Header" )
             if not isinstance( args[1], np.ndarray ):
                 raise TypeError( "data isn't a numpy array" )
             header = args[0]
@@ -1682,7 +1681,7 @@ class Instrument:
           --- OR ---
 
         If two: header, data
-        header: dict (NOTE THIS DOESN'T WORK -- SEE ISSUE #92)
+        header: fits.Header
           Image header.  Need the full header, i.e. Image.raw_header not Image.header.
         data: numpy array
           Image data.  Must not be trimmed, i.e. must include the overscan section
@@ -1856,6 +1855,7 @@ class DemoInstrument(Instrument):
         raise NotImplementedError( f"Instrument class {self.__class__.__name__} hasn't "
                                    f"implemented find_origin_exposures." )
 
+
 class InstrumentOriginExposures:
     """A class encapsulating the response from Instrument.find_origin_exposures()
 
@@ -1914,8 +1914,8 @@ class InstrumentOriginExposures:
         """Download exposures and load them into the database.
 
         Files will first be downloaded to FileOnDiskMixin.local_path
-        with the filename that the origin gave them.  The headers of
-        files will be used to construct Exposure objects.  When each
+        with the filename that the origin gave them. The headers of
+        files will be used to construct Exposure objects. When each
         Exposure object is saved, it will copy the file to the file
         named by Exposure.invent_filpath (relative to
         FileOnDiskMixin.local_path) and upload the exposure to the
