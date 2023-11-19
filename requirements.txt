@@ -1,6 +1,6 @@
 # This list is copied into the docker file
 alembic==1.12.1
-astro-datalab==2.22.1
+astro-datalab==2.20.1
 astropy==5.3.4
 astroquery==0.4.6
 fitsio==1.2.1
