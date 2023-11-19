@@ -169,48 +169,6 @@ COPY requirements.txt /seechange/requirements.txt
 
 RUN pip install -r /seechange/requirements.txt && rm -rf /home/seechange/.cache/pip
 
-# Other pip packages I removed from above that were
-# previously there in the list, but that as of now
-# the codebase doesn't use.  Certainly some of these
-# will need to get added back in as we import more
-# code from lensgrinder.
-#      attrs==22.2.0 \
-#      avro==1.11.1 \
-#      blosc2==2.0.0 \
-#      bs4==0.0.1 \
-#      certifi==2022.12.7 \
-#      charset-normalizer==3.1.0 \
-#      contourpy==1.0.7 \
-#      cycler==0.11.0 \
-#      Cython==0.29.33 \
-#      fastavro==1.7.1 \
-#      fonttools==4.39.2 \
-#      galsim==2.4.7 \
-#      greenlet==2.0.2 \
-#      idna==3.4 \
-#      image_registration==0.2.6 \
-#      importlib-resources==5.12.0 \
-#      iniconfig==2.0.0 \
-#      kafka-python==2.0.2 \
-#      kiwisolver==1.4.4 \
-#      matplotlib==3.7.1 \
-#      mpi4py==3.1.4 \
-#      msgpack==1.0.5 \
-#      numexpr==2.8.4 \
-#      packaging==23.0 \
-#      Pillow==9.4.0 \
-#      pluggy==1.0.0 \
-#      py-cpuinfo==9.0.0 \
-#      pyerfa==2.0.0.2 \
-#      pyparsing==2.4.7 \
-#      smmap==5.0.0 \
-#      sncosmo==2.9.0 \
-#      tables==3.7.0 \
-#      tensorflow==2.11.0 \
-#      tomli==2.0.1 \
-#      typing-extensions==4.5.0 \
-#      zipp==3.15.0 \
-
 # Some final setups for sanity
 ENV LESS -XLRi
 
