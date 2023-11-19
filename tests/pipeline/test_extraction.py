@@ -126,6 +126,7 @@ def test_sep_save_source_list(decam_small_image, provenance_base, code_version):
                 session.execute(sa.delete(Image).where(Image.id == image_id))
             session.commit()
 
+
 # This is running sextractor in one particular way that is used by more than one test
 @pytest.fixture
 def run_sextractor( decam_example_reduced_image_ds ):
@@ -144,6 +145,7 @@ def run_sextractor( decam_example_reduced_image_ds ):
 
     yield sourcelist, sourcefile
 
+
 def test_sextractor_extract_once( decam_example_reduced_image_ds, run_sextractor ):
     sourcelist, sourcefile = run_sextractor
 
@@ -161,6 +163,12 @@ def test_sextractor_extract_once( decam_example_reduced_image_ds, run_sextractor
     assert sourcelist.x.max() == pytest.approx( 2039.6, abs=0.1 )
     assert sourcelist.y.min() == pytest.approx( 16.3, abs=0.1 )
     assert sourcelist.y.max() == pytest.approx( 4087.9, abs=0.1 )
+    assert sourcelist.errx.min() == pytest.approx( 0.0005, abs=1e-4 )
+    assert sourcelist.errx.max() == pytest.approx( 1.05, abs=0.01 )
+    assert sourcelist.erry.min() == pytest.approx( 0.001, abs=1e-3 )
+    assert sourcelist.erry.max() == pytest.approx( 0.62, abs=0.01 )
+    assert ( np.sqrt( sourcelist.varx ) == sourcelist.errx ).all()
+    assert ( np.sqrt( sourcelist.vary ) == sourcelist.erry ).all()
     assert sourcelist.apfluxadu()[0].min() == pytest.approx( -656.8731, rel=1e-5 )
     assert sourcelist.apfluxadu()[0].max() == pytest.approx( 2850920.0, rel=1e-5 )
     snr = sourcelist.apfluxadu()[0] / sourcelist.apfluxadu()[1]
@@ -191,6 +199,7 @@ def test_sextractor_extract_once( decam_example_reduced_image_ds, run_sextractor
     assert sourcelist.apfluxadu(apnum=1)[0].max() == pytest.approx( 2850920.0, rel=1e-5 )
     assert sourcelist.apfluxadu(apnum=0)[0].min() == pytest.approx( 89.445114, rel=1e-5 )
     assert sourcelist.apfluxadu(apnum=0)[0].max() == pytest.approx( 557651.8, rel=1e-5 )
+
 
 def test_run_psfex( decam_example_reduced_image_ds ):
     sourcelist = decam_example_reduced_image_ds.sources
