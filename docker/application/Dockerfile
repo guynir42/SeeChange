@@ -94,7 +94,7 @@ WORKDIR /usr/src/seechange
 
 # Copy all patch files to current working directory
 RUN mkdir ./rules
-ADD patches/patch_* ./rules/
+ADD docker/application/patches/patch_* ./rules/
 
 RUN cat /etc/locale.gen | perl -pe 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' > /etc/locale.gen.new \
     && mv /etc/locale.gen.new /etc/locale.gen
