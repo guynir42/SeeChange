@@ -3,7 +3,7 @@ alembic==1.12.1
 astro-datalab==2.20.1
 astropy==5.3.4
 astroquery==0.4.6
-fitsio==1.2.1
+fitsio==0.9.12
 flaky==3.7.0
 GitPython==3.1.40
 healpy==1.16.6
