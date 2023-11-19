@@ -146,6 +146,8 @@ RUN rm /usr/lib/python3.11/EXTERNALLY-MANAGED
 
 RUN pip install --upgrade pip setuptools wheel
 
+COPY requirements.txt /seechange/requirements.txt
+
 # Listing all these versions ensures that this is going to fall behind
 # and out of date and eventually break.  Versions of packages will no
 # longer be available, or will not be compatible with updates to the
