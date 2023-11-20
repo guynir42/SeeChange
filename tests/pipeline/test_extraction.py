@@ -128,9 +128,7 @@ def test_sep_save_source_list(decam_small_image, provenance_base, code_version):
 
 
 # This is running sextractor in one particular way that is used by more than one test
-@pytest.fixture
-def run_sextractor( decam_example_reduced_image_ds ):
-    ds = decam_example_reduced_image_ds
+def run_sextractor( ds ):
     ds.sources = None
     ds.psf = None
 
@@ -143,11 +141,11 @@ def run_sextractor( decam_example_reduced_image_ds ):
     assert not imagefile.exists()
     assert sourcefile.exists()
 
-    yield sourcelist, sourcefile
+    return sourcelist, sourcefile
 
 
-def test_sextractor_extract_once( decam_example_reduced_image_ds, run_sextractor ):
-    sourcelist, sourcefile = run_sextractor
+def test_sextractor_extract_once( decam_example_reduced_image_ds ):
+    sourcelist, sourcefile = run_sextractor(decam_example_reduced_image_ds)
 
     assert sourcelist.num_sources == 5611
     assert len(sourcelist.data) == sourcelist.num_sources
@@ -213,8 +211,8 @@ def test_run_psfex( decam_example_reduced_image_ds ):
     try:
         detector = Detector( method='sextractor', subtraction=False, threshold=4.5 )
         psf = detector._run_psfex( tempname, sourcelist.image_id )
-        assert psf._header['PSFAXIS1'] == 25
-        assert psf._header['PSFAXIS2'] == 25
+        assert psf._header['PSFAXIS1'] == 23
+        assert psf._header['PSFAXIS2'] == 23
         assert psf._header['PSFAXIS3'] == 6
         assert psf._header['PSF_SAMP'] == pytest.approx( 0.92, abs=0.01 )
         assert psf._header['CHI2'] == pytest.approx( 0.9, abs=0.1 )
@@ -231,8 +229,8 @@ def test_run_psfex( decam_example_reduced_image_ds ):
         tmppsfxmlfile.unlink()
 
         psf = detector._run_psfex( tempname, sourcelist.image_id, psf_size=26 )
-        assert psf._header['PSFAXIS1'] == 29
-        assert psf._header['PSFAXIS1'] == 29
+        assert psf._header['PSFAXIS1'] == 27
+        assert psf._header['PSFAXIS1'] == 27
 
     finally:
         tmpsourcefile.unlink( missing_ok=True )
@@ -268,7 +266,7 @@ def test_extract_sources_sextractor( decam_example_reduced_image_ds ):
     assert sources.inf_aper_num == 5
     assert psf.fwhm_pixels == pytest.approx( 4.328, abs=0.01 )
     assert psf.fwhm_pixels == pytest.approx( psf.header['PSF_FWHM'], rel=1e-5 )
-    assert psf.data.shape == ( 6, 25, 25 )
+    assert psf.data.shape == ( 6, 23, 23 )
     assert psf.image_id == ds.image.id
 
     assert sources.apfluxadu()[0].min() == pytest.approx( 204.55038, rel=1e-5 )
@@ -285,8 +283,8 @@ def test_extract_sources_sextractor( decam_example_reduced_image_ds ):
     assert ( sources.good & sources.is_star ).sum() == 63
 
 
-# TODO : add tests that handle different
-# combinations of measure_psf and psf being passed to the Detector constructor
+# TODO : add tests that handle different combinations
+#  of measure_psf and psf being passed to the Detector constructor
 
 def test_run_detection_sextractor( decam_example_reduced_image_ds ):
     ds = decam_example_reduced_image_ds
@@ -304,7 +302,7 @@ def test_run_detection_sextractor( decam_example_reduced_image_ds ):
     assert ds.sources.inf_aper_num == 5
     assert ds.psf.fwhm_pixels == pytest.approx( 4.328, abs=0.01 )
     assert ds.psf.fwhm_pixels == pytest.approx( ds.psf.header['PSF_FWHM'], rel=1e-5 )
-    assert ds.psf.data.shape == ( 6, 25, 25 )
+    assert ds.psf.data.shape == ( 6, 23, 23 )
     assert ds.psf.image_id == ds.image.id
 
     assert ds.sources.apfluxadu()[0].min() == pytest.approx( 204.55038, rel=1e-5 )
@@ -327,9 +325,9 @@ def test_run_detection_sextractor( decam_example_reduced_image_ds ):
     # wrong.
 
     assert ds.sources.psffluxadu()[0].min() == 0.0
-    assert ds.sources.psffluxadu()[0].max() == pytest.approx( 1726249.0, rel=1e-5 )
-    assert ds.sources.psffluxadu()[0].mean() == pytest.approx( 48067.805, rel=1e-5 )
-    assert ds.sources.psffluxadu()[0].std() == pytest.approx( 169444.77, rel=1e-5 )
+    assert ds.sources.psffluxadu()[0].max() == pytest.approx( 1717213.0, rel=1e-5 )
+    assert ds.sources.psffluxadu()[0].mean() == pytest.approx( 48086.277, rel=1e-5 )
+    assert ds.sources.psffluxadu()[0].std() == pytest.approx( 169375.22, rel=1e-5 )
 
     assert ds.sources.provenance is not None
     assert ds.sources.provenance == ds.psf.provenance

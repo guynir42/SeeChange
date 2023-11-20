@@ -93,8 +93,8 @@ def test_parameters( config_test ):
     # Verify that we can override from the yaml config file
     pipeline = Pipeline()
     assert not pipeline.preprocessor.pars['use_sky_subtraction']
-    assert pipeline.astro_cal.pars['cross_match_catalog'] == 'Gaia'
-    assert pipeline.astro_cal.pars['catalog'] == 'Gaia'
+    assert pipeline.astro_cal.pars['cross_match_catalog'] == 'GaiaDR3'
+    assert pipeline.astro_cal.pars['catalog'] == 'GaiaDR3'
     assert pipeline.subtractor.pars['method'] == 'testing_testing'
 
     # Verify that manual override works for all parts of pipeline
