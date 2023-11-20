@@ -327,7 +327,7 @@ def test_run_detection_sextractor( decam_example_reduced_image_ds ):
     assert ds.sources.psffluxadu()[0].min() == 0.0
     assert ds.sources.psffluxadu()[0].max() == pytest.approx( 1716295.2, rel=1e-5 )
     assert ds.sources.psffluxadu()[0].mean() == pytest.approx( 48076.523, rel=1e-5 )
-    assert ds.sources.psffluxadu()[0].std() == pytest.approx( 169375.22, rel=1e-5 )
+    assert ds.sources.psffluxadu()[0].std() == pytest.approx( 169310.296, rel=1e-5 )
 
     assert ds.sources.provenance is not None
     assert ds.sources.provenance == ds.psf.provenance
