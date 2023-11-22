@@ -368,7 +368,6 @@ class DECam(Instrument):
             raise ValueError( f"Unknown short DECam filter name {filter}" )
 
         # instrumental mag is sum(trns[i] * (GaiaBP - GaiaRP) ** i)
-
         trns = transformations[ filter_short ]
         fitorder = len(trns) - 1
 

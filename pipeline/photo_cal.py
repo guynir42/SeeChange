@@ -192,8 +192,6 @@ class PhotCalibrator:
         # Save these values so that tests outside can pull them and interrogate them
         self.individual_zps = zps
         self.individual_zpvars = zpvars
-        # self.individual_colors = catdata[ 'MAG_BP' ] - catdata[ 'MAG_RP' ]
-        # self.individual_mags = catdata[ 'MAG_G' ]
 
         wgood = ( ~np.isnan( zps ) ) & ( ~np.isnan( zpvars ) )
         zps = zps[wgood]
