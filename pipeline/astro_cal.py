@@ -200,7 +200,7 @@ class AstroCalibrator:
         for maxmag in self.pars.max_catalog_mag:
             try:
                 catexp = fetch_GaiaDR3_excerpt(
-                    image,
+                    image=image,
                     minstars=self.pars.min_catalog_stars,
                     maxmags=maxmag,
                     magrange=self.pars.mag_range_catalog,

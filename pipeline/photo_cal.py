@@ -181,7 +181,7 @@ class PhotCalibrator:
         _logger.debug( f"Matched {len(catdex)} stars between Gaia and the image source list" )
 
         if len(catdex) < min_matches:
-            raise BadMatchException( f"Only matched {lencatdex} stars between Gaia and the image source list, "
+            raise BadMatchException( f"Only matched {len(catdex)} stars between Gaia and the image source list, "
                                      f"which is less than the minimum of {min_matches}" )
 
         sourcera = sourcera[ sourcedex ]
@@ -292,7 +292,7 @@ class PhotCalibrator:
             catexp = fetch_GaiaDR3_excerpt(
                 image=image,
                 minstars=self.pars.min_catalog_stars,
-                maxmag=self.pars.max_catalog_mag,
+                maxmags=self.pars.max_catalog_mag,
                 magrange=self.pars.mag_range_catalog,
                 session=session,
             )
