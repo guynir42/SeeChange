@@ -21,6 +21,7 @@ from models.base import Base, AutoIDMixin, SmartSession
 from models.base import Base, SmartSession, FileOnDiskMixin,_logger
 from models.enums_and_bitflags import CalibratorTypeConverter
 from models.provenance import Provenance
+from pipeline.catalog_tools import Bandpass
 from pipeline.utils import parse_dateobs, read_fits_image
 from util.config import Config
 import util.radec
@@ -46,87 +47,6 @@ class InstrumentOrientation(Enum):
     NrightEdown = 5       # flip-x, then 90° clockwise
     NdownEleft = 6        # flip-x, then 180°
     NleftEup = 7          # flip-x, then 270° clockwise
-
-
-class Bandpass:
-    """A helper class to keep track of the bandpass of filters.
-
-    This is currently only used for determining which filter in the instrument
-    is most similar to a filter in a reference catalog.
-    For example, is a V filter closer to Gaia G or to Gaia B_P or R_P?
-    """
-    def __init__(self, *args):
-        """Create a new Bandpass object.
-
-        Currently, initialize using lower/upper wavelength in nm.
-        This assumes all filters have a simple, top-hat bandpass.
-        This is good enough for comparing a discrete list of filters
-        (e.g., the Gaia filters vs. the DECam filters) but not for
-        more complicated things like finding the flux from a spectrum.
-
-        Additional initializations could be possible in the future.
-
-        """
-        self.lower_wavelength = args[0]
-        self.upper_wavelength = args[1]
-
-    def __getitem__(self, idx):
-        """A shortcut for getting the lower/upper wavelength.
-        band[0] gives the lower wavelength, band[1] gives the upper wavelength.
-        """
-        if idx == 0:
-            return self.lower_wavelength
-        elif idx == 1:
-            return self.upper_wavelength
-        else:
-            raise IndexError("Bandpass index must be 0 or 1. ")
-
-    def get_overlap(self, other):
-        """Find the overlap between two bandpasses.
-
-        Will accept another Bandpass object, or a tuple of (lower, upper) wavelengths.
-        By definition, all wavelengths are given in nm, but this works just as well
-        if all the bandpasses are defined in other units (as long as they are consistent!).
-
-        """
-
-        return max(0, min(self.upper_wavelength, other[1]) - max(self.lower_wavelength, other[0]))
-
-    def get_score(self, other):
-        """Find the score (goodness) of the overlap between two bandpasses.
-
-        The input can be another Bandpass object, or a tuple of (lower, upper) wavelengths.
-        The score is calculated by the overlap between the two bandpasses,
-        divided by the sqrt of the width of the other bandpass.
-        This means that if two filters have similar overlap with this filter,
-        the one with a much wider total bandpass gets a lower score.
-
-        This can happen when one potentially matching filter is very wide
-        and another potential filter covers only part of it (as in Gaia G,
-        which is very broad) but the narrower filter has good overlap,
-        so it is a better match.
-        """
-        width = other[1] - other[0]
-        return self.get_overlap(other) / np.sqrt(width)
-
-    def find_best_match(self, bandpass_dict):
-        """Find the best match for this bandpass in a dictionary of bandpasses.
-
-        If dict is empty or all bandpasses have a zero match to this bandpass,
-        returns None.
-
-        # TODO: should we have another way to match based on the "nearest central wavelength"
-           or somthing like that? Seems like a corner case and not a very interesting one.
-        """
-        best_match = None
-        best_score = 0
-        for k, v in bandpass_dict.items():
-            score = self.get_score(v)
-            if score > best_score:
-                best_match = k
-                best_score = score
-
-        return best_match
 
 
 # from: https://stackoverflow.com/a/5883218
@@ -1061,9 +981,6 @@ class Instrument:
             return self.get_section( image.section_id ).gain
         elif section_id is not None:
             return self.get_section( section_id ).gain
-        # Can we remove this case? What is "sec" in this case??
-        # elif sec.gain is not None:
-        #     return self.gain
         else:
             return 1.
 
@@ -1250,7 +1167,7 @@ class Instrument:
 
         # we can probably do better than this, but I don't know if it makes any difference
         # ref: https://en.wikipedia.org/wiki/Photometric_system
-        values = dict(
+        wikipedia = dict(
             U=Bandpass(332, 398),
             R=Bandpass(589, 727),
             V=Bandpass(507, 595),
@@ -1264,6 +1181,21 @@ class Instrument:
             K=Bandpass(1995, 2385),
             L=Bandpass(3214, 3686),
         )
+
+        # maybe better to use LSST filters?
+        # ref: https://www.lsst.org/sites/default/files/docs/sciencebook/SB_2.pdf Table 2.1 page 11
+        lsst = dict(
+            u=Bandpass(320, 400),
+            g=Bandpass(400, 552),
+            r=Bandpass(552, 691),
+            i=Bandpass(691, 818),
+            z=Bandpass(818, 922),
+            y=Bandpass(950, 1080),
+        )
+
+        values = lsst
+        values.update(wikipedia)  # TODO: should we remove these or add them as options as well?
+
         return values
 
     def _get_default_calibrator( self, mjd, section, calibtype='dark', filter=None, session=None ):
