@@ -17,6 +17,8 @@ from models.catalog_excerpt import CatalogExcerpt
 from models.image import Image
 from models.world_coordinates import WorldCoordinates
 from pipeline.astro_cal import AstroCalibrator
+from pipeline.catalog_tools import download_GaiaDR3
+
 
 @pytest.fixture
 def gaiadr3_excerpt( example_ds_with_sources_and_psf ):
@@ -31,13 +33,13 @@ def gaiadr3_excerpt( example_ds_with_sources_and_psf ):
         catexp = catexp.recursive_merge( session )
         catexp.delete_from_disk_and_database( session=session )
 
+
 def test_download_GaiaDR3():
     firstfilepath = None
     secondfilepath = None
     basepath = pathlib.Path( FileOnDiskMixin.local_path )
     try:
-        astrometor = AstroCalibrator( catalog='GaiaDR3' )
-        catexp, firstfilepath, dbfile = astrometor.download_GaiaDR3( 150.9427, 151.2425, 1.75582, 1.90649,
+        catexp, firstfilepath, dbfile = download_GaiaDR3( 150.9427, 151.2425, 1.75582, 1.90649,
                                                                      padding=0.1, minmag=18., maxmag=22. )
         assert firstfilepath == str( basepath / 'GaiaDR3_excerpt/94/Gaia_DR3_151.0926_1.8312_18.0_22.0.fits' )
         assert dbfile == firstfilepath
@@ -47,7 +49,7 @@ def test_download_GaiaDR3():
         assert catexp.minmag == 18.
         assert catexp.maxmag == 22.
         assert ( catexp.dec_corner_11 - catexp.dec_corner_00 ) == pytest.approx( 1.2 * (1.90649-1.75582), abs=1e-4 )
-        catexp, secondfilepath, dbfile = astrometor.download_GaiaDR3( 150.9427, 151.2425, 1.75582, 1.90649,
+        catexp, secondfilepath, dbfile = download_GaiaDR3( 150.9427, 151.2425, 1.75582, 1.90649,
                                                                       padding=0.1, minmag=17., maxmag=19. )
         assert secondfilepath == str( basepath / 'GaiaDR3_excerpt/94/Gaia_DR3_151.0926_1.8312_17.0_19.0.fits' )
         assert dbfile == secondfilepath
@@ -67,6 +69,7 @@ def test_download_GaiaDR3():
             pathlib.Path( firstfilepath ).unlink( missing_ok=True )
         if secondfilepath is not None:
             pathlib.Path( secondfilepath ).unlink( missing_ok=True )
+
 
 def test_gaiadr3_excerpt_failures( example_ds_with_sources_and_psf, gaiadr3_excerpt ):
     ds = example_ds_with_sources_and_psf
