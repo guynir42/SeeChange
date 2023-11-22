@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 
 from models.base import SmartSession, CODE_ROOT
 from models.zero_point import ZeroPoint
-
 from pipeline.photo_cal import PhotCalibrator
 
 # os.environ['INTERACTIVE'] = '1'  # for diagnostics only
@@ -22,7 +21,7 @@ def test_decam_photo_cal( decam_example_reduced_image_ds_with_zp, blocking_plots
 
         # This plot had too many points and it looked ugly.  So, pick out at most the top 100
         # low-dzp values
-        xvals = photomotor.individual_cols
+        xvals = photomotor.individual_colors
         yvals = photomotor.individual_zps
         dyvals = photomotor.individual_zpvars
 

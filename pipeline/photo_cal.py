@@ -205,35 +205,40 @@ class PhotCalibrator:
 
         # Pull the GaiaDR3 MAG_G to instrument filter transformation
         # from the Instrument object.
+        transformed_mag, transformed_magerr = image.instrument_object.GaiaDR3_to_instrument_mag(
+            image.filter, catdata
+        )
 
-        trns = image.instrument_object.get_GaiaDR3_transformation( image.filter_short )
-
-        # mag = -2.5*log10(flux) + zp
-        # mag = GaiaGmag - sum( trns[i] * ( GaiaBP - GaiaRP )**i )
+        # instrumental_mag = -2.5*log10(flux)
+        # catalog_mag = transformed_mag(Gaia_Mag)
+        # catalog_mag = instrumental_mag + zp
         # ...so...
-        # zp = GaiaGmag - sum( trns[i] * ( GaiaBP - GaiaRP )**i ) + 2.5*log10( flux )
+        # zp = transformed_mag(Gaia_Mag) + 2.5*log10( flux )
+        zps = transformed_mag + 2.5*np.log10( sourceflux )
+        zpvars = transformed_magerr**2 + ( 1.0857362 * sourcefluxerr / sourceflux )**2
 
-        fitorder = len(trns) - 1
-
-        cols = catdata[ 'MAG_BP' ] - catdata[ 'MAG_RP' ]
-        colerrs = np.sqrt( catdata[ 'MAGERR_BP' ]**2 + catdata[ 'MAGERR_RP' ]**2 )
-        colton = cols[ :, np.newaxis ] ** np.arange( 0, fitorder+1, 1 )
-        coltonminus1 = np.zeros( colton.shape )
-        coltonminus1[ :, 1: ] = cols[ :, np.newaxis ] ** np.arange( 0, fitorder, 1 )
-        coltonerr = np.zeros( colton.shape )
-        coltonerr[ :, 1: ] = np.arange( 1, fitorder+1, 1 ) * coltonminus1[ :, 1: ] * colerrs.value[ :, np.newaxis ]
-
-        zps = ( catdata['MAG_G'] - ( trns[ np.newaxis, : ] * colton ).sum( axis=1 )
-                + 2.5*np.log10( sourceflux ) )
-        zpvars = ( catdata[ 'MAGERR_G' ]**2 +
-                   ( trns[np.newaxis, : ] * coltonerr ).sum( axis=1 )**2 +
-                   ( 1.0857362 * sourcefluxerr / sourceflux )**2
-                  )
+        # trns = image.instrument_object.get_GaiaDR3_transformation( image.filter_short )
+        # fitorder = len(trns) - 1
+        #
+        # cols = catdata[ 'MAG_BP' ] - catdata[ 'MAG_RP' ]
+        # colerrs = np.sqrt( catdata[ 'MAGERR_BP' ]**2 + catdata[ 'MAGERR_RP' ]**2 )
+        # colton = cols[ :, np.newaxis ] ** np.arange( 0, fitorder+1, 1 )
+        # coltonminus1 = np.zeros( colton.shape )
+        # coltonminus1[ :, 1: ] = cols[ :, np.newaxis ] ** np.arange( 0, fitorder, 1 )
+        # coltonerr = np.zeros( colton.shape )
+        # coltonerr[ :, 1: ] = np.arange( 1, fitorder+1, 1 ) * coltonminus1[ :, 1: ] * colerrs.value[ :, np.newaxis ]
+        #
+        # zps = ( catdata['MAG_G'] - ( trns[ np.newaxis, : ] * colton ).sum( axis=1 )
+        #         + 2.5*np.log10( sourceflux ) )
+        # zpvars = ( catdata[ 'MAGERR_G' ]**2 +
+        #            ( trns[np.newaxis, : ] * coltonerr ).sum( axis=1 )**2 +
+        #            ( 1.0857362 * sourcefluxerr / sourceflux )**2
+        #           )
 
         # Save these values so that tests outside can pull them and interrogate them
         self.individual_zps = zps
         self.individual_zpvars = zpvars
-        self.individual_cols = cols
+        self.individual_colors = catdata[ 'MAG_BP' ] - catdata[ 'MAG_RP' ]
         self.individual_mags = catdata[ 'MAG_G' ]
 
         wgood = ( ~np.isnan( zps ) ) & ( ~np.isnan( zpvars ) )

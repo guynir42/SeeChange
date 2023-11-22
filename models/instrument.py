@@ -1199,28 +1199,34 @@ class Instrument:
 
 
     @classmethod
-    def get_GaiaDR3_transformation( cls, filter ):
+    def GaiaDR3_to_instrument_mag( cls, filter, catdata ):
+        """Transform Gaia DR3 magnitudes to instrument magnitudes.
 
-        """Return a polynomial transformation from Gaia MAG_G to instrument magnitude.
+        Could use a polynomial based on the colors, or any other method.
 
-        The returned array trns allows a conversion from Gaia MAG_G to
-        the magnitude through the desired filter using:
-
-          MAG_filter = Gaia_MAG_G - sum( trns[i] * ( Gaia_MAG _BP - Gaia_MAG_RP ) ** i )
-
-        (with i running from 0 to len(trns)-1).
-
-        Parmaeters
+        Parameters
         ----------
-          filter: str
-            The short filter name of the magnitudes we want.
+        filter: str
+            The (short) filter name of the magnitudes we want.
+        catdata: dict or pandas.DataFrame or numpy.recarray
+            A data structure that holds the relevant data,
+            that can be indexed on the following keys:
+            MAG_G, MAGERR_G, MAG_BP, MAGERR_BP, MAG_RP, MAGERR_RP
+            If a single magnitude is required, can pass a dict.
+            If an array of magnitudes is required, can be any
+            data structure that when indexed on those keys
+            returns a 1D numpy array (e.g., a pandas DataFrame,
+            or a named structured numpy array, or even a dict
+            with ndarray values).
 
         Returns
         -------
-          numpy array
-
+        trans_mag: float or numpy array
+            The instrument magnitude(s).
+        trans_magerr: float or numpy array
+            The instrument magnitude error(s).
         """
-        return NotImplementedError( f"{self.__class__.__name__} needs to implement get_GaiaDR3_transformation" )
+        return NotImplementedError( f"{cls.__name__} needs to implement GaiaDR3_to_instrument_mag" )
 
     # ----------------------------------------
     # Preprocessing functions.  These live here rather than
