@@ -13,18 +13,16 @@ from astropy.io import fits
 from util.exceptions import CatalogNotFoundError, BadMatchException
 from util import ldac
 from models.base import SmartSession, FileOnDiskMixin
-from models.catalog_excerpt import CatalogExcerpt
 from models.image import Image
 from models.world_coordinates import WorldCoordinates
 from pipeline.astro_cal import AstroCalibrator
-from pipeline.catalog_tools import download_GaiaDR3
+from pipeline.catalog_tools import download_GaiaDR3, fetch_GaiaDR3_excerpt
 
 
 @pytest.fixture
 def gaiadr3_excerpt( example_ds_with_sources_and_psf ):
     ds = example_ds_with_sources_and_psf
-    astrometor = AstroCalibrator( catalog='GaiaDR3', max_mag=[20.], mag_range=4., min_stars=50 )
-    catexp = astrometor.fetch_GaiaDR3_excerpt( ds.image )
+    catexp = fetch_GaiaDR3_excerpt( ds.image, minstars=50, maxmags=20, magrange=4)
     assert catexp is not None
 
     yield catexp
@@ -76,23 +74,19 @@ def test_gaiadr3_excerpt_failures( example_ds_with_sources_and_psf, gaiadr3_exce
 
     # Make sure it fails if we give it a ridiculous max mag
     with pytest.raises( CatalogNotFoundError, match="Failed to fetch Gaia DR3 stars at" ):
-        astrometor = AstroCalibrator( catalog='GaiaDR3', max_mag=[5.], mag_range=4., min_stars=50 )
-        catexp = astrometor.fetch_GaiaDR3_excerpt( ds.image )
+        catexp = fetch_GaiaDR3_excerpt( ds.image, maxmags=5.0, magrange=4, minstars=50 )
 
     # ...but make sure it succeeds if we also give it a reasonable max mag
-    astrometor = AstroCalibrator( catalog='GaiaDR3', max_mag=[5., 20.], mag_range=4., min_stars=50 )
-    catexp = astrometor.fetch_GaiaDR3_excerpt( ds.image )
+    catexp = fetch_GaiaDR3_excerpt( ds.image, maxmags=[5.0, 20.0], magrange=4.0, minstars=50 )
     assert catexp.id == gaiadr3_excerpt.id
 
     # Make sure it fails if we ask for too many stars
     with pytest.raises( CatalogNotFoundError, match="Failed to fetch Gaia DR3 stars at" ):
-        astrometor = AstroCalibrator( catalog='GaiaDR3', max_mag=[20.], mag_range=4., min_stars=50000 )
-        catexp = astrometor.fetch_GaiaDR3_excerpt( ds.image )
+        catexp = fetch_GaiaDR3_excerpt( ds.image, maxmags=[20.0], magrange=4.0, minstars=50000 )
 
     # Make sure it fails if mag range is too small
     with pytest.raises( CatalogNotFoundError, match="Failed to fetch Gaia DR3 stars at" ):
-        astrometor = AstroCalibrator( catalog='GaiaDR3', max_mag=[20.], mag_range=0.01, min_stars=5 )
-        catexp = astrometor.fetch_GaiaDR3_excerpt( ds.image )
+        catexp = fetch_GaiaDR3_excerpt( ds.image, maxmags=[20.0], magrange=0.01, minstars=50 )
 
 
 def test_gaiadr3_excerpt( gaiadr3_excerpt, example_ds_with_sources_and_psf ):
@@ -115,14 +109,12 @@ def test_gaiadr3_excerpt( gaiadr3_excerpt, example_ds_with_sources_and_psf ):
     assert catexp.data['MAGERR_G'].max() == pytest.approx( 0.018, abs=0.001 )
 
     # Test reading of cache
-    astrometor = AstroCalibrator( catalog='GaiaDR3', max_mag=[20.], mag_range=4., min_stars=50 )
-    newcatexp = astrometor.fetch_GaiaDR3_excerpt( ds.image, onlycached=True )
+    newcatexp = fetch_GaiaDR3_excerpt( ds.image, maxmags=[20.0], magrange=4.0, minstars=50, onlycached=True )
     assert newcatexp.id == catexp.id
 
     # Make sure we can't read the cache for something that doesn't exist
     with pytest.raises( CatalogNotFoundError, match='Failed to fetch Gaia DR3 stars' ):
-        astrometor = AstroCalibrator( catalog='GaiaDR3', max_mag=[20.5], mag_range=4., min_stars=50 )
-        newcatexp = astrometor.fetch_GaiaDR3_excerpt( ds.image, onlycached=True )
+        newcatexp = fetch_GaiaDR3_excerpt( ds.image, maxmags=[20.5], magrange=4.0, minstars=50, onlycached=True )
 
 
 def test_solve_wcs_scamp_failures( gaiadr3_excerpt, example_ds_with_sources_and_psf ):
@@ -157,6 +149,7 @@ def test_solve_wcs_scamp_failures( gaiadr3_excerpt, example_ds_with_sources_and_
                                   min_matches=50 )
     with pytest.raises( BadMatchException, match="which isn.*t good enough" ):
         wcs = astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp )
+
 
 def test_solve_wcs_scamp( gaiadr3_excerpt, example_ds_with_sources_and_psf ):
     catexp = gaiadr3_excerpt
@@ -193,6 +186,7 @@ def test_solve_wcs_scamp( gaiadr3_excerpt, example_ds_with_sources_and_psf ):
     for scold, scnew in zip( scolds, scnews ):
         assert scold.ra.value == pytest.approx( scnew.ra.value, abs=1./3600. )
         assert scold.dec.value == pytest.approx( scnew.dec.value, abs=1./3600. )
+
 
 def test_run_scamp( decam_example_reduced_image_ds_with_wcs ):
     ds, origwcs, xvals, yvals, origmd5 = decam_example_reduced_image_ds_with_wcs
