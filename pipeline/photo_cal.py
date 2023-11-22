@@ -2,7 +2,7 @@ import numpy as np
 
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
-from pipeline.astro_cal import AstroCalibrator
+from pipeline.catalog_tools import fetch_GaiaDR3_excerpt
 
 from models.base import _logger
 from models.zero_point import ZeroPoint
@@ -10,11 +10,12 @@ from models.zero_point import ZeroPoint
 from util.exceptions import BadMatchException
 
 # TODO: Make max_catalog_mag and mag_range_catalog defaults be supplied
-# by the instrument, since there are going to be different sane defaults
-# for different instruments.
-# (E.g., LS4 can probably see stars down to 11th magnitude without
-# saturating, whereas for DECam we don't want to go brighter than 15th
-# or 16th magnitude.)
+#  by the instrument, since there are going to be different sane defaults
+#  for different instruments.
+#  (E.g., LS4 can probably see stars down to 11th magnitude without
+#  saturating, whereas for DECam we don't want to go brighter than 15th
+#  or 16th magnitude.)
+
 
 class ParsPhotCalibrator(Parameters):
     def __init__(self, **kwargs):
@@ -77,18 +78,18 @@ class PhotCalibrator:
         need for color terms.  (Using color terms is complicated anyway
         if you're going to process a single image at a time!)
 
-        Parmeters
+        Parameters
         ---------
           image: Image
             The image we're finding the zeropoint for.
 
           sources: SourceList
-            Image sources.  The sources must have been extracted from an
+            Image sources. The sources must have been extracted from an
             image with a good WCS, as the ra and dec of the sources will
             be matched directly to the X_WORLD and Y_WORLD fields of the
             GaiaDR3 catalog excerpt.
 
-          wcs: WoorldCoordinates
+          wcs: WorldCoordinates
             A WorldCoordinates object that can be used to find ra and
             dec from x and y for the objects in sources.
 
@@ -243,11 +244,11 @@ class PhotCalibrator:
         zpval = np.sum( zps / zpvars ) / np.sum( 1. / zpvars )
         dzpval = 1. / np.sum( 1. / (zpvars ) )
         # TODO : right now, this dzpval is way too low, looking at the scatter in the plots
-        # produced in test_photo_cal.py:test_decam_photo_cal.  Make the estimate more
-        # reasonable by implementing some sort of outlier rejection, and then expanding
-        # errorbars to make the reduced chisq 1.  However, the systematic error on the
-        # zeropoint is probably bigger than this statistical uncertainty anyway, so
-        # even after we do that this estimate is likely to be too small.
+        #  produced in test_photo_cal.py:test_decam_photo_cal.  Make the estimate more
+        #  reasonable by implementing some sort of outlier rejection, and then expanding
+        #  errorbars to make the reduced chisq 1.  However, the systematic error on the
+        #  zeropoint is probably bigger than this statistical uncertainty anyway, so
+        #  even after we do that this estimate is likely to be too small.
 
         return zpval, dzpval
 
@@ -288,12 +289,13 @@ class PhotCalibrator:
             if wcs is None:
                 raise ValueError( f'Cannot find a wcs for image {image.filepath}' )
 
-            # Need an AstroCalibrator to use its ability to fetch catalogs
-            self.astrometor = AstroCalibrator( cross_match_catalog=self.pars.cross_match_catalog,
-                                               max_catalog_mag=self.pars.max_catalog_mag,
-                                               mag_range_catalog=self.pars.mag_range_catalog,
-                                               min_catalog_stars=self.pars.min_catalog_stars )
-            catexp = self.astrometor.fetch_GaiaDR3_excerpt( image, session )
+            catexp = fetch_GaiaDR3_excerpt(
+                image=image,
+                minstars=self.pars.min_catalog_stars,
+                maxmag=self.pars.max_catalog_mag,
+                magrange=self.pars.mag_range_catalog,
+                session=session,
+            )
 
             # Save for testing/evaluation purposes
             self.catexp = catexp
