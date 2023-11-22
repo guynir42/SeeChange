@@ -1,8 +1,10 @@
 import numpy as np
 
+import astropy.units as u
+
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
-from pipeline.catalog_tools import fetch_GaiaDR3_excerpt
+import pipeline.catalog_tools
 
 from models.base import _logger
 from models.zero_point import ZeroPoint
@@ -71,8 +73,8 @@ class PhotCalibrator:
     def __init__(self, **kwargs):
         self.pars = ParsPhotCalibrator(**kwargs)
 
-    def _solve_zp_GaiaDR3( self, image, sources, wcs, catexp, min_matches=10, match_radius=1. ):
-        """Get the instrument zeropoint using a GaiaDR3 reference catalog.
+    def _solve_zp( self, image, sources, wcs, catexp, min_matches=10, match_radius=1. ):
+        """Get the instrument zeropoint using a catalog excerpt.
 
         Assumes that a single zeropoint is good enough, and that there's
         need for color terms.  (Using color terms is complicated anyway
@@ -94,7 +96,7 @@ class PhotCalibrator:
             dec from x and y for the objects in sources.
 
           catexp: CatalogExcerpt
-            Gaia DR3 catalog excerpt overlapping image
+            A catalog excerpt overlapping the image.
 
           min_matches: int, default 20
             Minimum number of matches between the two catalogs to return
@@ -116,130 +118,82 @@ class PhotCalibrator:
            The uncertainty on the zeropoint
 
         """
-
-        # For GaiaDR3, catexp.data has fields:
-        #   X_WORLD
-        #   Y_WORLD
-        #   MAG_G
-        #   MAG_BP
-        #   MAG_RP
-        #   MAGERR*
+        catname = self.pars.cross_match_catalog
+        prune_func = getattr(image.instrument_object, f'{catname}_prune_star_cat')
+        coord_func = getattr(image.instrument_object, f'{catname}_get_skycoords')
+        trans_func = getattr(image.instrument_object, f'{catname}_to_instrument_mag')
 
         # Extract from the catalog the range of Gaia colors that we want
         # to use (motivated by looking at Gaia H-R diagrams).
+        catdata = prune_func(catexp.data)
+        _logger.debug( f"{len(catdata)} catalog stars passed the pruning process." )
 
-        gaiaminbp_rp = 0.5
-        gaiamaxbp_rp = 3.0
-        col = catexp.data[ 'MAG_BP' ] - catexp.data[ 'MAG_RP' ]
-        catdata = catexp.data[ ( col >= gaiaminbp_rp ) & ( col <= gaiamaxbp_rp ) &
-                               ( catexp.data['STARPROB'] > 0.95 ) ]
-        _logger.debug( f"{len(catdata)} Gaia stars with {gaiaminbp_rp}<BP-RP<{gaiamaxbp_rp}" )
+        # transform the coordinates columns into astropy.coordinates.SkyCoord objects
+        catcoords = coord_func(catdata, image.mjd)
 
         # Pull out the source information. Use the aperture that the
         # source list has designated as the "infinite" aperture, so that
         # there's no need to add an aperture correction into the
         # calculated zeropoint.
-
         sourceflux, sourcefluxerr = sources.apfluxadu( apnum=sources.inf_aper_num )
         skycoords = wcs.wcs.pixel_to_world( sources.x, sources.y )
-        sourcera = skycoords.ra.deg
-        sourcedec = skycoords.dec.deg
 
         # Only use stars that are "good" and that have flux > 3*fluxerr
-
         wgood = ( sources.good
                   & ( ~np.isnan( sourceflux) ) & ( ~np.isnan( sourcefluxerr ) )
                   & ( sourceflux > 3.*sourcefluxerr ) )
-        sourcera = sourcera[wgood]
-        sourcedec = sourcedec[wgood]
+        skycoords = skycoords[wgood]
         sourceflux = sourceflux[wgood]
         sourcefluxerr = sourcefluxerr[wgood]
-        _logger.debug( f"{len(sourcera)} of {sources.num_sources} image sources "
+        _logger.debug( f"{len(skycoords)} of {sources.num_sources} image sources "
                        f"have flux in 'infinite' aperture >3σ" )
 
         # Match catalog excerpt RA/Dec to source RA/Dec
+        # ref https://docs.astropy.org/en/stable/coordinates/matchsep.html#matching-catalogs
+        max_sep = match_radius * u.arcsec
+        idx, d2d, d3d = skycoords.match_to_catalog_sky(catcoords)
+        sep_constraint = d2d < max_sep
+        skycoords = skycoords[sep_constraint]
+        sourceflux = sourceflux[sep_constraint]
+        sourcefluxerr = sourcefluxerr[sep_constraint]
 
-        catdex = []
-        sourcedex = []
-        # TODO : get rid of for loop and use array function
-        for i in range( len(catdata) ):
-            # TODO : the 360 to 0° issue that we have to deal with in a huge number of places
-            # Astropy.Longitude could come to our rescue?
-            dra = sourcera - catdata[i]['X_WORLD']
-            ddec = sourcedec - catdata[i]['Y_WORLD']
-            w = np.where( ( np.fabs( dra ) < match_radius/3600./np.cos( sourcedec ) )
-                          & ( np.fabs( ddec ) < match_radius/3600. ) )[0]
-            if len(w) == 0:
-                continue
-            else:
-                # If there are more than one, just pick the first one in the list
-                # that matches.
-                # TODO : think about whether we can do better.
-                catdex.append( i )
-                sourcedex.append( w[0] )
+        # make sure to use idx to index into the catalog
+        # which will now match the order of the sources
+        # catcoords = catcoords[idx[sep_constraint]]  # do we need this?
+        catdata = catdata[idx[sep_constraint]]
 
-        _logger.debug( f"Matched {len(catdex)} stars between Gaia and the image source list" )
+        _logger.debug( f"Matched {len(skycoords)} stars between catalog and the image source list" )
 
-        if len(catdex) < min_matches:
-            raise BadMatchException( f"Only matched {len(catdex)} stars between Gaia and the image source list, "
+        if len(skycoords) < min_matches:
+            raise BadMatchException( f"Only matched {len(skycoords)} stars between catalog and the image source list, "
                                      f"which is less than the minimum of {min_matches}" )
 
-        sourcera = sourcera[ sourcedex ]
-        sourcedec = sourcedec[ sourcedex ]
-        sourceflux = sourceflux[ sourcedex ]
-        sourcefluxerr = sourcefluxerr[ sourcedex ]
-        catdata = catdata[ catdex ]
-
         # Save this in the object for testing/evaluation purposes
-
-        self.sourcera = sourcera
-        self.sourcedec = sourcedec
+        self.sourcera = skycoords.ra
+        self.sourcedec = skycoords.dec
         self.sourceflux = sourceflux
         self.sourcefluxerr = sourcefluxerr
         self.catdata = catdata
 
         # At this point we have an Astropy Table in catdata with the
-        # catalog information, and we have the image source information
-        # arrays index-matched to catdata (sourcera, sourcedec,
-        # sourceflux, sourcefluxerr)
+        # catalog information, index matched to source information
+        # arrays (skycoords, sourceflux, sourcefluxerr)
 
-        # Pull the GaiaDR3 MAG_G to instrument filter transformation
-        # from the Instrument object.
-        transformed_mag, transformed_magerr = image.instrument_object.GaiaDR3_to_instrument_mag(
-            image.filter, catdata
-        )
+        # Pull the catalog to instrument filter transformation from the Instrument object.
+        transformed_mag, transformed_magerr = trans_func(image.filter, catdata)
 
         # instrumental_mag = -2.5*log10(flux)
-        # catalog_mag = transformed_mag(Gaia_Mag)
-        # catalog_mag = instrumental_mag + zp
+        # transformed_mag(catalog_mag) = instrumental_mag + zp
         # ...so...
-        # zp = transformed_mag(Gaia_Mag) + 2.5*log10( flux )
+        # zp = transformed_mag(catalog_mag) + 2.5*log10( flux )
         zps = transformed_mag + 2.5*np.log10( sourceflux )
         zpvars = transformed_magerr**2 + ( 1.0857362 * sourcefluxerr / sourceflux )**2
-
-        # trns = image.instrument_object.get_GaiaDR3_transformation( image.filter_short )
-        # fitorder = len(trns) - 1
-        #
-        # cols = catdata[ 'MAG_BP' ] - catdata[ 'MAG_RP' ]
-        # colerrs = np.sqrt( catdata[ 'MAGERR_BP' ]**2 + catdata[ 'MAGERR_RP' ]**2 )
-        # colton = cols[ :, np.newaxis ] ** np.arange( 0, fitorder+1, 1 )
-        # coltonminus1 = np.zeros( colton.shape )
-        # coltonminus1[ :, 1: ] = cols[ :, np.newaxis ] ** np.arange( 0, fitorder, 1 )
-        # coltonerr = np.zeros( colton.shape )
-        # coltonerr[ :, 1: ] = np.arange( 1, fitorder+1, 1 ) * coltonminus1[ :, 1: ] * colerrs.value[ :, np.newaxis ]
-        #
-        # zps = ( catdata['MAG_G'] - ( trns[ np.newaxis, : ] * colton ).sum( axis=1 )
-        #         + 2.5*np.log10( sourceflux ) )
-        # zpvars = ( catdata[ 'MAGERR_G' ]**2 +
-        #            ( trns[np.newaxis, : ] * coltonerr ).sum( axis=1 )**2 +
-        #            ( 1.0857362 * sourcefluxerr / sourceflux )**2
-        #           )
 
         # Save these values so that tests outside can pull them and interrogate them
         self.individual_zps = zps
         self.individual_zpvars = zpvars
-        self.individual_colors = catdata[ 'MAG_BP' ] - catdata[ 'MAG_RP' ]
-        self.individual_mags = catdata[ 'MAG_G' ]
+        # self.individual_colors = catdata[ 'MAG_BP' ] - catdata[ 'MAG_RP' ]
+        # self.individual_mags = catdata[ 'MAG_G' ]
 
         wgood = ( ~np.isnan( zps ) ) & ( ~np.isnan( zpvars ) )
         zps = zps[wgood]
@@ -294,7 +248,9 @@ class PhotCalibrator:
             if wcs is None:
                 raise ValueError( f'Cannot find a wcs for image {image.filepath}' )
 
-            catexp = fetch_GaiaDR3_excerpt(
+            catname = self.pars.cross_match_catalog
+            fetch_func = getattr(pipeline.catalog_tools, f'fetch_{catname}_excerpt')
+            catexp = fetch_func(
                 image=image,
                 minstars=self.pars.min_catalog_stars,
                 maxmags=self.pars.max_catalog_mag,
@@ -305,7 +261,7 @@ class PhotCalibrator:
             # Save for testing/evaluation purposes
             self.catexp = catexp
 
-            zpval, dzpval = self._solve_zp_GaiaDR3( image, sources, wcs, catexp )
+            zpval, dzpval = self._solve_zp( image, sources, wcs, catexp )
 
             # Add the aperture corrections
             apercors = []

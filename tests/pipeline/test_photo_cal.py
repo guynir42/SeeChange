@@ -21,7 +21,7 @@ def test_decam_photo_cal( decam_example_reduced_image_ds_with_zp, blocking_plots
 
         # This plot had too many points and it looked ugly.  So, pick out at most the top 100
         # low-dzp values
-        xvals = photomotor.individual_colors
+        xvals = photomotor.catdata['MAG_BP'] - photomotor.catdata['MAG_RP']
         yvals = photomotor.individual_zps
         dyvals = photomotor.individual_zpvars
 

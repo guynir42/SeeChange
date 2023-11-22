@@ -331,7 +331,7 @@ class DECam(Instrument):
         ----------
         filter: str
             The (short) filter name of the magnitudes we want.
-        catdata: dict or pandas.DataFrame or numpy.recarray
+        catdata: dict or pandas.DataFrame or numpy.recarray or astropy.Table
             A data structure that holds the relevant data,
             that can be indexed on the following keys:
             MAG_G, MAGERR_G, MAG_BP, MAGERR_BP, MAG_RP, MAGERR_RP

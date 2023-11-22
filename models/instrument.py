@@ -1,9 +1,6 @@
 import os
 import re
-import io
-import math
-import time
-import traceback
+import copy
 import pathlib
 import pytz
 from enum import Enum
@@ -15,6 +12,8 @@ import sqlalchemy as sa
 
 import astropy.time
 from astropy.io import fits
+import astropy.units as u
+from astropy.coordinates import SkyCoord
 
 from models.base import Base, AutoIDMixin, SmartSession
 
@@ -1197,6 +1196,91 @@ class Instrument:
         # Note that this 5 is an index, not the value... it's coincidence that the index number is 5.
         return 5
 
+    # Gaia specific methods
+    # For GaiaDR3, catdata has fields:
+    # X_WORLD, Y_WORLD, MAG_G, MAGERR_G, MAG_BP, MAGERR_BP, MAG_RP, MAGERR_RP, STARPROB
+
+    @classmethod
+    def GaiaDR3_prune_star_cat(cls, catdata):
+        """Choose only rows from a catalog that have stars.
+
+        Usually this is done by choosing a subset of the catalog
+        data with reasonable colors, and with a high enough STARPROB.
+        We also remove rows that have NaN values in any of the
+        critical columns (coordinates or magnitudes)
+
+        Parameters
+        ----------
+        catdata: dict or pandas.DataFrame or numpy.recarray or astropy.Table
+            Must be a data structure with the following keys:
+            MAG_G, MAGERR_G, MAG_BP, MAGERR_BP, MAG_RP, MAGERR_RP, STARPROB
+            The data structure, when indexed on those keys, should
+            return a 1D numpy array.
+
+        Returns
+        -------
+        Returns a copy of the input data structure, with only the
+        rows that are likely to be stars.
+        """
+        output = copy.deepcopy(catdata)
+
+        # color cut
+        gaiaminbp_rp = 0.5
+        gaiamaxbp_rp = 3.0
+        color = catdata['MAG_BP'] - catdata['MAG_RP']
+        dex = (color >= gaiaminbp_rp) & (color <= gaiamaxbp_rp)
+        dex &= catdata['STARPROB'] > 0.95
+        dex &= ~np.isnan(catdata['MAG_G'])
+        dex &= ~np.isnan(color)
+        dex &= ~np.isnan(catdata['X_WORLD'])
+        dex &= ~np.isnan(catdata['Y_WORLD'])
+        dex &= ~np.isnan(catdata['PMRA'])
+        dex &= ~np.isnan(catdata['PMDEC'])
+        # TODO: should we also look for FLAGS??
+
+        if isinstance(output, dict):
+            for key, value in output.items():
+                output[key] = value[dex]
+        else:
+            output = output[dex]
+
+        return output
+
+    @classmethod
+    def GaiaDR3_get_skycoords(cls, catdata, image_mjd=None):
+        """Use the RA/Dec from a Gaia catalog data array to initialize an array of SkyCoord objects
+
+        Parameters
+        ----------
+        catdata: dict or pandas.DataFrame or numpy.recarray or astropy.Table
+            Must be a data structure with the following keys:
+            X_WORLD, Y_WORLD, PMRA, PMDEC,
+            The data structure, when indexed on those keys, should
+            return a 1D numpy array.
+        image_mjd: float, optional
+            If given, will adjust the coordinates according to proper
+            motion during the time between the Gaia epoch and the image MJD.
+
+        Returns
+        -------
+        coords: astropy.coordinates.SkyCoord
+            An array of SkyCoord objects
+        """
+        coords = SkyCoord(
+            ra=catdata['X_WORLD'] * u.deg,
+            dec=catdata['Y_WORLD'] * u.deg,
+            # distance=Distance(parallax=wd_cat['parallax'][i] * u.mas) if wd_cat['parallax'][i] > 0 else None,
+            pm_ra_cosdec=catdata['PMRA'] * u.mas / u.yr,
+            pm_dec=catdata['PMDEC'] * u.mas / u.yr,
+            obstime=astropy.time.Time('2016.0', format='jyear', scale='tdb'),
+        )
+        # 2016.0 is the reference epoch for Gaia DR3 (TODO: should be 2015.5?)
+        # coordinate transform ref:
+        # https://docs.astropy.org/en/stable/coordinates/apply_space_motion.html#example-use-velocity-to-compute-sky-position-at-different-epochs
+        image_time = astropy.time.Time(image_mjd, format='mjd', scale='tdb')
+        coords = coords.apply_space_motion(image_time)
+
+        return coords
 
     @classmethod
     def GaiaDR3_to_instrument_mag( cls, filter, catdata ):
@@ -1208,7 +1292,7 @@ class Instrument:
         ----------
         filter: str
             The (short) filter name of the magnitudes we want.
-        catdata: dict or pandas.DataFrame or numpy.recarray
+        catdata: dict or pandas.DataFrame or numpy.recarray or astropy.Table
             A data structure that holds the relevant data,
             that can be indexed on the following keys:
             MAG_G, MAGERR_G, MAG_BP, MAGERR_BP, MAG_RP, MAGERR_RP
