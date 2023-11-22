@@ -1,18 +1,15 @@
 import os
-import io
 import pathlib
 import math
 import time
-import random
 import collections
-import subprocess
 
 import astropy.table
-import astropy.io
 from astropy.wcs import WCS
 
 import healpy
 
+import improc.scamp
 from util import ldac
 from util.exceptions import CatalogNotFoundError, SubprocessFailure, BadMatchException
 from models.base import SmartSession, FileOnDiskMixin, _logger
@@ -224,7 +221,8 @@ class AstroCalibrator:
             f"SELECT ra, dec, ra_error, dec_error, pm, pmra, pmdec, "
             f"       phot_g_mean_mag, phot_g_mean_flux_over_error, "
             f"       phot_bp_mean_mag, phot_bp_mean_flux_over_error, "
-            f"       phot_rp_mean_mag, phot_rp_mean_flux_over_error "
+            f"       phot_rp_mean_mag, phot_rp_mean_flux_over_error, "
+            f"       classprob_dsc_combmod_star "
             f"FROM gaia_dr3.gaia_source "
             f"WHERE ra>={ralow} AND ra<={rahigh} AND dec>={declow} AND dec<={dechigh} "
         )
@@ -271,7 +269,8 @@ class AstroCalibrator:
                 "phot_rp_mean_flux_over_error": "MAGERR_RP",
                 "pm": "PM",
                 "pmra": "PMRA",
-                "pmdec": "PMDEC" },
+                "pmdec": "PMDEC",
+                "classprob_dsc_combmod_star": "STARPROB" },
             inplace=True
         )
         # Make the errors actual magnitude errors.  (1.0857 = 2.5/ln(10))
@@ -306,9 +305,8 @@ class AstroCalibrator:
 
     # ----------------------------------------------------------------------
 
-    def fetch_GaiaDR3_excerpt( self, image, maxmags=(22.,), magrange=4.,
-                                numstars=200, session=None, onlycached=False ):
-        """Search catalog excerpts for a compatible GaiaDR3 excerpt; if not found, make one.
+    def fetch_GaiaDR3_excerpt( self, image, maxmags=None, session=None, onlycached=False ):
+        """Search catalog exertps for a compatible GaiaDR3 excerpt; if not found, make one.
 
         If multiple matching catalogs are found, will return the first
         one that the database happens to return.  (TODO: perhaps return
@@ -335,6 +333,12 @@ class AstroCalibrator:
             expanded by 5% on all sides.  Any catalog excerpt that fully
             includes that footprint is a potential match.
 
+          maxmags: sequence of float, optional
+            The maximum magnitudes to try pulling, using them in order
+            until we get a catalog excerpt with at least
+            self.pars.min_catalog_stars stars.  If None, will use
+            self.pars.max_catalog_mag
+
           session : sqlalchemy.orm.session.Session, optional
             If not None, use this session for communication with the
             database; otherwise, will create and close a new
@@ -350,7 +354,8 @@ class AstroCalibrator:
 
         """
 
-        maxmags = self.pars.max_catalog_mag
+        if maxmags is None:
+            maxmags = self.pars.max_catalog_mag
         magrange = self.pars.mag_range_catalog
         numstars = self.pars.min_catalog_stars
 
@@ -453,108 +458,25 @@ class AstroCalibrator:
             raise ValueError( f'_solve_wcs_scamp requires a fitsldac catalog excerpt, not {catexp.format}' )
         if sources.format != 'sextrfits':
             raise ValueError( f'_solve_wcs_scamp requires a sextrffits source list, not {sources.format}' )
+        if catexp.origin != 'GaiaDR3':
+            raise NotImplementedError( f"Don't know what magnitude key to choose for astrometric reference "
+                                       f"{catexp.origin}; only GaiaDR3 is implemented." )
 
         sourcefile = pathlib.Path( sources.get_fullpath() )
         catfile = pathlib.Path( catexp.get_fullpath() )
-        barf = ''.join( random.choices( 'abcdefghijlkmnopqrstuvwxyz', k=10 ) )
-        xmlfile = pathlib.Path( FileOnDiskMixin.temp_path ) / f'scamp_{barf}.xml'
-        # Scamp will have written a file stripping .fits from sourcefile and adding .head
-        # I'm sad that there's not an option to scamp to explicitly specify this output filename.
-        headfile = sourcefile.parent / f"{sourcefile.name[:-5]}.head"
 
-        max_nmatch = 0
-        if sources.num_sources > self.pars.max_sources_to_use:
-            max_nmatch = self.pars.max_sources_to_use
+        wcs = improc.scamp._solve_wcs_scamp( sourcefile, catfile, crossid_rad=crossid_rad,
+                                             max_sources_to_use=self.pars.max_sources_to_use,
+                                             min_frac_matched=self.pars.min_frac_matched,
+                                             min_matched=self.pars.min_matched_stars,
+                                             max_arcsec_residual=self.pars.max_arcsec_residual,
+                                             magkey='MAG_G', magerrkey='MAGERR_G' )
 
-        try:
-            # Something I don't know : does scamp only use MATCH_NMAX
-            # stars for the whole astrometric solution?  Back in the day
-            # (we're talking ca. 1999 or 2000) when I wrote my own
-            # transformation software, I had a parameter that allowed it
-            # to use a subset of the list to get an initial match
-            # (because that's an N² process), but then once I had that
-            # initial match I used it to match all of the stars on the
-            # list, and then used all of those stars on the list in the
-            # solution.  I don't know if scamp works that way, or if it
-            # just does the entire astrometric solution on MATCH_NMAX
-            # stars.  The documentation is silent on this....
-            command = [ 'scamp', sourcefile,
-                        '-ASTREF_CATALOG', 'FILE',
-                        '-ASTREFCAT_NAME', catfile,
-                        '-MATCH', 'Y',
-                        '-MATCH_NMAX', str( max_nmatch ),
-                        '-SOLVE_PHOTOM', 'N',
-                        '-CHECKPLOT_DEV', 'NULL',
-                        '-CHECKPLOT_TYPE', 'NONE',
-                        '-CHECKIMAGE_TYPE', 'NONE',
-                        '-SOLVE_ASTROM', 'Y',
-                        '-PROJECTION_TYPE', 'TPV',
-                        '-WRITE_XML', 'Y',
-                        '-XML_NAME', xmlfile,
-                        '-CROSSID_RADIUS', str( crossid_rad )
-                       ]
+        # Update image.raw_header with the new wcs.  Process this
+        # through astropy.wcs.WCS to make sure everything is copacetic.
+        image.raw_header.extend( wcs.to_header(), update=True )
 
-            # TODO : use a different gaia magnitude for different image
-            # filters (see Issue #107)
-
-            t0 = time.perf_counter()
-            if catexp.origin == 'GaiaDR3':
-                command.extend( [ '-ASTREFMAG_KEY', 'MAG_G', '-ASTREFMAGERR_KEY', 'MAGERR_G' ] )
-            else:
-                raise NotImplementedError( f"Don't know what magnitude key to choose for astrometric reference "
-                                           f"{catexp.origin}; only GaiaDR3 is implemented." )
-
-            res = subprocess.run( command, capture_output=True )
-            t1 = time.perf_counter()
-            _logger.debug( f"Scamp with {sources.num_sources} sources and {catexp.num_items} catalog stars "
-                           f"(with match_nmax={max_nmatch}) took {t1-t0:.2f} seconds" )
-            if res.returncode != 0:
-                raise SubprocessFailure( res )
-
-            scampstat = astropy.io.votable.parse( xmlfile ).get_table_by_index( 1 )
-            nmatch = scampstat.array["AstromNDets_Reference"][0]
-            sig0 = scampstat.array["AstromSigma_Reference"][0][0]
-            sig1 = scampstat.array["AstromSigma_Reference"][0][1]
-            infostr = ( f"Scamp on {pathlib.Path(catfile).name} to catalog with nominal magnitude "
-                        f"range {catexp.minmag}-{catexp.maxmag} yielded {nmatch} matches out of "
-                        f"{len(sources.data)} sources and {len(catexp.data)} catalog objects, "
-                        f"with position sigmas of ({sig0:.2f}\", {sig1:.2f}\")" )
-            if not ( ( nmatch > self.pars.min_frac_matched * min( len(sources.data), len(catexp.data ) ) )
-                     and ( nmatch > self.pars.min_matched_stars )
-                     and ( ( sig0 + sig1 ) / 2. <= self.pars.max_arcsec_residual )
-                    ):
-                infostr += ( f", which isn't good enough.\n"
-                             f"Scamp command: {res.args}\n"
-                             f"-------------\nScamp stderr:\n{res.stderr.decode('utf-8')}\n"
-                             f"-------------\nScamp stdout:\n{res.stdout.decode('utf-8')}\n" )
-                # A warning not an error in case something outside is iterating
-                _logger.warning( infostr )
-                raise BadMatchException( infostr )
-
-            _logger.info( infostr )
-
-            # Move the header information written in the ".head" file
-            # scamp created to the image header, and to a WCS object
-            # we're going to return.
-            with open( headfile ) as ifp:
-                hdrtext = ifp.read()
-            # The FITS spec says ASCII, but Emmanuel put a non-ASCII latin-1
-            # character in his comments... and astropy.io.fits.Header is
-            # anal about only ASCII.  Sigh.
-            hdrtext = hdrtext.replace( 'é', 'e' )
-            strio = io.StringIO( hdrtext )
-            hdr = astropy.io.fits.Header.fromfile( strio, sep='\n', padding=False, endcard=False )
-
-            # Update image.raw_header with the new wcs.  Process this
-            # through astropy.wcs.WCS to make sure everything is copacetic.
-            wcs = WCS( hdr )
-            image.raw_header.extend( wcs.to_header(), update=True )
-
-            return wcs
-
-        finally:
-            xmlfile.unlink( missing_ok=True )
-            headfile.unlink( missing_ok=True )
+        return wcs
 
     # ----------------------------------------------------------------------
 
@@ -574,11 +496,7 @@ class AstroCalibrator:
         success = False
         for maxmag in self.pars.max_catalog_mag:
             try:
-                catexp = self.fetch_GaiaDR3_excerpt( image,
-                                                     maxmags=(maxmag,),
-                                                     magrange=self.pars.mag_range_catalog,
-                                                     numstars=self.pars.min_catalog_stars,
-                                                     session=session )
+                catexp = self.fetch_GaiaDR3_excerpt( image, maxmags=(maxmag,), session=session )
             except CatalogNotFoundError as ex:
                 _logger.info( f"Failed to get a catalog excerpt with enough stars with maxmag {maxmag}, "
                               f"trying the next one." )

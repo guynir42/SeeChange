@@ -7,7 +7,9 @@ import uuid
 import wget
 import shutil
 import pathlib
+import hashlib
 import yaml
+import subprocess
 
 import numpy as np
 
@@ -15,6 +17,7 @@ import sqlalchemy as sa
 
 from astropy.time import Time
 from astropy.io import fits, votable
+from astropy.wcs import WCS
 
 from util.config import Config
 from models.base import FileOnDiskMixin, SmartSession, CODE_ROOT, _logger
@@ -30,8 +33,12 @@ from models.psf import PSF
 from pipeline.data_store import DataStore
 from pipeline.preprocessing import Preprocessor
 from pipeline.detection import Detector
+from pipeline.astro_cal import AstroCalibrator
+from pipeline.photo_cal import PhotCalibrator
 from util import config
 from util.archive import Archive
+from util.retrydownload import retry_download
+from util.exceptions import SubprocessFailure
 
 
 # idea taken from: https://shay-palachy.medium.com/temp-environment-variables-for-pytest-7253230bd777
@@ -63,15 +70,24 @@ def tests_setup_and_teardown():
         session.commit()
 
 
-@pytest.fixture
-def headless_plots():
+@pytest.fixture(scope="session")
+def blocking_plots():
     import matplotlib
-
     backend = matplotlib.get_backend()
-    # ref: https://stackoverflow.com/questions/15713279/calling-pylab-savefig-without-display-in-ipython
-    matplotlib.use("Agg")
 
-    yield None
+    # make sure there's a folder to put the plots in
+    if not os.path.isdir(os.path.join(CODE_ROOT, 'tests/plots')):
+        os.makedirs(os.path.join(CODE_ROOT, 'tests/plots'))
+
+    inter = os.getenv('INTERACTIVE', False)
+    if isinstance(inter, str):
+        inter = inter.lower() in ('true', '1')
+
+    if not inter:  # for non-interactive plots, use headless plots that just save to disk
+        # ref: https://stackoverflow.com/questions/15713279/calling-pylab-savefig-without-display-in-ipython
+        matplotlib.use("Agg")
+
+    yield inter
 
     matplotlib.use(backend)
 
@@ -117,6 +133,7 @@ def provenance_base(code_version):
     )
 
     with SmartSession() as session:
+        p.code_version=session.merge(code_version)
         session.add(p)
         session.commit()
         session.refresh(p)
@@ -133,10 +150,10 @@ def provenance_base(code_version):
 
 
 @pytest.fixture
-def provenance_extra(code_version, provenance_base):
+def provenance_extra( provenance_base ):
     p = Provenance(
         process="test_base_process",
-        code_version=code_version,
+        code_version=provenance_base.code_version,
         parameters={"test_key": uuid.uuid4().hex},
         upstreams=[provenance_base],
         is_testing=True,
@@ -159,29 +176,24 @@ def provenance_extra(code_version, provenance_base):
         warnings.warn(str(e))
 
 
-@pytest.fixture
-def exposure_factory():
-    def factory():
-        e = Exposure(
-            filepath=f"Demo_test_{rnd_str(5)}.fits",
-            section_id=0,
-            exp_time=np.random.randint(1, 4) * 10,  # 10 to 40 seconds
-            mjd=np.random.uniform(58000, 58500),
-            filter=np.random.choice(list('grizY')),
-            ra=np.random.uniform(0, 360),
-            dec=np.random.uniform(-90, 90),
-            project='foo',
-            target=rnd_str(6),
-            nofile=True,
-            md5sum=uuid.uuid4(),  # this should be done when we clean up the exposure factory a little more
-        )
-        return e
-
-    return factory
+def make_new_exposure():
+    e = Exposure(
+        filepath=f"Demo_test_{rnd_str(5)}.fits",
+        section_id=0,
+        exp_time=np.random.randint(1, 4) * 10,  # 10 to 40 seconds
+        mjd=np.random.uniform(58000, 58500),
+        filter=np.random.choice(list('grizY')),
+        ra=np.random.uniform(0, 360),
+        dec=np.random.uniform(-90, 90),
+        project='foo',
+        target=rnd_str(6),
+        nofile=True,
+        md5sum=uuid.uuid4(),  # this should be done when we clean up the exposure factory a little more
+    )
+    return e
 
 
-def make_exposure_file(exposure):
-    fullname = None
+def add_file_to_exposure(exposure):
     fullname = exposure.get_fullpath()
     open(fullname, 'a').close()
     exposure.nofile = False
@@ -202,25 +214,25 @@ def make_exposure_file(exposure):
 
 
 @pytest.fixture
-def exposure(exposure_factory):
-    e = exposure_factory()
-    make_exposure_file(e)
+def exposure():
+    e = make_new_exposure()
+    add_file_to_exposure(e)
     yield e
 
 
 # idea taken from: https://github.com/pytest-dev/pytest/issues/2424#issuecomment-333387206
-def generate_exposure():
+def generate_exposure_fixture():
     @pytest.fixture
-    def new_exposure(exposure_factory):
-        e = exposure_factory()
-        make_exposure_file(e)
+    def new_exposure():
+        e = make_new_exposure()
+        add_file_to_exposure(e)
         yield e
 
     return new_exposure
 
 
 def inject_exposure_fixture(name):
-    globals()[name] = generate_exposure()
+    globals()[name] = generate_exposure_fixture()
 
 
 for i in range(2, 10):
@@ -228,11 +240,11 @@ for i in range(2, 10):
 
 
 @pytest.fixture
-def exposure_filter_array(exposure_factory):
-    e = exposure_factory()
+def exposure_filter_array():
+    e = make_new_exposure()
     e.filter = None
     e.filter_array = ['r', 'g', 'r', 'i']
-    make_exposure_file(e)
+    add_file_to_exposure(e)
     yield e
 
 
@@ -258,9 +270,11 @@ def get_decam_example_file():
         os.symlink( cachedfilename, filename )
     return filename
 
+
 @pytest.fixture(scope="session")
 def decam_example_file():
     yield get_decam_example_file()
+
 
 @pytest.fixture
 def decam_example_exposure(decam_example_file):
@@ -279,6 +293,7 @@ def decam_example_exposure(decam_example_file):
     with SmartSession() as session:
         session.execute(sa.delete(Exposure).where(Exposure.filepath == decam_example_file_short))
         session.commit()
+
 
 @pytest.fixture
 def decam_example_raw_image( decam_example_exposure ):
@@ -352,7 +367,7 @@ def decam_example_reduced_image_ds( code_version, decam_example_exposure ):
             prepper = Preprocessor()
             ds = prepper.run( exposure, 'N1', session=session )
             try:
-                det = Detector()
+                det = Detector( measure_psf=True )
                 ds = det.run( ds )
                 ds.save_and_commit()
 
@@ -360,7 +375,7 @@ def decam_example_reduced_image_ds( code_version, decam_example_exposure ):
                 for obj in [ ds.image, ds.sources, ds.psf ]:
                     paths.extend( obj.get_fullpath( as_list=True ) )
 
-                extextract = re.compile( '^(?P<base>.*)(?P<extension>\..*\.fits|\.psf|\.psf.xml)$' )
+                extextract = re.compile( '^(?P<base>.*)(?P<extension>\\..*\\.fits|\\.psf|\\.psf.xml)$' )
                 extscopied = set()
                 for src in paths:
                     match = extextract.search( src )
@@ -434,6 +449,82 @@ def decam_example_reduced_image_ds( code_version, decam_example_exposure ):
     finally:
         for f in copiesmade:
             f.unlink( missing_ok=True )
+
+# TODO : cache the results of this just like in
+# decam_example_reduced_image_ds so they don't have to be regenerated
+# every time this fixture is used.
+@pytest.fixture
+def decam_example_reduced_image_ds_with_wcs( decam_example_reduced_image_ds ):
+    ds = decam_example_reduced_image_ds
+    with open( ds.image.get_fullpath()[0], "rb" ) as ifp:
+        md5 = hashlib.md5()
+        md5.update( ifp.read() )
+        origmd5 = uuid.UUID( md5.hexdigest() )
+
+    xvals = [ 0, 0, 2047, 2047 ]
+    yvals = [ 0, 4095, 0, 4095 ]
+    origwcs = WCS( ds.image.raw_header )
+
+    astrometor = AstroCalibrator( catalog='GaiaDR3', method='scamp', max_mag=[22.], mag_range=4.,
+                                  min_stars=50, max_resid=0.15, crossid_radius=[2.0],
+                                  min_frac_matched=0.1, min_matched_stars=10 )
+    ds = astrometor.run( ds )
+
+    return ds, origwcs, xvals, yvals, origmd5
+
+    # Don't need to do any cleaning up, because no files were written
+    # doing the WCS (it's all database), and the
+    # decam_example_reduced_image_ds is going to do a
+    # ds.delete_everything()
+
+@pytest.fixture
+def decam_example_reduced_image_ds_with_zp( decam_example_reduced_image_ds_with_wcs ):
+    ds = decam_example_reduced_image_ds_with_wcs[0]
+    ds.save_and_commit()
+    photomotor = PhotCalibrator( cross_match_catalog='GaiaDR3' )
+    ds = photomotor.run( ds )
+
+    return ds, photomotor
+
+@pytest.fixture
+def ref_for_decam_example_image( provenance_base ):
+    datadir = pathlib.Path( FileOnDiskMixin.local_path ) / 'test_data/DECam_examples'
+    filebase = 'DECaPS-West_20220112.g.32'
+
+    urlmap = { '.image.fits': '.fits.fz',
+               '.weight.fits': '.weight.fits.fz',
+               '.flags.fits': '.bpm.fits.fz' }
+    for ext in [ '.image.fits', '.weight.fits', '.flags.fits' ]:
+        path = datadir / f'{filebase}{ext}'
+        cachedpath = datadir / f'{filebase}{ext}_cached'
+        fzpath = datadir / f'{filebase}{ext}_cached.fz'
+        if cachedpath.is_file():
+            _logger.info( f"{path} exists, not redownloading." )
+        else:
+            url = ( f'https://portal.nersc.gov/cfs/m2218/decat/decat/templatecache/DECaPS-West_20220112.g/'
+                    f'{filebase}{urlmap[ext]}' )
+            retry_download( url, fzpath )
+            res = subprocess.run( [ 'funpack', '-D', fzpath ] )
+            if res.returncode != 0:
+                raise SubprocessFailure( res )
+        shutil.copy2( cachedpath, path )
+
+    prov = provenance_base
+
+    with open( datadir / f'{filebase}.image.yaml' ) as ifp:
+        refyaml = yaml.safe_load( ifp )
+    image = Image( **refyaml )
+    image.provenance = prov
+    image.filepath = f'test_data/DECam_examples/{filebase}'
+
+    yield image
+
+    # Just in case the image got added to the database:
+    image.delete_from_disk_and_database()
+
+    # And just in case the image was added to the database with a different name:
+    for ext in [ '.image.fits', '.weight.fits', '.flags.fits' ]:
+        ( datadir / f'{filebase}{ext}' ).unlink( missing_ok=True )
 
 @pytest.fixture
 def decam_small_image(decam_example_raw_image):
@@ -523,12 +614,12 @@ def demo_image(exposure):
 
 
 # idea taken from: https://github.com/pytest-dev/pytest/issues/2424#issuecomment-333387206
-def generate_image():
+def generate_image_fixture():
 
     @pytest.fixture
-    def new_image(exposure_factory):
-        exp = exposure_factory()
-        make_exposure_file(exp)
+    def new_image():
+        exp = make_new_exposure()
+        add_file_to_exposure(exp)
         exp.update_instrument()
         im = Image.from_exposure(exp, section_id=0)
 
@@ -545,7 +636,7 @@ def generate_image():
 
 
 def inject_demo_image_fixture(image_name):
-    globals()[image_name] = generate_image()
+    globals()[image_name] = generate_image_fixture()
 
 
 for i in range(2, 10):
@@ -553,7 +644,7 @@ for i in range(2, 10):
 
 
 @pytest.fixture
-def reference_entry(exposure_factory, provenance_base, provenance_extra):
+def reference_entry(provenance_base, provenance_extra):
     ref_entry = None
     filter = np.random.choice(list('grizY'))
     target = rnd_str(6)
@@ -562,7 +653,7 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
     images = []
 
     for i in range(5):
-        exp = exposure_factory()
+        exp = make_new_exposure()
 
         exp.filter = filter
         exp.target = target
@@ -579,7 +670,6 @@ def reference_entry(exposure_factory, provenance_base, provenance_extra):
         im.save()
         images.append(im)
 
-    # TODO: replace with a "from_images" method?
     ref = Image.from_images(images)
     ref.data = np.mean(np.array([im.data for im in images]), axis=0)
 
@@ -706,6 +796,7 @@ def decam_default_calibrators():
             df.delete_from_disk_and_database( session=session, commit=False )
         session.commit()
 
+
 @pytest.fixture
 def example_image_with_sources_and_psf_filenames():
     image = pathlib.Path( FileOnDiskMixin.local_path ) / "test_data/test_ztf_image.fits"
@@ -715,6 +806,7 @@ def example_image_with_sources_and_psf_filenames():
     psf = pathlib.Path( FileOnDiskMixin.local_path ) / "test_data/test_ztf_image.psf"
     psfxml = pathlib.Path( FileOnDiskMixin.local_path ) / "test_data/test_ztf_image.psf.xml"
     return image, weight, flags, sources, psf, psfxml
+
 
 @pytest.fixture
 def example_ds_with_sources_and_psf( example_image_with_sources_and_psf_filenames ):
@@ -748,10 +840,12 @@ def example_ds_with_sources_and_psf( example_image_with_sources_and_psf_filename
 
     return ds
 
+
 @pytest.fixture
 def example_source_list_filename( example_image_with_sources_and_psf_filenames ):
     image, weight, flags, sources, psf, psfxml = example_image_with_sources_and_psf_filenames
     return sources
+
 
 @pytest.fixture
 def example_psfex_psf_files():
@@ -760,5 +854,5 @@ def example_psfex_psf_files():
     psfxmlpath = ( pathlib.Path( FileOnDiskMixin.local_path )
                    / "test_data/ztf_20190317307639_000712_zg_io.083_sources.psf.xml" )
     if not ( psfpath.is_file() and psfxmlpath.is_file() ):
-        raise FileNotFoundErrro( f"Can't read at least one of {psfpath}, {psfxmlpath}" )
+        raise FileNotFoundError( f"Can't read at least one of {psfpath}, {psfxmlpath}" )
     return psfpath, psfxmlpath
