@@ -3,7 +3,6 @@ import math
 import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.functions import coalesce
@@ -17,7 +16,16 @@ import astropy.units as u
 
 from pipeline.utils import read_fits_image, save_fits_image_file
 
-from models.base import SeeChangeBase, Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners
+from models.base import (
+    Base,
+    SeeChangeBase,
+    AutoIDMixin,
+    FileOnDiskMixin,
+    SpatiallyIndexed,
+    FourCorners,
+    HasBitFlagBadness,
+    _logger
+)
 from models.exposure import Exposure
 from models.instrument import get_instrument_instance
 from models.psf import PSF
@@ -47,7 +55,7 @@ image_source_self_association_table = sa.Table(
 )
 
 
-class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
+class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, HasBitFlagBadness):
 
     __tablename__ = 'images'
 
@@ -105,76 +113,110 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         )
     )
 
-    ref_image_id = sa.Column(
-        sa.ForeignKey('images.id', ondelete="CASCADE", name='images_ref_image_id_fkey'),
+    ref_entry_id = sa.Column(
+        sa.ForeignKey('reference_images.id', ondelete="CASCADE", name='images_ref_entry_id_fkey'),
         nullable=True,
         index=True,
         doc=(
-            "ID of the reference image used to produce a difference image. "
+            "ID of the reference entry used to produce a difference image. "
             "Only set for difference images. This usually refers to a coadd image. "
         )
     )
 
-    ref_image = orm.relationship(
-        'Image',
-        cascade='save-update, merge, refresh-expire, expunge',
-        primaryjoin='images.c.ref_image_id == images.c.id',
-        uselist=False,
-        remote_side='Image.id',
-        doc=(
-            "Reference image used to produce a difference image. "
-            "Only set for difference images. This usually refers to a coadd image. "
-        )
-    )
+    # ref_image_id = sa.Column(
+    #     sa.ForeignKey('images.id', ondelete="CASCADE", name='images_ref_image_id_fkey'),
+    #     nullable=True,
+    #     index=True,
+    #     doc=(
+    #         "ID of the reference image used to produce a difference image. "
+    #         "Only set for difference images. This usually refers to a coadd image. "
+    #     )
+    # )
+    #
+    # ref_image = orm.relationship(
+    #     'Image',
+    #     cascade='save-update, merge, refresh-expire, expunge',
+    #     primaryjoin='images.c.ref_image_id == images.c.id',
+    #     uselist=False,
+    #     remote_side='Image.id',
+    #     doc=(
+    #         "Reference image used to produce a difference image. "
+    #         "Only set for difference images. This usually refers to a coadd image. "
+    #     )
+    # )
+    #
+    # new_image_id = sa.Column(
+    #     sa.ForeignKey('images.id', ondelete="CASCADE", name='images_new_image_id_fkey'),
+    #     nullable=True,
+    #     index=True,
+    #     doc=(
+    #         "ID of the new image used to produce a difference image. "
+    #         "Only set for difference images. This usually refers to a regular image. "
+    #     )
+    # )
+    #
+    # new_image = orm.relationship(
+    #     'Image',
+    #     cascade='save-update, merge, refresh-expire, expunge',
+    #     primaryjoin='images.c.new_image_id == images.c.id',
+    #     uselist=False,
+    #     remote_side='Image.id',
+    #     doc=(
+    #         "New image used to produce a difference image. "
+    #         "Only set for difference images. This usually refers to a regular image. "
+    #     )
+    # )
 
-    new_image_id = sa.Column(
-        sa.ForeignKey('images.id', ondelete="CASCADE", name='images_new_image_id_fkey'),
-        nullable=True,
+    # @property
+    # def is_coadd(self):
+    #     try:
+    #         if self.source_images is not None and len(self.source_images) > 1:
+    #             return True
+    #     except DetachedInstanceError:
+    #         if not self.is_sub and self.exposure_id is None:
+    #             return True
+    #
+    #     return False
+    #
+    # @hybrid_property
+    # def is_sub(self):
+    #     try:
+    #         if self.ref_image is not None and self.new_image is not None:
+    #             return True
+    #     except DetachedInstanceError:
+    #         if self.ref_image_id is not None and self.new_image_id is not None:
+    #             return True
+    #
+    #     return False
+    #
+    # @is_sub.inplace.expression
+    # @classmethod
+    # def is_sub(cls):
+    #     return cls.ref_image_id.isnot(None) & cls.new_image_id.isnot(None)
+
+    is_sub = sa.Column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
         index=True,
-        doc=(
-            "ID of the new image used to produce a difference image. "
-            "Only set for difference images. This usually refers to a regular image. "
-        )
+        doc='Is this a subtraction image.'
     )
 
-    new_image = orm.relationship(
-        'Image',
-        cascade='save-update, merge, refresh-expire, expunge',
-        primaryjoin='images.c.new_image_id == images.c.id',
-        uselist=False,
-        remote_side='Image.id',
-        doc=(
-            "New image used to produce a difference image. "
-            "Only set for difference images. This usually refers to a regular image. "
-        )
+    is_coadd = sa.Column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        index=True,
+        doc='Is this image made by stacking multiple images.'
     )
 
-    @property
-    def is_coadd(self):
-        try:
-            if self.source_images is not None and len(self.source_images) > 0:
-                return True
-        except DetachedInstanceError:
-            if not self.is_sub and self.exposure_id is None:
-                return True
-
-        return False
-
-    @hybrid_property
-    def is_sub(self):
-        try:
-            if self.ref_image is not None and self.new_image is not None:
-                return True
-        except DetachedInstanceError:
-            if self.ref_image_id is not None and self.new_image_id is not None:
-                return True
-
-        return False
-
-    @is_sub.inplace.expression
-    @classmethod
-    def is_sub(cls):
-        return cls.ref_image_id.isnot(None) & cls.new_image_id.isnot(None)
+    is_warped = sa.Column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        index=True,
+        doc='Has this image been warped to align with a reference.'
+    )
 
     _type = sa.Column(
         sa.SMALLINT,
@@ -340,285 +382,66 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         doc=( 'Has a WCS been solved for this image.  This should be set to true after astro_cal '
               'has been run, or for images (like subtractions) that are derived from other images '
               'with complete WCSes that can be copied.  This does not promise that the "latest and '
-              'greatest" astrometric calibration is what\'s in the image header, only that there is '
+              'greatest" astrometric calibration is what is in the image header, only that there is '
               'one from the pipeline that should be good for visual identification of positions.' )
     )
 
-    _bitflag = sa.Column(
-        sa.BIGINT,
+    sky_sub_done = sa.Column(
+        sa.BOOLEAN,
         nullable=False,
-        default=0,
-        index=True,
-        doc='Bitflag for this image. Good images have a bitflag of 0. '
-            'Bad images are each bad in their own way (i.e., have different bits set). '
-            'The bitflag will include this value, bit-wise-or-ed with the bitflags of the '
-            'exposure or images used to make this image. '
+        default=False,
+        index=False,
+        doc='Has the sky been subtracted from this image. '
     )
 
-    @hybrid_property
-    def bitflag(self):
-        bf = self._bitflag
-        if self.source_images is not None and len(self.source_images) > 0:
-            for img in self.source_images:
-                if img.bitflag is not None:
-                    bf |= img.bitflag
-        elif self.ref_image is not None and self.new_image is not None:
-            if self.ref_image.bitflag is not None:
-                bf |= self.ref_image.bitflag
-            if self.new_image.bitflag is not None:
-                bf |= self.new_image.bitflag
-        elif self.exposure is not None:
-            if self.exposure.bitflag is not None:
-                bf |= self.exposure.bitflag
-        else:
-            raise RuntimeError('Cannot get bitflag without source images, ref_image, new_image, or exposure.')
-
-        return bf
-
-    @bitflag.inplace.expression
-    @classmethod
-    def bitflag(cls):
-
-        class ImTable:
-            """
-            This is a helper class that defines the recursive relationship
-            between Image and its parents. Some images will have an Exposure parent,
-            some will have a ref/new pair of images as parents, and some will have
-            a list of source images as parents. Each instance of ImTable will contain
-            aliased versions of the Image and Exposure tables, and will have a role
-            to play (is it a new image, a ref image, a source image, etc).
-            The role helps tell the following code how to join the SQL tables together
-            when we construct the select expression.
-
-
-            """
-            def __init__(self, role):
-                """
-                Create a new ImTable with a given role.
-                The roles can be "first", "ref", "new", and "src".
-                The first is the Image table we are querying on.
-                The ref/new are images that act as the pair used for subtraction.
-                The src are a list of images used to build up a coadd.
-
-                The self.dad attribute links back to the ImTable above this one.
-                The self.ref, self.new and self.src are references to the ImTable
-                objects below this one.
-                Thus we get a linked tree of ImTables that forms the blueprint for
-                the massive join we want to make in the end.
-                """
-                self.role = role
-                self.img = aliased(Image)
-                self.exp = aliased(Exposure)
-                self.dad = None
-                self.ref = None
-                self.new = None
-                self.src = None
-                if role == 'src':
-                    self.association_table = aliased(image_source_self_association_table)
-
-            def make_children(self, iterations=3):
-                """
-                Recursively make the child ImTable objects for this ImTable.
-                Will stop when iterations reach 0.
-                """
-                if iterations < 1:
-                    return
-
-                self.ref = ImTable(role='ref')
-                self.ref.dad = self
-                self.ref.make_children(iterations=iterations-1)
-
-                self.new = ImTable(role='new')
-                self.new.dad = self
-                self.new.make_children(iterations=iterations-1)
-
-                self.src = ImTable(role='src')
-                self.src.dad = self
-                self.src.make_children(iterations=iterations-1)
-
-            def add_to_columns(self, col=None):
-                """
-                Add the column that we want to select. If col=None will just create a column
-                based on the current img._bitflag and its associated exp._bitflag.
-                This only happens for the first ImTable (the one we are querying on).
-
-                If col is given, it is "or'ed" together using op.('|')(bit_or(...)).
-                The internal bit_or is used to aggregate the bitflags of an array of images
-                (e.g., the source images).
-
-                The resulting col is returned, so it can be used recursively
-                or just put into the select statement in the end.
-
-                Since we use coalesce(bitflag, 0) and bit_or(bitflag) any null
-                values in these tables will be ignored/replaced by zero.
-                So only if we have a non-zero value in any of the bitflags
-                will the final bitflag be non-zero (it will be the bit or of all bitflags).
-                """
-                if self.role == 'first':
-                    return self.img._bitflag.op('|')(coalesce(self.exp._bitflag, 0))
-                else:
-                    return col.op('|')(
-                        coalesce(sa.func.bit_or(self.img._bitflag), 0).op('|')(
-                            coalesce(sa.func.bit_or(self.exp._bitflag), 0)
-                        )
-                    )
-
-            def add_children_to_columns(self, col):
-                """
-                Applies the add_to_column to the children ImTables.
-                This is re-applied recursively to the children's children
-                until a generation is reached that has None as children.
-                """
-                if self.ref is None or self.new is None or self.src is None:
-                    return col
-
-                col = self.ref.add_to_columns(col)
-                col = self.new.add_to_columns(col)
-                col = self.src.add_to_columns(col)
-
-                col = self.ref.add_children_to_columns(col)
-                col = self.new.add_children_to_columns(col)
-                col = self.src.add_children_to_columns(col)
-
-                return col
-
-            def add_to_joins(self, stmt):
-                """
-                Updates the "stmt" (select statement) with the joins needed
-                to get the data from more and more aliased versions of Image
-                and Exposure tables, so we get the bitflag of all the objects
-                that were used to make the image we are querying on.
-
-                We outerjoin the exposures, ref/new pairs and the source images,
-                and wherever there is no parent of that type we just allow a null row.
-                Those null rows are not included in the bit_or aggregate function,
-                and in case all rows are null, we use coalesce to get 0 instead of null.
-
-                Each role has a different join condition, and the joins are applied
-                recursively to the children ImTables.
-
-                For any of the roles, after we join the correct Image table,
-                we need to also join the Exposures used to make (some) of those images.
-
-                The function returns the "stmt" after modifying it, so it can be used
-                recursively and at the end it can be used as a select statement for
-                the hybrid_property expression.
-                """
-                if self.role == 'first':
-                    stmt = stmt.select_from(self.img)
-                elif self.role == 'ref':
-                    stmt = stmt.outerjoin(
-                        self.img, self.dad.img.ref_image_id == self.img.id
-                    )
-                elif self.role == 'new':
-                    stmt = stmt.outerjoin(
-                        self.img, self.dad.img.new_image_id == self.img.id
-                    )
-                elif self.role == 'src':
-                    stmt = stmt.outerjoin(
-                        self.association_table, self.association_table.c.combined_id == self.dad.img.id
-                    ).outerjoin(
-                        self.img, self.association_table.c.source_id == self.img.id
-                    )
-                # also add the exposures for each image
-                stmt = stmt.outerjoin(
-                        self.exp, self.img.exposure_id == self.exp.id
-                    )
-                return stmt
-
-            def add_children_to_joins(self, stmt):
-                """
-                Recursively apply the joins of add_to_joins
-                to all of this ImTable's children, and to their
-                children, until a generation of children that has
-                None as their children.
-                """
-                if self.ref is None or self.new is None or self.src is None:
-                    return stmt
-
-                stmt = self.ref.add_to_joins(stmt)
-                stmt = self.new.add_to_joins(stmt)
-                stmt = self.src.add_to_joins(stmt)
-
-                stmt = self.ref.add_children_to_joins(stmt)
-                stmt = self.new.add_children_to_joins(stmt)
-                stmt = self.src.add_children_to_joins(stmt)
-
-                return stmt
-
-        # end of ImTable class
-        # start of the bitflag expression built up from those ImTables:
-
-        # define a recursive structure with X number of layers
-        # each Image has zero or one Exposures, but can also
-        # have one ref/new pair of images, or a list of source images
-        # each of those images (ref, new, sources) has their own parents,
-        # up to the number of recursions allowed.
-        # This step only builds up the blueprint for the relationships
-        # between the different aliased versions of the Image table (and Exposure table).
-        first_table = ImTable(role='first')
-        first_table.make_children(iterations=3)  # recursively add three layers of children
-
-        # this is where we add the column that needs to get selected
-        # e.g., the _bitflag of each table, using op('|') to combine them
-        columns = first_table.add_to_columns()
-        columns = first_table.add_children_to_columns(columns)
-
-        # here we join more and more tables in, including
-        # the exposures associated with each image,
-        # and the images recursively associated with other images
-        stmt = sa.select(columns)
-        stmt = first_table.add_to_joins(stmt)
-        stmt = first_table.add_children_to_joins(stmt)
-
-        # since we aggregate every associated image/exposure using bit_or,
-        # we need to make sure to group by the top level image and exposure combination
-        stmt = stmt.group_by(first_table.img.id, first_table.exp.id)
-
-        # this last where makes sure that when querying on Image externally
-        # each Image row will correspond to one result, hence the scalar_subquery
-        stmt = stmt.where(cls.id == first_table.img.id).scalar_subquery()
-
-        return stmt
-
-    @bitflag.inplace.setter
-    def bitflag(self, value):
-        allowed_bits = 0
-        for i in image_badness_inverse.values():
-            allowed_bits += 2 ** i
-        if value & ~allowed_bits != 0:
-            raise ValueError(f'Bitflag value {bin(value)} has bits set that are not allowed.')
-        self._bitflag = value
-
-    @property
-    def badness(self):
-        """
-        A comma separated string of keywords describing
-        why this data is not good, based on the bitflag.
-        This includes all the reasons this data is bad,
-        including the parent data models that were used
-        to create this data (e.g., the Exposure underlying
-        the Image).
-        """
-        return bitflag_to_string(self.bitflag, data_badness_dict)
-
-    @badness.setter
-    def badness(self, value):
-        """Set the badness for this image using a comma separated string. """
-        self.bitflag = string_to_bitflag(value, image_badness_inverse)
-
-    def append_badness(self, value):
-        """Add some keywords (in a comma separated string)
-        describing what is bad about this image.
-        The keywords will be added to the list "badness"
-        and the bitflag for this image will be updated accordingly.
-        """
-        self.bitflag |= string_to_bitflag(value, image_badness_inverse)
-
-    description = sa.Column(
-        sa.Text,
+    fwhm_estimate = sa.Column(
+        sa.Float,
         nullable=True,
-        doc='Free text comment about this image, e.g., why it is bad. '
+        index=True,
+        doc=(
+            'FWHM estimate for the image, in arcseconds, '
+            'from the first time the image was processed.'
+        )
+    )
+
+    zero_point_estimate = sa.Column(
+        sa.Float,
+        nullable=True,
+        index=True,
+        doc=(
+            'Zero point estimate for the image, '
+            'from the first time the image was processed.'
+        )
+    )
+
+    lim_mag_estimate = sa.Column(
+        sa.Float,
+        nullable=True,
+        index=True,
+        doc=(
+            'Limiting magnitude estimate for the image, '
+            'from the first time the image was processed.'
+        )
+    )
+
+    bkg_mean_estimate = sa.Column(
+        sa.Float,
+        nullable=True,
+        index=True,
+        doc=(
+            'Background estimate for the image, '
+            'from the first time the image was processed.'
+        )
+    )
+
+    bkg_rms_estimate = sa.Column(
+        sa.Float,
+        nullable=True,
+        index=True,
+        doc=(
+            'Background RMS estimate for the image, '
+            'from the first time the image was processed.'
+        )
     )
 
     __table_args__ = (
@@ -627,6 +450,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
             name='md5sum_or_md5sum_extensions_check'
         ),
     )
+
+    def _get_inverse_badness(self):
+        """Get a dict with the allowed values of badness that can be assigned to this object"""
+        return image_badness_inverse
 
     def __init__(self, *args, **kwargs):
         FileOnDiskMixin.__init__(self, *args, **kwargs)
@@ -639,7 +466,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         self._weight = None  # the inverse-variance array (2D float array)
         self._background = None  # an estimate for the background flux (2D float array)
         self._score = None  # the image after filtering with the PSF and normalizing to S/N units (2D float array)
-        self._psf = None  # a small point-spread-function image (a PSF object)
+        self.sources = None  # the sources extracted from this Image (optionally loaded)
+        self.psf = None  # the point-spread-function object (optionally loaded)
+        self.wcs = None  # the WorldCoordinates object (optionally loaded)
+        self.zp = None  # the zero-point object (optionally loaded)
 
         self._instrument_object = None
         self._bitflag = 0
@@ -663,7 +493,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         self._weight = None
         self._background = None
         self._score = None
-        self._psf = None
+        self.sources = None
+        self.psf = None
+        self.wcs = None
+        self.zp = None
 
         self._instrument_object = None
 
@@ -692,7 +525,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
         self.dec_corner_01 = decs[1]
         self.dec_corner_10 = decs[2]
         self.dec_corner_11 = decs[3]
-
 
     @classmethod
     def from_exposure(cls, exposure, section_id):
@@ -1318,40 +1150,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners):
     @score.setter
     def score(self, value):
         self._score = value
-
-    # This version exists in case a calling function
-    # wants to use its own session rather than the
-    # temporarily-created session in the psf property
-    def get_psf(self, session):
-        """Return the PSF object for this image.
-
-        Parameters
-        ----------
-          session: Session or SmartSession (optional)
-            The database session to use.
-
-        Returns
-        -------
-          PSF object, or None if there isn't one for this image.
-
-        """
-        if self._psf is None:
-            with SmartSession(session) as session:
-                q = session.query( PSF ).filter( PSF.image_id==self.id )
-                if q.count() > 0:
-                    self._psf = q.first()
-        return self._psf
-
-    @property
-    def psf(self):
-        """The PSF object for this image.  Will query the database if there's not one already in the object."""
-        if self._psf is None:
-            self._psf = self.get_psf()
-        return self._psf
-
-    @psf.setter
-    def psf(self, value):
-        self._psf = value
 
 
 if __name__ == '__main__':

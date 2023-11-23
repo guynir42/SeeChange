@@ -322,25 +322,43 @@ image_badness_dict = {
 }
 image_badness_inverse = {EnumConverter.c(v): k for k, v in image_badness_dict.items()}
 
-# these are the ways a Cutouts object is allowed to be bad
-cutouts_badness_dict = {
-    21: 'Cosmic Ray',
-    22: 'Ghost',
-    23: 'Satellite',
-    24: 'Offset',
-    25: 'Bad Pixel',
-    26: 'Bleed Trail',
+
+# these are all the ways a PSF object is allowed to be bad
+psf_badness_dict = {
+    11: 'PSF Fit Failed',
 }
-cutouts_badness_inverse = {EnumConverter.c(v): k for k, v in cutouts_badness_dict.items()}
+psf_badness_inverse = {EnumConverter.c(v): k for k, v in psf_badness_dict.items()}
+
 
 # these are the ways a SourceList object is allowed to be bad
 source_list_badness_dict = {
-    41: 'X-Match Failed',
-    42: 'Big Residuals',
-    43: 'Few Sources',
-    44: 'Many Sources',
+    16: 'Few Sources',
+    17: 'Many Sources',
 }
 source_list_badness_inverse = {EnumConverter.c(v): k for k, v in source_list_badness_dict.items()}
+
+
+# these are the ways a WorldCoordinates/ZeroPoint object is allowed to be bad
+# mostly due to bad matches to the catalog
+catalog_badness_dict = {
+    21: 'No Catalog',
+    22: 'X-Match Failed',
+    23: 'Big Residuals',
+}
+catalog_badness_inverse = {EnumConverter.c(v): k for k, v in catalog_badness_dict.items()}
+
+
+# these are the ways a Cutouts object is allowed to be bad
+cutouts_badness_dict = {
+    41: 'Cosmic Ray',
+    42: 'Ghost',
+    43: 'Satellite',
+    44: 'Offset',
+    45: 'Bad Pixel',
+    46: 'Bleed Trail',
+}
+cutouts_badness_inverse = {EnumConverter.c(v): k for k, v in cutouts_badness_dict.items()}
+
 
 # join the badness:
 data_badness_dict = {0: 'Good'}

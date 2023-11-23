@@ -21,7 +21,66 @@ class ReferenceEntry(Base, AutoIDMixin):
 
     image = orm.relationship(
         'Image',
+        lazy='selectin',
+        cascade='save-update, merge, refresh-expire, expunge',
+        foreign_keys=[image_id],
         doc="The reference image this entry is referring to. "
+    )
+
+    source_list_id = sa.Column(
+        sa.ForeignKey('source_lists.id', ondelete='CASCADE', name='reference_images_source_list_id_fkey'),
+        nullable=True,
+        index=True,
+        doc="ID of the source list used to make this reference image. "
+    )
+
+    source_list = orm.relationship(
+        'SourceList',
+        lazy='selectin',
+        cascade='save-update, merge, refresh-expire, expunge',
+        doc="The source list extracted from this reference image. "
+    )
+
+    psf_id = sa.Column(
+        sa.ForeignKey('psfs.id', ondelete='CASCADE', name='reference_images_psf_id_fkey'),
+        nullable=True,
+        index=True,
+        doc="ID of the PSF of the reference image. "
+    )
+
+    psf = orm.relationship(
+        'PSF',
+        lazy='selectin',
+        cascade='save-update, merge, refresh-expire, expunge',
+        doc="The PSF of the reference image. "
+    )
+
+    wcs_id = sa.Column(
+        sa.ForeignKey('world_coordinates.id', ondelete='CASCADE', name='reference_images_wcs_id_fkey'),
+        nullable=True,
+        index=True,
+        doc="ID of the WCS of the reference image. "
+    )
+
+    wcs = orm.relationship(
+        'WorldCoordinates',
+        lazy='selectin',
+        cascade='save-update, merge, refresh-expire, expunge',
+        doc="The WCS of the reference image. "
+    )
+
+    zp_id = sa.Column(
+        sa.ForeignKey('zero_points.id', ondelete='CASCADE', name='reference_images_zp_id_fkey'),
+        nullable=True,
+        index=True,
+        doc="ID of the zero point of the reference image. "
+    )
+
+    zp = orm.relationship(
+        'ZeroPoint',
+        lazy='selectin',
+        cascade='save-update, merge, refresh-expire, expunge',
+        doc="The zero point of the reference image. "
     )
 
     target = sa.Column(

@@ -412,7 +412,7 @@ def test_image_preproc_bitflag( demo_image, provenance_base ):
         # Spoof an md5sum so we can commit this to the database without saving actual data
         demo_image.md5sum = uuid.uuid4()
         im = demo_image.recursive_merge( session )
-        session.add( im  )
+        session.add( im )
         # Need to do this for the defaults to get set
         # It will be removed from the database in
         # demo_image teardown

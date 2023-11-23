@@ -305,10 +305,6 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
     def bitflag(self):
         return self._bitflag
 
-    @bitflag.inplace.expression
-    def bitflag(cls):
-        return cls._bitflag
-
     @bitflag.inplace.setter
     def bitflag(self, value):
         allowed_bits = 0

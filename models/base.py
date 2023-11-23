@@ -16,11 +16,18 @@ from sqlalchemy import func, orm
 
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.ext.hybrid import hybrid_method
+from sqlalchemy.ext.hybrid import hybrid_method, hybrid_property
 from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.dialects.postgresql import UUID as sqlUUID
 from sqlalchemy.dialects.postgresql import array as sqlarray
 from sqlalchemy.schema import CheckConstraint
+
+from models.enums_and_bitflags import (
+    data_badness_dict,
+    data_badness_inverse,
+    string_to_bitflag,
+    bitflag_to_string,
+)
 
 import util.config as config
 from util.archive import Archive
@@ -1245,6 +1252,84 @@ class FourCorners:
             raise ValueError( f'SpatiallyIndexed.cone_search: unknown radius unit {radunit}' )
 
         return func.q3c_radial_query( self.ra, self.dec, ra, dec, rad )
+
+
+class HasBitFlagBadness:
+    """A mixin class that adds a bitflag marking why this object is bad. """
+    _bitflag = sa.Column(
+        sa.BIGINT,
+        nullable=False,
+        default=0,
+        index=True,
+        doc='Bitflag for this object. Good objects have a bitflag of 0. '
+            'Bad objects are each bad in their own way (i.e., have different bits set). '
+            'The bitflag will include this value, bit-wise-or-ed with the bitflags of the '
+            'upstream object that were used to make this one. '
+    )
+
+    _upstream_bitflag = sa.Column(
+        sa.BIGINT,
+        nullable=False,
+        default=0,
+        index=True,
+        doc='Bitflag of objects used to generate this object. '
+    )
+
+    @hybrid_property
+    def bitflag(self):
+        return self._bitflag | self._upstream_bitflag
+
+    @bitflag.inplace.expression
+    @classmethod
+    def bitflag(cls):
+        return cls._bitflag.op('|')(cls._upstream_bitflag)
+
+    @bitflag.inplace.setter
+    def bitflag(self, value):
+        allowed_bits = 0
+        for i in self._get_inverse_badness().values():
+            allowed_bits += 2 ** i
+        if value & ~allowed_bits != 0:
+            raise ValueError(f'Bitflag value {bin(value)} has bits set that are not allowed.')
+        self._bitflag = value
+
+    @property
+    def badness(self):
+        """
+        A comma separated string of keywords describing
+        why this data is not good, based on the bitflag.
+        This includes all the reasons this data is bad,
+        including the parent data models that were used
+        to create this data (e.g., the Exposure underlying
+        the Image).
+        """
+        return bitflag_to_string(self.bitflag, data_badness_dict)
+
+    @badness.setter
+    def badness(self, value):
+        """Set the badness for this image using a comma separated string. """
+        self.bitflag = string_to_bitflag(value, self._get_inverse_badness())
+
+    def append_badness(self, value):
+        """Add some keywords (in a comma separated string)
+        describing what is bad about this image.
+        The keywords will be added to the list "badness"
+        and the bitflag for this image will be updated accordingly.
+        """
+        self.bitflag |= string_to_bitflag(value, self._get_inverse_badness())
+
+    description = sa.Column(
+        sa.Text,
+        nullable=True,
+        doc='Free text comment about this data product, e.g., why it is bad. '
+    )
+
+    def _get_inverse_badness(self):
+        """Get a dict with the allowed values of badness that can be assigned to this object
+
+        For the base class this is the most inclusive inverse (allows all badness).
+        """
+        return data_badness_inverse
 
 
 if __name__ == "__main__":

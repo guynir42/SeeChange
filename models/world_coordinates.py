@@ -5,10 +5,10 @@ from sqlalchemy import orm
 from astropy.wcs import WCS
 from astropy.io import fits
 
-from models.base import Base, AutoIDMixin
+from models.base import Base, AutoIDMixin, HasBitFlagBadness
+from models.enums_and_bitflags import catalog_badness_inverse
 
-
-class WorldCoordinates(Base, AutoIDMixin):
+class WorldCoordinates(Base, AutoIDMixin, HasBitFlagBadness):
     __tablename__ = 'world_coordinates'
 
     # This is a little profligate.  There will eventually be millions of
@@ -86,6 +86,10 @@ class WorldCoordinates(Base, AutoIDMixin):
     def wcs( self, value ):
         self._wcs = value
         self.header_excerpt = value.to_header().tostring( sep='\n', padding=False )
+
+    def _get_inverse_badness(self):
+        """Get a dict with the allowed values of badness that can be assigned to this object"""
+        return catalog_badness_inverse
 
     def __init__( self, *args, **kwargs ):
         super().__init__( *args, **kwargs )
