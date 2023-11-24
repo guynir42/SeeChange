@@ -190,7 +190,7 @@ class SeeChangeBase:
         return attrs
 
     def set_attributes_from_dict( self, dictionary ):
-        """Set all atributes of self from a dictionary, excepting existing  attributes that are methods.
+        """Set all atributes of self from a dictionary, excepting existing attributes that are methods.
 
         Parameters
         ----------
@@ -232,7 +232,7 @@ class SeeChangeBase:
 
         # only do the sub-properties if the object was already added to the session
         attributes = ['provenance', 'code_version',
-                      'exposure', 'image', 'datafile', 'ref_image', 'new_image', 'sub_image', 'source_images',
+                      'exposure', 'image', 'datafile', 'ref_image', 'new_image', 'sub_image', 'upstream_images',
                       'source_list']
 
         # recursively call this on the provenance and other parent objects
@@ -250,6 +250,14 @@ class SeeChangeBase:
                 pass
 
         return obj
+
+    def get_upstreams(self, session=None):
+        """Get all data products that were used to create this object."""
+        raise NotImplementedError('get_upstreams not implemented for this class')
+
+    def get_downstreams(self, session=None):
+        """Get all data products that were created using this object."""
+        raise NotImplementedError('get_downstreams not implemented for this class')
 
 
 Base = declarative_base(cls=SeeChangeBase)
@@ -1277,6 +1285,10 @@ class HasBitFlagBadness:
 
     @hybrid_property
     def bitflag(self):
+        if self._bitflag is None:
+            self._bitflag = 0
+        if self._upstream_bitflag is None:
+            self._upstream_bitflag = 0
         return self._bitflag | self._upstream_bitflag
 
     @bitflag.inplace.expression

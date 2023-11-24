@@ -25,7 +25,7 @@ from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.datafile import DataFile
-from models.references import ReferenceEntry
+from models.references import Reference
 from models.instrument import Instrument, get_instrument_instance
 from models.decam import DECam
 from models.source_list import SourceList
@@ -663,8 +663,8 @@ for i in range(2, 10):
 
 
 @pytest.fixture
-def reference_entry(provenance_base, provenance_extra):
-    ref_entry = None
+def simulated_reference(provenance_base, provenance_extra):
+    ref = None
     filter = np.random.choice(list('grizY'))
     target = rnd_str(6)
     ra = np.random.uniform(0, 360)
@@ -689,39 +689,30 @@ def reference_entry(provenance_base, provenance_extra):
         im.save()
         images.append(im)
 
-    ref = Image.from_images(images)
-    ref.data = np.mean(np.array([im.data for im in images]), axis=0)
+    ref_image = Image.from_images(images)
+    ref_image.data = np.mean(np.array([im.data for im in images]), axis=0)
 
     provenance_extra.process = 'coaddition'
-    ref.provenance = provenance_extra
-    ref.save()
+    ref_image.provenance = provenance_extra
+    ref_image.save()
 
-    ref_entry = ReferenceEntry()
-    ref_entry.image = ref
-    ref_entry.validity_start = Time(50000, format='mjd', scale='utc').isot
-    ref_entry.validity_end = Time(58500, format='mjd', scale='utc').isot
-    ref_entry.section_id = 0
-    ref_entry.filter = filter
-    ref_entry.target = target
+    ref = Reference()
+    ref.image = ref_image
+    ref.validity_start = Time(50000, format='mjd', scale='utc').isot
+    ref.validity_end = Time(58500, format='mjd', scale='utc').isot
+    ref.section_id = 0
+    ref.filter = filter
+    ref.target = target
 
-    with SmartSession() as session:
-        ref_entry.image = session.merge( ref_entry.image )
-        session.add(ref_entry)
-        session.commit()
-
-    yield ref_entry
+    yield ref
 
     try:
-        if ref_entry is not None:
+        if ref is not None:
             with SmartSession() as session:
-                ref_entry = session.merge(ref_entry)
-                ref = ref_entry.image
-                for im in ref.source_images:
-                    exp = im.exposure
-                    exp.delete_from_disk_and_database(session=session, commit=False)
-                    im.delete_from_disk_and_database(session=session, commit=False)
-                ref.delete_from_disk_and_database(session=session, commit=False)
-
+                ref = session.merge(ref)
+                ref.products.delete_from_disk_and_database(session=session, commit=False)
+                if ref.id is not None:
+                    session.execute(sa.delete(Reference).where(Reference.id == ref.id))
                 session.commit()
 
     except Exception as e:

@@ -1,88 +1,47 @@
 import sqlalchemy as sa
 from sqlalchemy import orm
+from sqlalchemy.ext.associationproxy import association_proxy
 
-from models.base import Base, AutoIDMixin
+from models.base import Base, AutoIDMixin, SmartSession
+from models.image import Image, ImageProducts
 
 
-class ReferenceEntry(Base, AutoIDMixin):
+class Reference(Base, AutoIDMixin):
     """
-    A table that refers to each reference Image object,
+    A table that refers to each reference ImageProducts object,
     based on the validity time range, and the object/field it is targeting.
+    The ImageProducts includes the Image but also the PSF, SourceList, WorldCoordinates, and ZeroPoint.
     """
 
-    __tablename__ = 'reference_images'
+    __tablename__ = 'references'
 
-    image_id = sa.Column(
-        sa.ForeignKey('images.id', ondelete='CASCADE', name='reference_images_image_id_fkey'),
+    products_id = sa.Column(
+        sa.ForeignKey('image_products.id', ondelete='CASCADE', name='references_image_products_id_fkey'),
         nullable=False,
         index=True,
-        doc="ID of the reference image this object is referring to. "
+        doc="ID of the reference image products that this object is referring to. "
     )
 
-    image = orm.relationship(
-        'Image',
+    products = orm.relationship(
+        'ImageProducts',
         lazy='selectin',
         cascade='save-update, merge, refresh-expire, expunge',
-        foreign_keys=[image_id],
-        doc="The reference image this entry is referring to. "
+        foreign_keys=[products_id],
+        doc="The reference image products that this entry is referring to. "
     )
 
-    source_list_id = sa.Column(
-        sa.ForeignKey('source_lists.id', ondelete='CASCADE', name='reference_images_source_list_id_fkey'),
-        nullable=True,
-        index=True,
-        doc="ID of the source list used to make this reference image. "
-    )
+    image_id = association_proxy("products", "image_id")
+    image = association_proxy("products", "image")
+    sources_id = association_proxy("products", "sources_id")
+    sources = association_proxy("products", "sources")
+    psf_id = association_proxy("products", "psf_id")
+    psf = association_proxy("products", "psf")
+    wcs_id = association_proxy("products", "wcs_id")
+    wcs = association_proxy("products", "wcs")
+    zp_id = association_proxy("products", "zp_id")
+    zp = association_proxy("products", "zp")
 
-    source_list = orm.relationship(
-        'SourceList',
-        lazy='selectin',
-        cascade='save-update, merge, refresh-expire, expunge',
-        doc="The source list extracted from this reference image. "
-    )
-
-    psf_id = sa.Column(
-        sa.ForeignKey('psfs.id', ondelete='CASCADE', name='reference_images_psf_id_fkey'),
-        nullable=True,
-        index=True,
-        doc="ID of the PSF of the reference image. "
-    )
-
-    psf = orm.relationship(
-        'PSF',
-        lazy='selectin',
-        cascade='save-update, merge, refresh-expire, expunge',
-        doc="The PSF of the reference image. "
-    )
-
-    wcs_id = sa.Column(
-        sa.ForeignKey('world_coordinates.id', ondelete='CASCADE', name='reference_images_wcs_id_fkey'),
-        nullable=True,
-        index=True,
-        doc="ID of the WCS of the reference image. "
-    )
-
-    wcs = orm.relationship(
-        'WorldCoordinates',
-        lazy='selectin',
-        cascade='save-update, merge, refresh-expire, expunge',
-        doc="The WCS of the reference image. "
-    )
-
-    zp_id = sa.Column(
-        sa.ForeignKey('zero_points.id', ondelete='CASCADE', name='reference_images_zp_id_fkey'),
-        nullable=True,
-        index=True,
-        doc="ID of the zero point of the reference image. "
-    )
-
-    zp = orm.relationship(
-        'ZeroPoint',
-        lazy='selectin',
-        cascade='save-update, merge, refresh-expire, expunge',
-        doc="The zero point of the reference image. "
-    )
-
+    # the following can't be association products (as far as I can tell) because they need to be indexed
     target = sa.Column(
         sa.Text,
         nullable=False,
@@ -108,20 +67,24 @@ class ReferenceEntry(Base, AutoIDMixin):
         doc="Section ID of the reference image. "
     )
 
+    # this allows choosing a different reference for images taken before/after the validity time range
     validity_start = sa.Column(
         sa.DateTime,
-        nullable=False,
+        nullable=True,
         index=True,
         doc="The start of the validity time range of this reference image. "
     )
 
     validity_end = sa.Column(
         sa.DateTime,
-        nullable=False,
+        nullable=True,
         index=True,
         doc="The end of the validity time range of this reference image. "
     )
 
+    # this badness is in addition to the regular bitflag of the underlying products
+    # it can be used to manually kill a reference and replace it with another one
+    # even if they share the same time validity range
     is_bad = sa.Column(
         sa.Boolean,
         nullable=False,
@@ -145,5 +108,40 @@ class ReferenceEntry(Base, AutoIDMixin):
     )
 
     # this table doesn't have provenance.
-    # The underlying image will have its own provenance for the "coaddition" process.
+    # The underlying products will have their own provenance for the "coaddition" process.
+
+    def __setattr__(self, key, value):
+        if key == 'image':
+            if value is not None:
+                self.filter = value.filter
+                self.target = value.target
+                self.section_id = value.section_id
+                object.__setattr__(self, 'image_id', value.id)
+                if self.products is not None:
+                    self.image.psf = self.products.psf
+                    self.image.sources = self.products.sources
+                    self.image.wcs = self.products.wcs
+                    self.image.zp = self.products.zp
+                return
+
+        if key == 'products':
+            if value is not None:
+                self.filter = value.image.filter
+                self.target = value.image.target
+                self.section_id = value.image.section_id
+
+            self.image = value.image
+            self.image.psf = value.psf
+            self.image.sources = value.sources
+            self.image.wcs = value.wcs
+            self.image.zp = value.zp
+
+        super().__setattr__(key, value)
+
+    @orm.reconstructor
+    def init_on_load(self):
+        self.products.image.sources = self.products.sources
+        self.products.image.psf = self.products.psf
+        self.products.image.wcs = self.products.wcs
+        self.products.image.zp = self.products.zp
 

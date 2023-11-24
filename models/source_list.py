@@ -15,7 +15,7 @@ from sqlalchemy.sql.functions import coalesce
 import astropy.table
 from astropy.io import fits
 
-from models.base import Base, AutoIDMixin, FileOnDiskMixin, SeeChangeBase, HasBitFlagBadness, _logger
+from models.base import Base, SmartSession, AutoIDMixin, FileOnDiskMixin, SeeChangeBase, HasBitFlagBadness, _logger
 from models.image import Image
 from models.enums_and_bitflags import (
     SourceListFormatConverter,
@@ -686,6 +686,22 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                 if use:
                     # +1 to go from C-coordinates to FITS-coordinates
                     ofp.write( f"image;circle({x+1},{y+1},{radius}) # color={color} width={width}\n" )
+
+    def get_upstreams(self, session=None):
+        """Get the image that was used to make this source list. """
+        with SmartSession(session) as session:
+            return session.scalars(sa.select(Image).where(Image.id == self.image_id)).all()
+
+    def get_downstreams(self, session=None):
+        """Get all the data products (WCSs and ZPs) that are made using this source list. """
+        from models.world_coordinates import WorldCoordinates
+        from models.zero_point import ZeroPoint
+
+        with SmartSession(session) as session:
+            wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.source_list_id == self.id)).all()
+            zps = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.source_list_id == self.id)).all()
+
+        return wcs + zps
 
 
 # add "property" attributes to SourceList referencing the image for convenience

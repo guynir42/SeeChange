@@ -4,6 +4,7 @@ Here we put all the dictionaries and conversion functions for getting/setting en
 
 from util.classproperty import classproperty
 
+
 class EnumConverter:
     """Base class for creating an (effective) enum that is saved to the database as an int.
 
@@ -15,7 +16,7 @@ class EnumConverter:
 
     2. Define the _dict property of that subclass to have the mapping from integer to string.
 
-    3. If not all of the strings in the _dict are allowed formats for
+    3. If not all the strings in the _dict are allowed formats for
        this class, define a property _allowed_values with a list of
        values (strings) that are allowed.  (See, for example,
        ImageFormatConverter.)  If they are all allowed formats, you can
@@ -125,16 +126,19 @@ class FormatConverter( EnumConverter ):
     _dict_filtered = None
     _dict_inverse = None
 
+
 class ImageFormatConverter( FormatConverter ):
     _allowed_values = ['fits', 'hdf5']
     _dict_filtered = None
     _dict_inverse = None
+
 
 class CutoutsFormatConverter( FormatConverter ):
     _dict = ImageFormatConverter._dict
     _allowed_values = ['fits', 'hdf5', 'jpg', 'png']
     _dict_filtered = None
     _dict_inverse = None
+
 
 class SourceListFormatConverter( EnumConverter ):
     _dict = {
@@ -144,6 +148,7 @@ class SourceListFormatConverter( EnumConverter ):
     _allowed_values = None
     _dict_filtered = None
     _dict_inverse = None
+
 
 class ImageTypeConverter( EnumConverter ):
     _dict = {
@@ -163,6 +168,7 @@ class ImageTypeConverter( EnumConverter ):
         14: 'ComTwiFlat',
         15: 'Fringe',
         16: 'Warped',
+        17: 'ComWarped',
     }
     _allowed_values = None
     _dict_filtered = None

@@ -1,12 +1,14 @@
 
 import sqlalchemy as sa
 from sqlalchemy import orm
+from sqlalchemy.ext.associationproxy import association_proxy
 
 from astropy.wcs import WCS
 from astropy.io import fits
 
 from models.base import Base, AutoIDMixin, HasBitFlagBadness
 from models.enums_and_bitflags import catalog_badness_inverse
+
 
 class WorldCoordinates(Base, AutoIDMixin, HasBitFlagBadness):
     __tablename__ = 'world_coordinates'
@@ -53,6 +55,8 @@ class WorldCoordinates(Base, AutoIDMixin, HasBitFlagBadness):
         'SourceList',
         doc="The source list this world coordinate system is associated with. "
     )
+
+    image = association_proxy( "source_list", "image" )
 
     provenance_id = sa.Column(
         sa.ForeignKey('provenances.id', ondelete="CASCADE", name='world_coordinates_provenance_id_fkey'),

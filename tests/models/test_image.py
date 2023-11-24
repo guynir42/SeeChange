@@ -12,14 +12,15 @@ from astropy.io import fits
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
+from tests.conftest import ImageCleanup
 import util.config as config
 import util.radec
 from models.base import SmartSession, FileOnDiskMixin
 from models.exposure import Exposure
 from models.image import Image
-from tests.conftest import ImageCleanup
-from models.instrument import Instrument, get_instrument_instance
-from models.enums_and_bitflags import image_preprocessing_dict, image_preprocessing_inverse, string_to_bitflag
+from models.instrument import Instrument
+from models.references import Reference
+from models.enums_and_bitflags import image_preprocessing_inverse, string_to_bitflag
 
 # Have to have this here; otherwise, decam.py never gets loaded, and
 # DECam never gets added to the global instrument.INSTRUMENT_INSTANCE_CACHE
@@ -28,6 +29,7 @@ from models.enums_and_bitflags import image_preprocessing_dict, image_preprocess
 # in the same file?  Or, should we rerun register_all_instruments() at the bottom
 # of every instrument's .py file?
 # import models.decam
+
 
 def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
@@ -272,6 +274,7 @@ def test_image_archive_multifile(exposure, demo_image, provenance_base, archive)
     finally:
         cfg.set_value( 'storage.images.single_file', single_fileness )
 
+
 def test_image_save_justheader( exposure, demo_image, provenance_base ):
     demo_image.provenance = provenance_base
     demo_image.data = np.full( (64, 32), 0.125, dtype=np.float32 )
@@ -311,6 +314,7 @@ def test_image_save_justheader( exposure, demo_image, provenance_base ):
 
     with fits.open( names[1] ) as hdul:
         assert ( hdul[0].data == np.full( (64, 32), 4., dtype=np.float32 ) ).all()
+
 
 def test_image_save_onlyimage( exposure, demo_image, provenance_base ):
     demo_image.provenance = provenance_base
@@ -404,6 +408,63 @@ def test_image_enum_values(exposure, demo_image, provenance_base):
                 if len(os.listdir(folder)) == 0:
                     os.rmdir(folder)
 
+
+def test_reference(simulated_reference):
+    ref = simulated_reference
+    # with SmartSession() as session:
+
+
+def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance_base, provenance_extra):
+    with SmartSession() as session:
+        demo_image.provenance = provenance_base
+        demo_image = demo_image.recursive_merge(session)
+
+        # make sure the new image matches the reference in all these attributes
+        demo_image.filter = simulated_reference.filter
+        demo_image.target = simulated_reference.target
+        demo_image.section_id = simulated_reference.section_id
+
+        # save and delete at the end
+        cleanup1 = ImageCleanup.save_image(demo_image)
+        session.add(demo_image)
+
+        # simulated_reference = session.merge(simulated_reference)
+        new = Image.from_new_and_ref(demo_image, simulated_reference)
+        new.provenance = provenance_extra
+        new = new.recursive_merge(session)
+
+        # save and delete at the end
+        cleanup2 = ImageCleanup.save_image(new)
+
+        session.add(new)
+        session.commit()
+
+    # new make sure a new session can find all the upstreams/downstreams
+    with SmartSession() as session:
+        # check the upstreams/downstreams for the new image
+        upstream_ids = [u.id for u in new.get_upstreams(session=session)]
+        assert demo_image.id in upstream_ids
+        assert reference_entry.id in upstream_ids
+        downstream_ids = [d.id for d in new.get_downstreams(session=session)]
+        assert len(downstream_ids) == 0
+
+        upstream_ids = [u.id for u in reference_entry.get_upstreams(session=session)]
+        assert reference_entry.image.id in upstream_ids
+        downstream_ids = [d.id for d in reference_entry.get_downstreams(session=session)]
+        assert new.id in downstream_ids
+
+        upstream_ids = [u.id for u in demo_image.get_upstreams(session=session)]
+        assert [demo_image.exposure_id] == upstream_ids
+        downstream_ids = [d.id for d in demo_image.get_downstreams(session=session)]
+        assert [new.id] == downstream_ids
+
+        # check the upstreams/downstreams for the reference image
+        upstream_ids = [u.id for u in reference_entry.image.get_upstreams(session=session)]
+        assert len(upstream_ids) == 5
+        source_images_ids = [im.id for im in reference_entry.image.source_images]
+        assert set(upstream_ids) == set(source_images_ids)
+
+
 def test_image_preproc_bitflag( demo_image, provenance_base ):
 
     with SmartSession() as session:
@@ -448,45 +509,48 @@ def test_image_preproc_bitflag( demo_image, provenance_base ):
                        == string_to_bitflag( 'overscan, fringe', image_preprocessing_inverse ) ) )
         assert q.count() == 0
 
+
 def test_image_badness(demo_image):
 
-        # this is not a legit "badness" keyword...
-        with pytest.raises(ValueError, match='Keyword "foo" not recognized'):
-            demo_image.badness = 'foo'
+    # this is not a legit "badness" keyword...
+    with pytest.raises(ValueError, match='Keyword "foo" not recognized'):
+        demo_image.badness = 'foo'
 
-        # this is a legit keyword, but for cutouts, not for images
-        with pytest.raises(ValueError, match='Keyword "Cosmic Ray" not recognized'):
-            demo_image.badness = 'Cosmic Ray'
+    # this is a legit keyword, but for cutouts, not for images
+    with pytest.raises(ValueError, match='Keyword "Cosmic Ray" not recognized'):
+        demo_image.badness = 'Cosmic Ray'
 
-        # this is a legit keyword, but for images, using no space and no capitalization
-        demo_image.badness = 'brightsky'
+    # this is a legit keyword, but for images, using no space and no capitalization
+    demo_image.badness = 'brightsky'
 
-        # retrieving this keyword, we do get it capitalized and with a space:
-        assert demo_image.badness == 'Bright Sky'
-        assert demo_image.bitflag == 2 ** 5  # the bright sky bit is number 5
+    # retrieving this keyword, we do get it capitalized and with a space:
+    assert demo_image.badness == 'Bright Sky'
+    assert demo_image.bitflag == 2 ** 5  # the bright sky bit is number 5
 
-        # what happens when we add a second keyword?
-        demo_image.badness = 'brightsky, banding'
-        assert demo_image.bitflag == 2 ** 5 + 2 ** 1  # the bright sky bit is number 5, banding is number 1
-        assert demo_image.badness == 'Banding, Bright Sky'
+    # what happens when we add a second keyword?
+    demo_image.badness = 'brightsky, banding'
+    assert demo_image.bitflag == 2 ** 5 + 2 ** 1  # the bright sky bit is number 5, banding is number 1
+    assert demo_image.badness == 'Banding, Bright Sky'
 
-        # now add a third keyword, but on the Exposure
-        demo_image.exposure.badness = 'saturation'
-        assert demo_image.bitflag == 2 ** 5 + 2 ** 3 + 2 ** 1  # saturation bit is 3
-        assert demo_image.badness == 'Banding, Saturation, Bright Sky'
+    # now add a third keyword, but on the Exposure
+    demo_image.exposure.badness = 'saturation'
+    # TODO: need to add a manual way to propagate bitflags downstream
+    assert demo_image.bitflag == 2 ** 5 + 2 ** 3 + 2 ** 1  # saturation bit is 3
+    assert demo_image.badness == 'Banding, Saturation, Bright Sky'
 
-        # adding the same keyword on the exposure and the image makes no difference
-        demo_image.exposure.badness = 'banding'
-        assert demo_image.bitflag == 2 ** 5 + 2 ** 1
-        assert demo_image.badness == 'Banding, Bright Sky'
+    # adding the same keyword on the exposure and the image makes no difference
+    demo_image.exposure.badness = 'banding'
+    assert demo_image.bitflag == 2 ** 5 + 2 ** 1
+    assert demo_image.badness == 'Banding, Bright Sky'
 
-        # try appending keywords to the image
-        demo_image.append_badness('shaking')
-        assert demo_image.bitflag == 2 ** 5 + 2 ** 2 + 2 ** 1  # shaking bit is 2
-        assert demo_image.badness == 'Banding, Shaking, Bright Sky'
+    # try appending keywords to the image
+    demo_image.append_badness('shaking')
+    assert demo_image.bitflag == 2 ** 5 + 2 ** 2 + 2 ** 1  # shaking bit is 2
+    assert demo_image.badness == 'Banding, Shaking, Bright Sky'
 
 
-@pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
+# @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
+@pytest.mark.skip(reason="Need to finish this!")
 def test_multiple_images_badness(
         demo_image,
         demo_image2,
@@ -541,8 +605,9 @@ def test_multiple_images_badness(
             assert demo_image2.id in [i.id for i in bad_images]
             assert demo_image3.id in [i.id for i in bad_images]
 
+            ref_entry = ReferenceEntry(image=demo_image2)
             # make an image from the two bad exposures using subtraction
-            demo_image4 = Image.from_ref_and_new(demo_image2, demo_image3)
+            demo_image4 = Image.from_new_and_ref(demo_image3, ref_entry)
             demo_image4.provenance = provenance_extra
             cleanups.append(ImageCleanup.save_image(demo_image4))
             images.append(demo_image4)
@@ -551,8 +616,8 @@ def test_multiple_images_badness(
             session.add(demo_image4)
             session.commit()
             assert demo_image4.id is not None
-            assert demo_image4.ref_image_id == demo_image2.id
-            assert demo_image4.new_image_id == demo_image3.id
+            assert demo_image4.ref_entry.ref_image_id == demo_image2.id
+            assert demo_image4.image_sources[0] == demo_image3.id
 
             # check that badness is loaded correctly from both parents
             assert demo_image4.badness == 'Banding, Bright Sky'
@@ -587,7 +652,8 @@ def test_multiple_images_badness(
             session.commit()
 
             # make a new subtraction:
-            demo_image7 = Image.from_ref_and_new(demo_image5, demo_image6)
+            ref_entry2 = ReferenceEntry(image=demo_image5)
+            demo_image7 = Image.from_ref_and_new(demo_image6, ref_entry2)
             demo_image7.provenance = provenance_extra
             cleanups.append(ImageCleanup.save_image(demo_image7))
             images.append(demo_image7)

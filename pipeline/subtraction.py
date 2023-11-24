@@ -55,13 +55,13 @@ class Subtractor:
                 raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
             # look for a reference that has to do with the current image
-            ref = ds.get_reference_image(session=session)
+            ref = ds.get_reference_entry(session=session)
             if ref is None:
                 raise ValueError(
                     f'Cannot find a reference image corresponding to the datastore inputs: {ds.get_inputs()}'
                 )
 
-            sub_image = Image.from_ref_and_new(ref, image)
+            sub_image = Image.from_new_and_ref(image, )
             sub_image.data = image.data - ref.data  # TODO: implement the subtraction algorithm here
             if sub_image.provenance is None:
                 sub_image.provenance = prov

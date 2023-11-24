@@ -25,6 +25,7 @@ from models.enums_and_bitflags import PSFFormatConverter, psf_badness_inverse
 # details of looking into header and info will need different versions
 # for different formats.
 
+
 class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     __tablename__ = 'psfs'
 

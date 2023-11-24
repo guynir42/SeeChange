@@ -10,7 +10,7 @@ from models.source_list import SourceList
 from models.psf import PSF
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
-from models.references import ReferenceEntry
+from models.references import Reference
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 
@@ -790,7 +790,7 @@ class DataStore:
 
         return self.zp
 
-    def get_reference_image(self, provenance=None, session=None):
+    def get_reference_entry(self, provenance=None, session=None):
         """
         Get the reference image for this image.
 
@@ -816,7 +816,7 @@ class DataStore:
         """
         session = self.session if session is None else session
 
-        if self.ref_image is None:
+        if self.ref_entry is None:
 
             with SmartSession(session) as session:
                 image = self.get_image(session=session)
@@ -840,9 +840,9 @@ class DataStore:
                 if ref_entry is None:
                     raise ValueError(f'No reference image found for image {image.id}')
 
-                self.ref_image = ref_entry.image
+                self.ref_entry = ref_entry
 
-        return self.ref_image
+        return self.ref_entry
 
     def get_subtraction(self, provenance=None, session=None):
         """
