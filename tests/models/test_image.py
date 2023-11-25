@@ -409,13 +409,6 @@ def test_image_enum_values(exposure, demo_image, provenance_base):
                     os.rmdir(folder)
 
 
-def test_reference(simulated_reference):
-    with SmartSession() as session:
-        ref = simulated_reference.recursive_merge(session)
-        session.add(ref)
-        session.commit()
-
-
 def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance_base, provenance_extra):
     with SmartSession() as session:
         demo_image.provenance = provenance_base
@@ -511,43 +504,57 @@ def test_image_preproc_bitflag( demo_image, provenance_base ):
         assert q.count() == 0
 
 
-def test_image_badness(demo_image):
+def test_image_badness(demo_image, provenance_base):
 
-    # this is not a legit "badness" keyword...
-    with pytest.raises(ValueError, match='Keyword "foo" not recognized'):
-        demo_image.badness = 'foo'
+    with SmartSession() as session:
+        demo_image.provenance = provenance_base
+        cleanup = ImageCleanup.save_image(demo_image)
+        demo_image = demo_image.recursive_merge(session)
+        session.add(demo_image)
+        session.commit()
 
-    # this is a legit keyword, but for cutouts, not for images
-    with pytest.raises(ValueError, match='Keyword "Cosmic Ray" not recognized'):
-        demo_image.badness = 'Cosmic Ray'
+        # this is not a legit "badness" keyword...
+        with pytest.raises(ValueError, match='Keyword "foo" not recognized'):
+            demo_image.badness = 'foo'
 
-    # this is a legit keyword, but for images, using no space and no capitalization
-    demo_image.badness = 'brightsky'
+        # this is a legit keyword, but for cutouts, not for images
+        with pytest.raises(ValueError, match='Keyword "Cosmic Ray" not recognized'):
+            demo_image.badness = 'Cosmic Ray'
 
-    # retrieving this keyword, we do get it capitalized and with a space:
-    assert demo_image.badness == 'Bright Sky'
-    assert demo_image.bitflag == 2 ** 5  # the bright sky bit is number 5
+        # this is a legit keyword, but for images, using no space and no capitalization
+        demo_image.badness = 'brightsky'
 
-    # what happens when we add a second keyword?
-    demo_image.badness = 'brightsky, banding'
-    assert demo_image.bitflag == 2 ** 5 + 2 ** 1  # the bright sky bit is number 5, banding is number 1
-    assert demo_image.badness == 'Banding, Bright Sky'
+        # retrieving this keyword, we do get it capitalized and with a space:
+        assert demo_image.badness == 'Bright Sky'
+        assert demo_image.bitflag == 2 ** 5  # the bright sky bit is number 5
 
-    # now add a third keyword, but on the Exposure
-    demo_image.exposure.badness = 'saturation'
-    # TODO: need to add a manual way to propagate bitflags downstream
-    assert demo_image.bitflag == 2 ** 5 + 2 ** 3 + 2 ** 1  # saturation bit is 3
-    assert demo_image.badness == 'Banding, Saturation, Bright Sky'
+        # what happens when we add a second keyword?
+        demo_image.badness = 'brightsky, banding'
+        assert demo_image.bitflag == 2 ** 5 + 2 ** 1  # the bright sky bit is number 5, banding is number 1
+        assert demo_image.badness == 'Banding, Bright Sky'
 
-    # adding the same keyword on the exposure and the image makes no difference
-    demo_image.exposure.badness = 'banding'
-    assert demo_image.bitflag == 2 ** 5 + 2 ** 1
-    assert demo_image.badness == 'Banding, Bright Sky'
+        # now add a third keyword, but on the Exposure
+        demo_image.exposure.badness = 'saturation'
+        session.add(demo_image)
+        session.commit()
 
-    # try appending keywords to the image
-    demo_image.append_badness('shaking')
-    assert demo_image.bitflag == 2 ** 5 + 2 ** 2 + 2 ** 1  # shaking bit is 2
-    assert demo_image.badness == 'Banding, Shaking, Bright Sky'
+        # a manual way to propagate bitflags downstream
+        demo_image.exposure.update_downstream_badness(session)  # make sure the downstreams get the new badness
+        session.commit()
+        assert demo_image.bitflag == 2 ** 5 + 2 ** 3 + 2 ** 1  # saturation bit is 3
+        assert demo_image.badness == 'Banding, Saturation, Bright Sky'
+
+        # adding the same keyword on the exposure and the image makes no difference
+        demo_image.exposure.badness = 'banding'
+        demo_image.exposure.update_downstream_badness(session)  # make sure the downstreams get the new badness
+        session.commit()
+        assert demo_image.bitflag == 2 ** 5 + 2 ** 1
+        assert demo_image.badness == 'Banding, Bright Sky'
+
+        # try appending keywords to the image
+        demo_image.append_badness('shaking')
+        assert demo_image.bitflag == 2 ** 5 + 2 ** 2 + 2 ** 1  # shaking bit is 2
+        assert demo_image.badness == 'Banding, Shaking, Bright Sky'
 
 
 # @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )

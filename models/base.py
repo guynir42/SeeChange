@@ -1285,13 +1285,18 @@ class HasBitFlagBadness:
             'upstream object that were used to make this one. '
     )
 
-    _upstream_bitflag = sa.Column(
-        sa.BIGINT,
-        nullable=False,
-        default=0,
-        index=True,
-        doc='Bitflag of objects used to generate this object. '
-    )
+    @declared_attr
+    def _upstream_bitflag(cls):
+        if cls.__name__ != 'Exposure':
+            return sa.Column(
+                sa.BIGINT,
+                nullable=False,
+                default=0,
+                index=True,
+                doc='Bitflag of objects used to generate this object. '
+            )
+        else:
+            return None
 
     @hybrid_property
     def bitflag(self):
@@ -1345,6 +1350,25 @@ class HasBitFlagBadness:
         nullable=True,
         doc='Free text comment about this data product, e.g., why it is bad. '
     )
+
+    def update_downstream_badness(self, session=None):
+        """Send a recursive command to update all downstream objects that have bitflags. """
+        # make sure this object is current:
+        with SmartSession(session) as session:
+            new_bitflag = 0  # start from scratch, in case some upstreams have lost badness
+            for upstream in self.get_upstreams(session):
+                if hasattr(upstream, '_bitflag'):
+                    new_bitflag |= upstream.bitflag
+
+            if hasattr(self, '_upstream_bitflag'):
+                self._upstream_bitflag = new_bitflag
+                session.add(self)
+
+            # recursively do this for all the other objects
+            for downstream in self.get_downstreams(session):
+                if hasattr(downstream, 'update_downstream_badness') and callable(downstream.update_downstream_badness):
+                    downstream.update_downstream_badness(session)
+
 
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object

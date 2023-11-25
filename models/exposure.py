@@ -14,7 +14,15 @@ from astropy.io import fits
 from util.config import Config
 from pipeline.utils import read_fits_image, parse_ra_hms_to_deg, parse_dec_dms_to_deg
 
-from models.base import Base, SeeChangeBase, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, SmartSession
+from models.base import (
+    Base,
+    SeeChangeBase,
+    AutoIDMixin,
+    FileOnDiskMixin,
+    SpatiallyIndexed,
+    SmartSession,
+    HasBitFlagBadness,
+)
 from models.instrument import guess_instrument, get_instrument_instance
 from models.provenance import Provenance
 
@@ -147,7 +155,7 @@ class ExposureImageIterator:
             raise StopIteration
 
 
-class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
+class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBadness):
 
     __tablename__ = "exposures"
 
@@ -270,14 +278,6 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
         doc='Name of the instrument used to take the exposure. '
     )
 
-    # Removing this ; telescope is uniquely determined by instrument
-    # telescope = sa.Column(
-    #     sa.Text,
-    #     nullable=False,
-    #     index=True,
-    #     doc='Telescope used to take the exposure. '
-    # )
-
     project = sa.Column(
         sa.Text,
         nullable=False,
@@ -299,46 +299,6 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
         index=True,
         doc='Bitflag for this exposure. Good exposures have a bitflag of 0. '
             'Bad exposures are each bad in their own way (i.e., have different bits set). '
-    )
-
-    @hybrid_property
-    def bitflag(self):
-        return self._bitflag
-
-    @bitflag.inplace.setter
-    def bitflag(self, value):
-        allowed_bits = 0
-        for i in image_badness_inverse.values():
-            allowed_bits += 2 ** i
-        if value & ~allowed_bits != 0:
-            raise ValueError(f'Bitflag value {bin(value)} has bits set that are not allowed.')
-        self._bitflag = value
-
-    @property
-    def badness(self):
-        """
-        A comma separated string of keywords describing
-        why this data is not good, based on the bitflag.
-        """
-        return bitflag_to_string(self.bitflag, data_badness_dict)
-
-    @badness.setter
-    def badness(self, value):
-        """Set the badness for this exposure using a comma separated string. """
-        self.bitflag = string_to_bitflag(value, image_badness_inverse)
-
-    def append_badness(self, value):
-        """Add some keywords (in a comma separated string)
-        describing what is bad about this exposure.
-        The keywords will be added to the list "badness"
-        and the bitflag for this exposure will be updated accordingly.
-        """
-        self.bitflag = self.bitflag | string_to_bitflag(value, image_badness_inverse)
-
-    description = sa.Column(
-        sa.Text,
-        nullable=True,
-        doc='Free text comment about this exposure, e.g., why it is bad. '
     )
 
     origin_identifier = sa.Column(
@@ -735,6 +695,18 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
         """
         return False
 
+    def get_upstreams(self, session=None):
+        """An exposure does not have any upstreams. """
+        return []
+
+    def get_downstreams(self, session=None):
+        """An exposure has only Image downstreams """
+        from models.image import Image
+
+        with SmartSession(session) as session:
+            images = session.scalars(sa.select(Image).where(Image.exposure_id == self.id)).all()
+
+        return images
 
 if __name__ == '__main__':
     import os
