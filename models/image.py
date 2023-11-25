@@ -37,18 +37,18 @@ from models.enums_and_bitflags import (
 import util.config as config
 
 
-image_products_association_table = sa.Table(
-    'image_products_association',
-    Base.metadata,
-    sa.Column('prod_id',
-              sa.Integer,
-              sa.ForeignKey('image_products.id', ondelete="CASCADE", name='image_products_association_prod_id_fkey'),
-              primary_key=True),
-    sa.Column('image_id',
-              sa.Integer,
-              sa.ForeignKey('images.id', ondelete="CASCADE", name='image_products_association_image_id_fkey'),
-              primary_key=True),
-)
+# image_products_association_table = sa.Table(
+#     'image_products_association',
+#     Base.metadata,
+#     sa.Column('prod_id',
+#               sa.Integer,
+#               sa.ForeignKey('image_products.id', ondelete="CASCADE", name='image_products_association_prod_id_fkey'),
+#               primary_key=True),
+#     sa.Column('image_id',
+#               sa.Integer,
+#               sa.ForeignKey('images.id', ondelete="CASCADE", name='image_products_association_image_id_fkey'),
+#               primary_key=True),
+# )
 
 
 class ImageProducts(Base, AutoIDMixin):
@@ -157,6 +157,12 @@ class ImageProducts(Base, AutoIDMixin):
             if commit:
                 session.commit()
 
+    def __getattr__(self, key):
+        value = super().__getattr__(key)
+        if key == 'image' and value is not None:
+            value._products = self  # attach itself to the image object before giving it out
+        return value
+
     def __setattr__(self, key, value):
         if key == 'image':
             if value is not None:
@@ -164,7 +170,7 @@ class ImageProducts(Base, AutoIDMixin):
             else:
                 self.mjd = None
 
-        object.__setattr__(self, key, value)
+        super().__setattr__(key, value)
 
 
 class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, HasBitFlagBadness):
@@ -213,7 +219,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     upstream_products = orm.relationship(
         'ImageProducts',
-        secondary=image_products_association_table,
+        # secondary=image_products_association_table,
+        back_populates='image',
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
         lazy='selectin',
@@ -520,6 +527,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self.psf = None  # the point-spread-function object (optionally loaded)
         self.wcs = None  # the WorldCoordinates object (optionally loaded)
         self.zp = None  # the zero-point object (optionally loaded)
+        self._products = None  # cache the ImageProducts object so not to regenerate it each time
 
         self._instrument_object = None
         self._bitflag = 0
@@ -547,6 +555,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self.psf = None
         self.wcs = None
         self.zp = None
+        self._products = None
 
         self._instrument_object = None
 
@@ -578,13 +587,26 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     def make_image_products(self):
         """Generate an ImageProducts object from this image and any loaded PSF, SourceList, WorldCoordinates, etc."""
-        prod = ImageProducts()
-        prod.image = self
-        prod.psf = self.psf
-        prod.sources = self.sources
-        prod.wcs = self.wcs
-        prod.zp = self.zp
+        # use the cached value if possible
+        prod = self._products
 
+        # cache must match the current values
+        if (
+            prod is not None and
+            (self.psf != prod.psf or self.sources != prod.sources or self.wcs != prod.wcs or self.zp != prod.zp)
+        ):
+            prod = None
+
+        # if no matching cache is found, recreate it
+        if prod is None:
+            prod = ImageProducts()
+            prod.image = self
+            prod.psf = self.psf
+            prod.sources = self.sources
+            prod.wcs = self.wcs
+            prod.zp = self.zp
+
+        self._products = prod
         return prod
 
     @classmethod
@@ -850,12 +872,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     'dec_corner_00', 'dec_corner_01', 'dec_corner_10', 'dec_corner_11' ]:
             output.__setattr__(att, getattr(new_image, att))
 
-        if im_type.lower == 'diff':
-            output.type = 'Diff'
-        elif im_type.lower == 'warped':
-            output.type = 'Warped'
-        else:
-            raise ValueError(f"im_type must be 'diff' or 'warped'. Got {im_type} instead.")
+        if im_type is not None:
+            if im_type.lower == 'diff':
+                output.type = 'Diff'
+            elif im_type.lower == 'warped':
+                output.type = 'Warped'
+            else:
+                raise ValueError(f"im_type must be 'diff' or 'warped'. Got {im_type} instead.")
         if new_image.type.startswith('Com'):
             output.type = 'ComDiff'
 
@@ -1176,7 +1199,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         with SmartSession(session) as session:
             upstreams = []
             # get the exposure
-            if self.exposure_id is not None:
+            if self.exposure_id is not None:  # TODO: what if it hasn't been uploaded to the DB yet??
                 exposure = session.scalars(sa.select(Exposure).where(Exposure.id == self.exposure_id)).first()
                 if exposure is not None:
                     upstreams.append(exposure)

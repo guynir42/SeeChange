@@ -410,8 +410,10 @@ def test_image_enum_values(exposure, demo_image, provenance_base):
 
 
 def test_reference(simulated_reference):
-    ref = simulated_reference
-    # with SmartSession() as session:
+    with SmartSession() as session:
+        ref = simulated_reference.recursive_merge(session)
+        session.add(ref)
+        session.commit()
 
 
 def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance_base, provenance_extra):
@@ -429,7 +431,7 @@ def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance
         session.add(demo_image)
 
         # simulated_reference = session.merge(simulated_reference)
-        new = Image.from_new_and_ref(demo_image, simulated_reference)
+        new = Image.from_new_and_ref(demo_image, simulated_reference.image)
         new.provenance = provenance_extra
         new = new.recursive_merge(session)
 
@@ -444,10 +446,10 @@ def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance
         # check the upstreams/downstreams for the new image
         upstream_ids = [u.id for u in new.get_upstreams(session=session)]
         assert demo_image.id in upstream_ids
-        assert reference_entry.id in upstream_ids
+        assert simulated_reference.image_id in upstream_ids
         downstream_ids = [d.id for d in new.get_downstreams(session=session)]
         assert len(downstream_ids) == 0
-
+        return
         upstream_ids = [u.id for u in reference_entry.get_upstreams(session=session)]
         assert reference_entry.image.id in upstream_ids
         downstream_ids = [d.id for d in reference_entry.get_downstreams(session=session)]

@@ -697,7 +697,7 @@ def simulated_reference(provenance_base, provenance_extra):
     ref_image.save()
 
     ref = Reference()
-    ref.image = ref_image
+    ref.products = ref_image.make_image_products()
     ref.validity_start = Time(50000, format='mjd', scale='utc').isot
     ref.validity_end = Time(58500, format='mjd', scale='utc').isot
     ref.section_id = 0

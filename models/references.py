@@ -31,7 +31,7 @@ class Reference(Base, AutoIDMixin):
     )
 
     image_id = association_proxy("products", "image_id")
-    image = association_proxy("products", "image")
+    image = association_proxy("products", "image", )
     sources_id = association_proxy("products", "sources_id")
     sources = association_proxy("products", "sources")
     psf_id = association_proxy("products", "psf_id")
@@ -116,7 +116,8 @@ class Reference(Base, AutoIDMixin):
                 self.filter = value.filter
                 self.target = value.target
                 self.section_id = value.section_id
-                object.__setattr__(self, 'image_id', value.id)
+                # first assign the image, then do stuff with it
+                super().__setattr__(key, value)
                 if self.products is not None:
                     self.image.psf = self.products.psf
                     self.image.sources = self.products.sources
@@ -130,13 +131,17 @@ class Reference(Base, AutoIDMixin):
                 self.target = value.image.target
                 self.section_id = value.image.section_id
 
+            # first assign the products, then do stuff with it
+            super().__setattr__(key, value)
             self.image = value.image
             self.image.psf = value.psf
             self.image.sources = value.sources
             self.image.wcs = value.wcs
             self.image.zp = value.zp
+            return
 
         super().__setattr__(key, value)
+
 
     @orm.reconstructor
     def init_on_load(self):
