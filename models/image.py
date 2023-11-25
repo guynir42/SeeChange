@@ -37,18 +37,22 @@ from models.enums_and_bitflags import (
 import util.config as config
 
 
-# image_products_association_table = sa.Table(
-#     'image_products_association',
-#     Base.metadata,
-#     sa.Column('prod_id',
-#               sa.Integer,
-#               sa.ForeignKey('image_products.id', ondelete="CASCADE", name='image_products_association_prod_id_fkey'),
-#               primary_key=True),
-#     sa.Column('image_id',
-#               sa.Integer,
-#               sa.ForeignKey('images.id', ondelete="CASCADE", name='image_products_association_image_id_fkey'),
-#               primary_key=True),
-# )
+# this links each ImageProducts to an Image that has this ImageProducts as an upstream
+# (many images can use the same products object as upstreams)
+# the ImageProduct.image_id is for the one image this product is for
+# (there could be many ImageProducts based on the same Image).
+image_products_association_table = sa.Table(
+    'image_products_association',
+    Base.metadata,
+    sa.Column('prod_id',
+              sa.Integer,
+              sa.ForeignKey('image_products.id', ondelete="CASCADE", name='image_products_association_prod_id_fkey'),
+              primary_key=True),
+    sa.Column('image_id',
+              sa.Integer,
+              sa.ForeignKey('images.id', ondelete="CASCADE", name='image_products_association_image_id_fkey'),
+              primary_key=True),
+)
 
 
 class ImageProducts(Base, AutoIDMixin):
@@ -219,8 +223,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     upstream_products = orm.relationship(
         'ImageProducts',
-        # secondary=image_products_association_table,
-        back_populates='image',
+        secondary=image_products_association_table,
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
         lazy='selectin',
@@ -1199,18 +1202,28 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         with SmartSession(session) as session:
             upstreams = []
             # get the exposure
-            if self.exposure_id is not None:  # TODO: what if it hasn't been uploaded to the DB yet??
+            try:
+                exposure = self.exposure
+            except sa.orm.exc.DetachedInstanceError:
+                exposure = None
+            if exposure is None and self.exposure_id is not None:
                 exposure = session.scalars(sa.select(Exposure).where(Exposure.id == self.exposure_id)).first()
-                if exposure is not None:
-                    upstreams.append(exposure)
+
+            if exposure is not None:
+                upstreams.append(exposure)
 
             # get the reference entry
             for prod in self.upstream_products:
-                upstreams.append(prod.image)
-                upstreams.append(prod.psf)
-                upstreams.append(prod.sources)
-                upstreams.append(prod.wcs)
-                upstreams.append(prod.zp)
+                if prod.image is not None:
+                    upstreams.append(prod.image)
+                if prod.psf is not None:
+                    upstreams.append(prod.psf)
+                if prod.sources is not None:
+                    upstreams.append(prod.sources)
+                if prod.wcs is not None:
+                    upstreams.append(prod.wcs)
+                if prod.zp is not None:
+                    upstreams.append(prod.zp)
 
         return upstreams
 
@@ -1222,25 +1235,29 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         downstreams = []
         with SmartSession(session) as session:
-            # source lists:
-            sources = session.scalars(
-                sa.select(SourceList).where(SourceList.image_id == self.id)
-            ).all()
-            downstreams += sources
-
-            # psfs:
+            # get all psfs that are related to this image (regardless of provenance)
             psfs = session.scalars(
                 sa.select(PSF).where(PSF.image_id == self.id)
             ).all()
             downstreams += psfs
 
+            # get all source lists that are related to this image (regardless of provenance)
+            sources = session.scalars(
+                sa.select(SourceList).where(SourceList.image_id == self.id)
+            ).all()
+            downstreams += sources
+
+            # note that the WCS and ZP are downstream of the source list, not the image
+
             # now look for other images that were created based on this one
             images = session.scalars(
-                sa.select(ImageProducts).where(ImageProducts.image_id == self.id).select_from(
-                    ImageProducts.join(Image, Image.id == ImageProducts.image_id)
-                )
+                sa.select(Image).where(ImageProducts.image_id == self.id).select_from(
+                    Image
+                ).join(image_products_association_table).where(
+                    Image.id == image_products_association_table.c.image_id,
+                    ImageProducts.id == image_products_association_table.c.prod_id,
+                ).order_by(Image.mjd).distinct()
             ).all()
-
             downstreams += images
 
             return downstreams

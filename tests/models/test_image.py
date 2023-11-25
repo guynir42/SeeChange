@@ -449,22 +449,21 @@ def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance
         assert simulated_reference.image_id in upstream_ids
         downstream_ids = [d.id for d in new.get_downstreams(session=session)]
         assert len(downstream_ids) == 0
-        return
-        upstream_ids = [u.id for u in reference_entry.get_upstreams(session=session)]
-        assert reference_entry.image.id in upstream_ids
-        downstream_ids = [d.id for d in reference_entry.get_downstreams(session=session)]
-        assert new.id in downstream_ids
 
         upstream_ids = [u.id for u in demo_image.get_upstreams(session=session)]
         assert [demo_image.exposure_id] == upstream_ids
         downstream_ids = [d.id for d in demo_image.get_downstreams(session=session)]
-        assert [new.id] == downstream_ids
+        assert [new.id] == downstream_ids  # should be the only downstream
 
         # check the upstreams/downstreams for the reference image
-        upstream_ids = [u.id for u in reference_entry.image.get_upstreams(session=session)]
-        assert len(upstream_ids) == 5
-        source_images_ids = [im.id for im in reference_entry.image.source_images]
+        upstreams = simulated_reference.image.get_upstreams(session=session)
+        assert len(upstreams) == 5  # was made of five images
+        assert all([isinstance(u, Image) for u in upstreams])
+        source_images_ids = [p.image.id for p in simulated_reference.image.upstream_products]
+        upstream_ids = [u.id for u in upstreams]
         assert set(upstream_ids) == set(source_images_ids)
+        downstream_ids = [d.id for d in simulated_reference.image.get_downstreams(session=session)]
+        assert [new.id] == downstream_ids  # should be the only downstream
 
 
 def test_image_preproc_bitflag( demo_image, provenance_base ):
