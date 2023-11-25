@@ -68,6 +68,7 @@ class ImageProducts(Base, AutoIDMixin):
 
     image = orm.relationship(
         'Image',
+        foreign_keys=[image_id],
         cascade='save-update, merge, refresh-expire, expunge',
         lazy='selectin',
         doc="The image that these products are associated with. "
@@ -234,7 +235,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     ref_products_id = sa.Column(
-        sa.Integer,
+        sa.ForeignKey('image_products.id', ondelete='SET NULL', name='images_ref_image_products_id_fkey'),
         nullable=True,
         index=True,
         doc=(
@@ -243,12 +244,35 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         )
     )
 
+    ref_products = orm.relationship(
+        'ImageProducts',
+        foreign_keys=[ref_products_id],
+        cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
+        doc=(
+            "ImageProduct for the reference image used to produce this image. "
+            "This is the image that other images are warped and scaled to match. "
+        )
+    )
+
     new_products_id = sa.Column(
-        sa.Integer,
+        sa.ForeignKey('image_products.id', ondelete='SET NULL', name='images_new_image_products_id_fkey'),
         nullable=True,
         index=True,
         doc=(
             "ID of the new entry used to produce a difference image. "
+            "When making a warped or difference image, this will refer to the new (science) image. "
+            "For coadded images this will be None. "
+        )
+    )
+
+    new_products = orm.relationship(
+        'ImageProducts',
+        foreign_keys=[new_products_id],
+        cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
+        doc=(
+            "ImageProduct for the new (science) image used to produce a difference image. "
             "When making a warped or difference image, this will refer to the new (science) image. "
             "For coadded images this will be None. "
         )
@@ -775,7 +799,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         # for each attribute, check that all the images have the same value
         for att in ['section_id', 'instrument', 'telescope', 'type', 'filter', 'project', 'target']:
-            values = set([getattr(image, att) for image in images])
+            values = set([str(getattr(image, att)) for image in images])
             if len(values) != 1:
                 raise ValueError(f"Cannot combine images with different {att} values: {values}")
             output.__setattr__(att, values.pop())
@@ -814,8 +838,16 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # mark the first image as the reference (this can be overriden later when actually warping into one image)
         output.ref_products_id = output.upstream_products[0].id
 
+        output._upstream_bitflag = 0
+        for im in images:
+            output._upstream_bitflag |= im.bitflag
+
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
+
+    @classmethod
+    def from_ref_and_new(cls, ref_image, new_image, im_type=None):
+        return cls.from_new_and_ref(new_image, ref_image, im_type=im_type)
 
     @classmethod
     def from_new_and_ref(cls, new_image, ref_image, im_type=None):
@@ -866,8 +898,12 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # TODO: should RA and Dec also be exactly the same??
 
         output.upstream_products = [ref_image.make_image_products(), new_image.make_image_products()]
-        output.ref_products_id = output.upstream_products[0].id
-        output.new_products_id = output.upstream_products[1].id
+        output.ref_products = output.upstream_products[0]
+        output.new_products = output.upstream_products[1]
+
+        output._upstream_bitflag = 0
+        output._upstream_bitflag |= ref_image.bitflag
+        output._upstream_bitflag |= new_image.bitflag
 
         # get some more attributes from the new image
         for att in ['exp_time', 'mjd', 'end_mjd', 'header', 'raw_header', 'ra', 'dec',

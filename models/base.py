@@ -1369,7 +1369,6 @@ class HasBitFlagBadness:
                 if hasattr(downstream, 'update_downstream_badness') and callable(downstream.update_downstream_badness):
                     downstream.update_downstream_badness(session)
 
-
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object
 

@@ -558,7 +558,7 @@ def test_image_badness(demo_image, provenance_base):
 
 
 # @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
-@pytest.mark.skip(reason="Need to finish this!")
+# @pytest.mark.skip(reason="Need to finish this!")
 def test_multiple_images_badness(
         demo_image,
         demo_image2,
@@ -568,42 +568,38 @@ def test_multiple_images_badness(
         provenance_base,
         provenance_extra
 ):
-    # the image itself is marked bad because of bright sky
-    demo_image2.badness = 'brightsky'
-    assert demo_image2.badness == 'Bright Sky'
-    assert demo_image2.bitflag == 2 ** 5
-
-    # note that this image is not directly bad, but the exposure has banding
-    demo_image3.exposure.badness = 'banding'
-    assert demo_image3.badness == 'Banding'
-    assert demo_image._bitflag == 0  # the exposure is bad!
-    assert demo_image3.bitflag == 2 ** 1
-
-    # add these to the DB
-    images = [demo_image, demo_image2, demo_image3]
-    target = uuid.uuid4().hex
-    filter = demo_image.filter
-    filenames = []
-    cleanups = []
     try:
+        images = [demo_image, demo_image2, demo_image3, demo_image5, demo_image6]
+        cleanups = []
+        filter = 'g'
+        target = str(uuid.uuid4())
+        project = 'test project'
         with SmartSession() as session:
             for im in images:
-                im.target = target
                 im.filter = filter
+                im.target = target
+                im.project = project
                 im.provenance = provenance_base
+                im = im.recursive_merge(session)
                 cleanups.append(ImageCleanup.save_image(im))
-                filenames.append(im.get_fullpath(as_list=True)[0])
-                assert os.path.exists(filenames[-1])
-                im = im.recursive_merge( session )
                 session.add(im)
             session.commit()
 
-            # leaving this commented code for debugging of bitflag:
-            # for im in images:
-            #     print(f'im.id= {im.id}, im.bitflag= {im.bitflag}')
-            # stmt = sa.select(Image.id, Image.bitflag).where(Image.bitflag>0).order_by(Image.id)
-            # print(stmt)
-            # print(session.execute(stmt).all())
+            # the image itself is marked bad because of bright sky
+            demo_image2.badness = 'brightsky'
+            assert demo_image2.badness == 'Bright Sky'
+            assert demo_image2.bitflag == 2 ** 5
+            session.commit()
+
+            # note that this image is not directly bad, but the exposure has banding
+            demo_image3.exposure.badness = 'banding'
+            demo_image3.exposure.update_downstream_badness(session)
+            session.commit()
+
+            assert demo_image3.badness == 'Banding'
+            assert demo_image._bitflag == 0  # the exposure is bad!
+            assert demo_image3.bitflag == 2 ** 1
+            session.commit()
 
             # find the images that are good vs bad
             good_images = session.scalars(sa.select(Image).where(Image.bitflag == 0)).all()
@@ -613,19 +609,18 @@ def test_multiple_images_badness(
             assert demo_image2.id in [i.id for i in bad_images]
             assert demo_image3.id in [i.id for i in bad_images]
 
-            ref_entry = ReferenceEntry(image=demo_image2)
             # make an image from the two bad exposures using subtraction
-            demo_image4 = Image.from_new_and_ref(demo_image3, ref_entry)
+            demo_image4 = Image.from_new_and_ref(demo_image3, demo_image2)
             demo_image4.provenance = provenance_extra
             cleanups.append(ImageCleanup.save_image(demo_image4))
             images.append(demo_image4)
-            filenames.append(demo_image4.get_fullpath(as_list=True)[0])
-            demo_image4 = demo_image4.recursive_merge( session )
+            demo_image4 = demo_image4.recursive_merge(session)
             session.add(demo_image4)
             session.commit()
+
             assert demo_image4.id is not None
-            assert demo_image4.ref_entry.ref_image_id == demo_image2.id
-            assert demo_image4.image_sources[0] == demo_image3.id
+            assert demo_image4.ref_products.image_id == demo_image2.id
+            assert demo_image4.new_products.image_id == demo_image3.id
 
             # check that badness is loaded correctly from both parents
             assert demo_image4.badness == 'Banding, Bright Sky'
@@ -645,27 +640,11 @@ def test_multiple_images_badness(
             assert demo_image4.badness == 'Banding, Saturation, Bright Sky'
             assert demo_image4._bitflag == 2 ** 3  # only this bit is from the image itself
 
-            # make a few good images and make sure they don't get flagged
-            more_images = [demo_image5, demo_image6]
-
-            for im in more_images:
-                im.target = target
-                im.filter = filter
-                im.provenance = provenance_base
-                cleanups.append(ImageCleanup.save_image(im))
-                filenames.append(im.get_fullpath(as_list=True)[0])
-                images.append(im)
-                im = im.recursive_merge( session )
-                session.add(im)
-            session.commit()
-
             # make a new subtraction:
-            ref_entry2 = ReferenceEntry(image=demo_image5)
-            demo_image7 = Image.from_ref_and_new(demo_image6, ref_entry2)
+            demo_image7 = Image.from_ref_and_new(demo_image6, demo_image5)
             demo_image7.provenance = provenance_extra
             cleanups.append(ImageCleanup.save_image(demo_image7))
             images.append(demo_image7)
-            filenames.append(demo_image7.get_fullpath(as_list=True)[0])
             demo_image7 = demo_image7.recursive_merge( session )
             session.add(demo_image7)
             session.commit()
@@ -695,10 +674,10 @@ def test_multiple_images_badness(
             demo_image8.provenance = provenance_extra
             cleanups.append(ImageCleanup.save_image(demo_image8))
             images.append(demo_image8)
-            filenames.append(demo_image8.get_fullpath(as_list=True)[0])
             demo_image8 = demo_image8.recursive_merge( session )
             session.add(demo_image8)
             session.commit()
+
             assert demo_image8.badness == 'Banding, Bright Sky'
             assert demo_image8.bitflag == 2 ** 1 + 2 ** 5
 
@@ -708,8 +687,21 @@ def test_multiple_images_badness(
             bad_coadd = session.scalars(sa.select(Image).where(Image.bitflag == 2 ** 1 + 2 ** 5)).all()
             assert demo_image8.id in [i.id for i in bad_coadd]
 
+            # get rid of this coadd to make a new one
+            demo_image8.delete_from_disk_and_database(session=session)
+            cleanups.pop()
+            images.pop()
+
             # now let's add the subtraction image to the coadd:
-            demo_image8.source_images = demo_image8.source_images + [demo_image4]  # we re-assign to trigger SQLA
+            # make a coadded image (now including the subtraction demo_image4):
+            demo_image8 = Image.from_images([demo_image, demo_image2, demo_image3, demo_image4, demo_image5, demo_image6])
+            demo_image8.provenance = provenance_extra
+            cleanups.append(ImageCleanup.save_image(demo_image8))
+            images.append(demo_image8)
+            demo_image8 = demo_image8.recursive_merge(session)
+            session.add(demo_image8)
+            session.commit()
+
             session.add(demo_image8)
             session.commit()
 
@@ -722,16 +714,22 @@ def test_multiple_images_badness(
             bad_coadd = session.scalars(sa.select(Image).where(Image.bitflag == 42)).all()
             assert demo_image8.id in [i.id for i in bad_coadd]
 
+            # try to add some badness to one of the underlying exposures
+            demo_image.exposure.badness = 'Shaking'
+            session.add(demo_image)
+            demo_image.exposure.update_downstream_badness(session)
+            session.commit()
+
+            assert 'Shaking' in demo_image.badness
+            assert 'Shaking' in demo_image8.badness
+
     finally:  # cleanup
         with SmartSession() as session:
             for im in images:
-                im.remove_data_from_disk()
-                if im.id is not None:
-                    session.execute(sa.delete(Image).where(Image.id == im.id))
-            session.commit()
+                im = im.recursive_merge(session)
+                im.delete_from_disk_and_database(session=session, commit=False)
 
-        for filename in filenames:
-            assert not os.path.exists(filename)
+            session.commit()
 
 
 def test_image_coordinates():
