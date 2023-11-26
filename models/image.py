@@ -993,7 +993,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         prov_hash = inst_name = im_type = date = time = filter = ra = dec = dec_int_pm = ''
         section_id = section_id_int = ra_int = ra_int_h = ra_frac = dec_int = dec_frac = 0
 
-        if self.provenance is not None:
+        if self.provenance is not None and self.provenance.id is not None:
             prov_hash = self.provenance.id
         if self.instrument_object is not None:
             inst_name = self.instrument_object.get_short_instrument_name()
@@ -1026,7 +1026,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             dec = self.dec
             dec_int, dec_frac = str(float(dec)).split('.')
             dec_int = int(dec_int)
-            dec_int_pm = f'p{dec_int:02d}' if dec_int >= 0 else f'm{dec_int:02d}'
+            dec_int_pm = f'p{dec_int:02d}' if dec_int >= 0 else f'm{-dec_int:02d}'
             dec_frac = int(dec_frac)
 
         cfg = config.Config.get()
