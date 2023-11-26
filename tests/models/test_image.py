@@ -409,22 +409,22 @@ def test_image_enum_values(exposure, demo_image, provenance_base):
                     os.rmdir(folder)
 
 
-def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance_base, provenance_extra):
+def test_image_upstreams_downstreams(demo_image, sim_reference, provenance_base, provenance_extra):
     with SmartSession() as session:
         demo_image.provenance = provenance_base
         demo_image = demo_image.recursive_merge(session)
 
         # make sure the new image matches the reference in all these attributes
-        demo_image.filter = simulated_reference.filter
-        demo_image.target = simulated_reference.target
-        demo_image.section_id = simulated_reference.section_id
+        demo_image.filter = sim_reference.filter
+        demo_image.target = sim_reference.target
+        demo_image.section_id = sim_reference.section_id
 
         # save and delete at the end
         cleanup1 = ImageCleanup.save_image(demo_image)
         session.add(demo_image)
 
-        # simulated_reference = session.merge(simulated_reference)
-        new = Image.from_new_and_ref(demo_image, simulated_reference.image)
+        # sim_reference = session.merge(sim_reference)
+        new = Image.from_new_and_ref(demo_image, sim_reference.image)
         new.provenance = provenance_extra
         new = new.recursive_merge(session)
 
@@ -439,7 +439,7 @@ def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance
         # check the upstreams/downstreams for the new image
         upstream_ids = [u.id for u in new.get_upstreams(session=session)]
         assert demo_image.id in upstream_ids
-        assert simulated_reference.image_id in upstream_ids
+        assert sim_reference.image_id in upstream_ids
         downstream_ids = [d.id for d in new.get_downstreams(session=session)]
         assert len(downstream_ids) == 0
 
@@ -449,13 +449,13 @@ def test_image_upstreams_downstreams(demo_image, simulated_reference, provenance
         assert [new.id] == downstream_ids  # should be the only downstream
 
         # check the upstreams/downstreams for the reference image
-        upstreams = simulated_reference.image.get_upstreams(session=session)
+        upstreams = sim_reference.image.get_upstreams(session=session)
         assert len(upstreams) == 5  # was made of five images
         assert all([isinstance(u, Image) for u in upstreams])
-        source_images_ids = [p.image.id for p in simulated_reference.image.upstream_products]
+        source_images_ids = [p.image.id for p in sim_reference.image.upstream_products]
         upstream_ids = [u.id for u in upstreams]
         assert set(upstream_ids) == set(source_images_ids)
-        downstream_ids = [d.id for d in simulated_reference.image.get_downstreams(session=session)]
+        downstream_ids = [d.id for d in sim_reference.image.get_downstreams(session=session)]
         assert [new.id] == downstream_ids  # should be the only downstream
 
 
@@ -557,8 +557,6 @@ def test_image_badness(demo_image, provenance_base):
         assert demo_image.badness == 'Banding, Shaking, Bright Sky'
 
 
-# @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
-# @pytest.mark.skip(reason="Need to finish this!")
 def test_multiple_images_badness(
         demo_image,
         demo_image2,
@@ -985,7 +983,7 @@ def test_image_from_exposure(exposure, provenance_base):
     assert not im.is_sub
     assert im.id is None  # need to commit to get IDs
     assert im.exposure_id is None  # need to commit to get IDs
-    assert im.source_images == []
+    assert im.upstream_products == []
     assert im.filepath is None  # need to save file to generate a filename
     assert np.array_equal(im.raw_data, exposure.data[0])
     assert im.data is None
@@ -1037,7 +1035,7 @@ def test_image_from_exposure_filter_array(exposure_filter_array):
     assert im.filter == filt
 
 
-def test_image_with_multiple_source_images(exposure, exposure2, provenance_base):
+def test_image_with_multiple_upstreams(exposure, exposure2, provenance_base):
     exposure.update_instrument()
     exposure2.update_instrument()
 
@@ -1067,11 +1065,6 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
         im1_id = None
         im2_id = None
         with SmartSession() as session:
-            # im.provenance = session.merge( im.provenance )
-            # im1.provenance = session.merge( im1.provenance )
-            # im2.provenance = session.merge( im2.provenance )
-            # exposure.provenance = session.merge( exposure.provenance )
-            # exposure2.provenance = session.merge( exposure2.provenance )
             im = im.recursive_merge( session )
             im1 = im1.recursive_merge( session )
             im2 = im2.recursive_merge( session )
@@ -1083,8 +1076,7 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
             im_id = im.id
             assert im_id is not None
             assert im.exposure_id is None
-            assert im.is_coadd
-            assert im.source_images == [im1, im2]
+            assert [u.image for u in im.upstream_products] == [im1, im2]
             assert np.isclose(im.mid_mjd, (im1.mjd + im2.mjd) / 2)
 
             # make sure source images are pulled into the database too
@@ -1092,15 +1084,13 @@ def test_image_with_multiple_source_images(exposure, exposure2, provenance_base)
             assert im1_id is not None
             assert im1.exposure_id is not None
             assert im1.exposure_id == exposure.id
-            assert not im1.is_coadd
-            assert im1.source_images == []
+            assert im1.upstream_products == []
 
             im2_id = im2.id
             assert im2_id is not None
             assert im2.exposure_id is not None
             assert im2.exposure_id == exposure2.id
-            assert not im2.is_coadd
-            assert im2.source_images == []
+            assert im2.upstream_products == []
 
     finally:  # make sure to clean up all images
         for id_ in [im_id, im1_id, im2_id]:
@@ -1151,11 +1141,10 @@ def test_image_subtraction(exposure, exposure2, provenance_base):
             im_id = im.id
             assert im_id is not None
             assert im.exposure_id is None
-            assert im.is_sub
             assert im.ref_image == im1
-            assert im.ref_image_id == im1.id
+            assert im.ref_image.id == im1.id
             assert im.new_image == im2
-            assert im.new_image_id == im2.id
+            assert im.new_image.id == im2.id
             assert im.mjd == im2.mjd
             assert im.exp_time == im2.exp_time
 
@@ -1164,15 +1153,13 @@ def test_image_subtraction(exposure, exposure2, provenance_base):
             assert im1_id is not None
             assert im1.exposure_id is not None
             assert im1.exposure_id == exposure.id
-            assert not im1.is_coadd
-            assert im1.source_images == []
+            assert im1.upstream_products == []
 
             im2_id = im2.id
             assert im2_id is not None
             assert im2.exposure_id is not None
             assert im2.exposure_id == exposure2.id
-            assert not im2.is_coadd
-            assert im2.source_images == []
+            assert im2.upstream_products == []
 
     finally:  # make sure to clean up all images
         for id_ in [im_id, im1_id, im2_id]:

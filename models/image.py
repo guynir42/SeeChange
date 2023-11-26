@@ -123,6 +123,13 @@ class ImageProducts(Base, AutoIDMixin):
         doc="ID of the zero point object associated with this image. "
     )
 
+    zp = orm.relationship(
+        'ZeroPoint',
+        cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
+        doc="The zero point object associated with this image. "
+    )
+
     # might need this to sort the loaded objects
     mjd = sa.Column(
         sa.Float,
@@ -163,7 +170,7 @@ class ImageProducts(Base, AutoIDMixin):
                 session.commit()
 
     def __getattr__(self, key):
-        value = super().__getattr__(key)
+        value = super().__getattribute__(key)
         if key == 'image' and value is not None:
             value._products = self  # attach itself to the image object before giving it out
         return value
@@ -255,6 +262,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         )
     )
 
+    @property
+    def ref_image(self):
+        if self.ref_products is None:
+            return None
+        else:
+            return self.ref_products.image
+
     new_products_id = sa.Column(
         sa.ForeignKey('image_products.id', ondelete='SET NULL', name='images_new_image_products_id_fkey'),
         nullable=True,
@@ -277,6 +291,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             "For coadded images this will be None. "
         )
     )
+
+    @property
+    def new_image(self):
+        if self.new_products is None:
+            return None
+        else:
+            return self.new_products.image
 
     is_sub = sa.Column(
         sa.Boolean,

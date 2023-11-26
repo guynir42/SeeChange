@@ -663,7 +663,7 @@ for i in range(2, 10):
 
 
 @pytest.fixture
-def simulated_reference(provenance_base, provenance_extra):
+def sim_reference(provenance_base, provenance_extra):
     ref = None
     filter = np.random.choice(list('grizY'))
     target = rnd_str(6)
@@ -706,21 +706,17 @@ def simulated_reference(provenance_base, provenance_extra):
 
     yield ref
 
-    try:
-        if ref is not None:
-            with SmartSession() as session:
-                ref = session.merge(ref)
-                ref.products.delete_from_disk_and_database(session=session, commit=False)
-                if ref.id is not None:
-                    session.execute(sa.delete(Reference).where(Reference.id == ref.id))
-                session.commit()
-
-    except Exception as e:
-        warnings.warn(str(e))
+    if ref is not None:
+        with SmartSession() as session:
+            ref = session.merge(ref)
+            ref.products.delete_from_disk_and_database(session=session, commit=False)
+            if ref.id is not None:
+                session.execute(sa.delete(Reference).where(Reference.id == ref.id))
+            session.commit()
 
 
 @pytest.fixture
-def sources(demo_image):
+def sim_sources(demo_image):
     num = 100
     x = np.random.uniform(0, demo_image.raw_data.shape[1], num)
     y = np.random.uniform(0, demo_image.raw_data.shape[0], num)

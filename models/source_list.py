@@ -173,9 +173,13 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         self._info = None
 
         # manually set all properties (columns or not)
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
+        self.set_attributes_from_dict(kwargs)
+
+    def __setattr__(self, key, value):
+        if key == 'image' and value is not None:
+            self._upstream_bitflag = value.bitflag
+
+        super().__setattr__(key, value)
 
     @orm.reconstructor
     def init_on_load(self):
