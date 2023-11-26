@@ -82,7 +82,7 @@ measurement:
   aperture_radius: 3.0
   real_bogus_version: null
 
-# Specific configuration for specific instruments
+# Specific configuration for specific instruments.
 # Instruments should override the two defaults from
 # instrument_default; they may add additional
 # configuration that their code needs.

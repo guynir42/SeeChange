@@ -356,21 +356,32 @@ class FileOnDiskMixin:
     the config system the first time the class is loaded.
 
     """
+    local_path = None
+    temp_path = None
 
-    cfg = config.Config.get()
-    local_path = cfg.value('path.data_root', None)
-    if local_path is None:
-        local_path = cfg.value('path.data_temp', None)
-    if local_path is None:
-        local_path = os.path.join(CODE_ROOT, 'data')
-    if not os.path.isdir(local_path):
-        os.makedirs(local_path, exist_ok=True)
+    @classmethod
+    def configure_paths(cls):
+        cfg = config.Config.get()
+        cls.local_path = cfg.value('path.data_root', None)
+        if cls.local_path is None:
+            cls.local_path = cfg.value('path.data_temp', None)
+        if cls.local_path is None:
+            cls.local_path = os.path.join(CODE_ROOT, 'data')
 
-    temp_path = cfg.value( 'path.data_temp', None )
-    if temp_path is None:
-        temp_path = os.path.join( CODE_ROOT, 'data' )
-    if not os.path.isdir( temp_path ):
-        os.makedirs( temp_path, exist_ok=True )
+        if not os.path.isabs(cls.local_path):
+            cls.local_path = os.path.join(CODE_ROOT, cls.local_path)
+        if not os.path.isdir(cls.local_path):
+            os.makedirs(cls.local_path, exist_ok=True)
+
+        # use this to store temporary files (scratch files)
+        cls.temp_path = cfg.value('path.data_temp', None)
+        if cls.temp_path is None:
+            cls.temp_path = os.path.join(CODE_ROOT, 'data')
+
+        if not os.path.isabs(cls.temp_path):
+            cls.temp_path = os.path.join(CODE_ROOT, cls.temp_path)
+        if not os.path.isdir(cls.temp_path):
+            os.makedirs(cls.temp_path, exist_ok=True)
 
     @classmethod
     def safe_mkdir(cls, path):
@@ -1029,6 +1040,10 @@ class FileOnDiskMixin:
                 session.delete(self)
                 if commit:
                     session.commit()
+
+
+# load the default paths from the config
+FileOnDiskMixin.configure_paths()
 
 
 def safe_mkdir(path):

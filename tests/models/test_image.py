@@ -18,7 +18,7 @@ from models.image import Image
 from models.enums_and_bitflags import image_preprocessing_inverse, string_to_bitflag
 
 from tests.conftest import rnd_str
-from tests.fixtures.sim_images import ImageCleanup
+from tests.fixtures.simulated import ImageCleanup
 
 
 def test_image_no_null_values(provenance_base):

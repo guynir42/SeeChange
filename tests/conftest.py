@@ -42,6 +42,10 @@ def tests_setup_and_teardown():
 
     Config.get(configfile=test_config_file, setdefault=True)
 
+    FileOnDiskMixin.configure_paths()
+    temp_data_folder = FileOnDiskMixin.local_path
+    # print(f'temp_data_folder: {temp_data_folder}')
+
     yield
     # Will be executed after the last test
     # print('Final teardown fixture executed! ')
@@ -57,6 +61,14 @@ def tests_setup_and_teardown():
         session.execute( sa.text( "DELETE FROM provenances" ) )
         session.execute( sa.text( "DELETE FROM code_versions" ) )
         session.commit()
+
+    # remove all the files created during tests
+    # shutil.rmtree(temp_data_folder)
+
+
+@pytest.fixture(scope="session")
+def cache_dir():
+    return os.path.join(CODE_ROOT, 'data/cache')
 
 
 @pytest.fixture(scope="session")

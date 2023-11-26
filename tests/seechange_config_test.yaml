@@ -5,6 +5,9 @@ overrides:
 augments:
   - local_augments.yaml
 
+path:
+  data_root: 'tests/temp_data'
+
 db:
   host: seechange_postgres
 
