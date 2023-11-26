@@ -142,7 +142,6 @@ class Reference(Base, AutoIDMixin):
 
         super().__setattr__(key, value)
 
-
     @orm.reconstructor
     def init_on_load(self):
         self.products.image.sources = self.products.sources

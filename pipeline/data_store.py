@@ -99,6 +99,7 @@ class DataStore:
         self.measurements = None  # photometry and other measurements for each source
 
         self.upstream_provs = None  # provenances to override the upstreams if no upstream objects exist
+        self.reference = None  # the Reference object needed to make subtractions
 
         # these are identifiers used to find the data products in the database
         self.exposure_id = None  # use this and section_id to find the raw image
@@ -271,6 +272,13 @@ class DataStore:
                 raise ValueError(f'Session must be a SQLAlchemy session or SmartSession, got {type(value)}')
 
         super().__setattr__(key, value)
+
+    def __getattr__(self, key):
+        value = super().__getattribute__(key)
+        if key == 'image' and value is not None:
+            self.apped_image_products(value)
+
+        return value
 
     def get_inputs(self):
         """Get a string with the relevant inputs. """
@@ -544,6 +552,20 @@ class DataStore:
 
         return self.image  # could return none if no image was found
 
+    def apped_image_products(self):
+        """Append the image products to the image object.
+        This is a convenience function to be used by the
+        pipeline applications, to make sure the image
+        object has all the data products it needs.
+        """
+        self.image.sources = self.sources
+        self.image.psf = self.psf
+        self.image.wcs = self.wcs
+        self.image.zp = self.zp
+        self.image.detections = self.detections
+        self.image.cutouts = self.cutouts
+        self.image.measurements = self.measurements
+
     def get_sources(self, provenance=None, session=None):
         """
         Get a SourceList from the original image,
@@ -790,9 +812,9 @@ class DataStore:
 
         return self.zp
 
-    def get_reference_entry(self, provenance=None, session=None):
+    def get_reference(self, provenance=None, session=None):
         """
-        Get the reference image for this image.
+        Get the reference for this image.
 
         Parameters
         ----------
@@ -816,33 +838,33 @@ class DataStore:
         """
         session = self.session if session is None else session
 
-        if self.ref_entry is None:
+        if self.reference is None:
 
             with SmartSession(session) as session:
                 image = self.get_image(session=session)
 
-                ref_entry = session.scalars(
-                    sa.select(ReferenceEntry).where(
+                ref = session.scalars(
+                    sa.select(Reference).where(
                         sa.or_(
-                            ReferenceEntry.validity_start.is_(None),
-                            ReferenceEntry.validity_start <= image.observation_time
+                            Reference.validity_start.is_(None),
+                            Reference.validity_start <= image.observation_time
                         ),
                         sa.or_(
-                            ReferenceEntry.validity_end.is_(None),
-                            ReferenceEntry.validity_end >= image.observation_time
+                            Reference.validity_end.is_(None),
+                            Reference.validity_end >= image.observation_time
                         ),
-                        ReferenceEntry.filter == image.filter,
-                        ReferenceEntry.target == image.target,
-                        ReferenceEntry.is_bad.is_(False),
+                        Reference.filter == image.filter,
+                        Reference.target == image.target,
+                        Reference.is_bad.is_(False),
                     )
                 ).first()
 
-                if ref_entry is None:
+                if ref is None:
                     raise ValueError(f'No reference image found for image {image.id}')
 
-                self.ref_entry = ref_entry
+                self.reference = ref
 
-        return self.ref_entry
+        return self.reference
 
     def get_subtraction(self, provenance=None, session=None):
         """
@@ -1225,7 +1247,7 @@ class DataStore:
                         mustsave = True
                         # TODO : if some extensions have a None md5sum and others don't,
                         # right now we'll re-save everything.  Improve this to only
-                        # save the necessary extensions.  (In pratice, this should
+                        # save the necessary extensions.  (In practice, this should
                         # hardly ever come up.)
                         if ( ( not force_save_everything )
                              and
@@ -1249,7 +1271,7 @@ class DataStore:
 
                         elif mustsave:
                             try:
-                                obj.save( overwrite=overwrite, exists_ok=exists_ok )
+                                obj.save( overwrite=overwrite, exists_ok=exists_ok, no_archive=no_archive )
                             except Exception as ex:
                                 _logger.error( f"Failed to save a {obj.__class__.__name__}: {ex}" )
                                 raise ex
