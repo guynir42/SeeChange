@@ -1342,6 +1342,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @raw_header.setter
     def raw_header(self, value):
+        if not isinstance(value, fits.Header):
+            raise ValueError(f"data must be a fits.Header object. Got {type(value)} instead. ")
         self._raw_header = value
 
     @property

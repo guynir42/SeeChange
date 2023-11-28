@@ -595,7 +595,7 @@ class Detector:
             for i in range(2):
                 psfdatasize = int( usepsfsize / psf_sampling + 0.5 )
                 if psfdatasize % 2 == 0:
-                    psfdatsize += 1
+                    psfdatasize += 1
 
                 # TODO: make the fwhmmax tried configurable
                 # (This is just a range of things to try to see if we can
