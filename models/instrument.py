@@ -980,6 +980,8 @@ class Instrument:
             return self.get_section( image.section_id ).gain
         elif section_id is not None:
             return self.get_section( section_id ).gain
+        elif self.gain is not None:
+            return self.gain
         else:
             return 1.
 
@@ -1201,7 +1203,7 @@ class Instrument:
     # X_WORLD, Y_WORLD, MAG_G, MAGERR_G, MAG_BP, MAGERR_BP, MAG_RP, MAGERR_RP, STARPROB
 
     @classmethod
-    def GaiaDR3_prune_star_cat(cls, catdata):
+    def GaiaDR3_prune_star_cat(cls, catdata, gaiaminbp_rp=0.5, gaiamaxbp_rp=3.0):
         """Choose only rows from a catalog that have stars.
 
         Usually this is done by choosing a subset of the catalog
@@ -1216,6 +1218,11 @@ class Instrument:
             MAG_G, MAGERR_G, MAG_BP, MAGERR_BP, MAG_RP, MAGERR_RP, STARPROB
             The data structure, when indexed on those keys, should
             return a 1D numpy array.
+        gaiaminbp_rp: float, optional
+            The minimum BP-RP color to keep.
+        gaiamaxbp_rp: float, optional
+            The maximum BP-RP color to keep.
+
 
         Returns
         -------
@@ -1224,9 +1231,6 @@ class Instrument:
         """
         output = copy.deepcopy(catdata)
 
-        # color cut
-        gaiaminbp_rp = 0.5
-        gaiamaxbp_rp = 3.0
         color = catdata['MAG_BP'] - catdata['MAG_RP']
         dex = (color >= gaiaminbp_rp) & (color <= gaiamaxbp_rp)
         dex &= catdata['STARPROB'] > 0.95
@@ -1329,20 +1333,21 @@ class Instrument:
 
         # we can probably do better than this, but I don't know if it makes any difference
         # ref: https://en.wikipedia.org/wiki/Photometric_system
-        wikipedia = dict(
-            U=Bandpass(332, 398),
-            R=Bandpass(589, 727),
-            V=Bandpass(507, 595),
-            G=Bandpass(400, 528),
-            B=Bandpass(398, 492),
-            I=Bandpass(731, 880),
-            Z=Bandpass(824, 976),
-            Y=Bandpass(960, 1080),
-            J=Bandpass(1110, 1326),
-            H=Bandpass(1476, 1784),
-            K=Bandpass(1995, 2385),
-            L=Bandpass(3214, 3686),
-        )
+
+        # wikipedia = dict(
+        #     U=Bandpass(332, 398),
+        #     R=Bandpass(589, 727),
+        #     V=Bandpass(507, 595),
+        #     G=Bandpass(400, 528),
+        #     B=Bandpass(398, 492),
+        #     I=Bandpass(731, 880),
+        #     Z=Bandpass(824, 976),
+        #     Y=Bandpass(960, 1080),
+        #     J=Bandpass(1110, 1326),
+        #     H=Bandpass(1476, 1784),
+        #     K=Bandpass(1995, 2385),
+        #     L=Bandpass(3214, 3686),
+        # )
 
         # maybe better to use LSST filters?
         # ref: https://www.lsst.org/sites/default/files/docs/sciencebook/SB_2.pdf Table 2.1 page 11
@@ -1356,7 +1361,7 @@ class Instrument:
         )
 
         values = lsst
-        values.update(wikipedia)  # TODO: should we remove these or add them as options as well?
+        # values.update(wikipedia)  # TODO: should we remove these or add them as options as well?
 
         return values
 
