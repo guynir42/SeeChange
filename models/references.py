@@ -149,3 +149,10 @@ class Reference(Base, AutoIDMixin):
         self.products.image.wcs = self.products.wcs
         self.products.image.zp = self.products.zp
 
+    def __setattr__(self, key, value):
+        if key == 'image':
+            self.target = value.target
+            self.filter = value.filter
+            self.section_id = value.section_id
+
+        super().__setattr__(key, value)

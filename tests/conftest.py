@@ -240,6 +240,7 @@ def provenance_preprocessing(code_version):
         with SmartSession() as session:
             session.execute(sa.delete(Provenance).where(Provenance.id == pid))
             session.commit()
+
     except Exception as e:
         warnings.warn(str(e))
 
