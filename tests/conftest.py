@@ -5,13 +5,7 @@ import pytest
 import uuid
 import shutil
 import pathlib
-<<<<<<< HEAD
 
-=======
-import hashlib
-import yaml
-import subprocess
->>>>>>> upstream/main
 import requests
 from bs4 import BeautifulSoup
 
@@ -28,14 +22,7 @@ from models.image import Image
 from models.source_list import SourceList
 from models.psf import PSF
 from pipeline.data_store import DataStore
-<<<<<<< HEAD
-=======
-from pipeline.preprocessing import Preprocessor
-from pipeline.detection import Detector
-from pipeline.astro_cal import AstroCalibrator
-from pipeline.photo_cal import PhotCalibrator
 from pipeline.catalog_tools import fetch_GaiaDR3_excerpt
->>>>>>> upstream/main
 
 from util import config
 from util.archive import Archive
@@ -252,7 +239,6 @@ def archive():
         warnings.warn(str(e))
 
 
-
 @pytest.fixture
 def example_image_with_sources_and_psf_filenames():
     image = pathlib.Path( FileOnDiskMixin.local_path ) / "test_data/test_ztf_image.fits"
@@ -315,8 +301,6 @@ def example_psfex_psf_files():
 
 
 @pytest.fixture
-<<<<<<< HEAD
-=======
 def gaiadr3_excerpt( example_ds_with_sources_and_psf ):
     ds = example_ds_with_sources_and_psf
     catexp = fetch_GaiaDR3_excerpt( ds.image, minstars=50, maxmags=20, magrange=4)
@@ -330,7 +314,6 @@ def gaiadr3_excerpt( example_ds_with_sources_and_psf ):
 
 
 @pytest.fixture
->>>>>>> upstream/main
 def ptf_image_new():
     datadir = os.path.join(FileOnDiskMixin.local_path, 'test_data/PTF_examples')
     if not os.path.isdir(datadir):
@@ -400,8 +383,5 @@ def all_ptf_example_images(provenance_base):
 
 
 def test_get_ptf_image(ptf_image_new):
-<<<<<<< HEAD
     print(ptf_image_new)
-=======
     print(ptf_image_new)
->>>>>>> upstream/main

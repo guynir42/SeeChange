@@ -5,6 +5,8 @@ import types
 import hashlib
 import pathlib
 import logging
+import json
+import shutil
 from uuid import UUID
 
 from contextlib import contextmanager
@@ -269,6 +271,130 @@ class SeeChangeBase:
     def get_downstreams(self, session=None):
         """Get all data products that were created using this object."""
         raise NotImplementedError('get_downstreams not implemented for this class')
+
+    def to_dict(self):
+        """Translate all the SQLAlchemy columns into a dictionary.
+
+        This can be used, e.g., to cache a row from DB to a file.
+        This will include foreign keys, which are not guaranteed
+        to remain the same when loading into a new database,
+        so all the relationships the object has should be
+        reconstructed manually when loading it from the dictionary.
+
+        This will not include any of the attributes of the object
+        that are not saved into the database, but those have to
+        be lazy loaded anyway, as they are not persisted.
+
+        To reload, in most cases it should be enough to use the
+        saved output dictionary as kwargs to the constructor of
+        the class, i.e., MyClass(**saved_dict).
+        """
+        output = {}
+        for key in sa.inspect(self).mapper.columns.keys():
+            output[key] = getattr(self, key)
+
+        return output
+
+    def to_json(self, filename):
+        """Translate a row object's column values to a JSON file.
+
+        See the description of to_dict() for more details.
+
+        Parameters
+        ----------
+        filename: str or path
+            The path to the output JSON file.
+        """
+        with open(filename, 'w') as fp:
+            json.dump(self.to_dict(), fp, indent=2)
+
+    def copy_to_cache(self, cache_dir, filepath=None):
+        """Save a copy of the object (and associated files) into a cache directory.
+
+        If the object is a FileOnDiskMixin, then the file(s) pointed by get_fullpath()
+        will be copied to the cache directory with their original names.
+        The filepath (without extensions) will be used to create a JSON file
+        which holds the object's column attributes (i.e., only those that are
+        database persistent).
+
+        If caching a non FileOnDiskMixin object, the filepath argument must be given,
+        because it is used to name the JSON file.
+
+        Parameters
+        ----------
+        cache_dir: str or path
+            The path to the cache directory.
+        filepath: str or path (optional)
+            Must be given if the object is not a FileOnDiskMixin.
+            If it is a FileOnDiskMixin, it will be ignored.
+        """
+        if not isinstance(self, FileOnDiskMixin):
+            if filepath is None:
+                raise ValueError("filepath must be given when caching a non FileOnDiskMixin object")
+
+        else:
+            if filepath is not None:
+                _logger.warning("FileOnDiskMixin object given filepath argument, but it will be ignored!")
+            filepath = self.filepath  # override the filepath argument!
+            for f in self.get_fullpath():
+                if f is None:
+                    continue
+                new_f = os.path.join(cache_dir, f[len(self.local_path) + 1:])
+                _logger.debug(f"Copying {f} to {new_f}")
+                shutil.copyfile(f, new_f)
+
+        filepath = os.path.join(cache_dir, filepath)
+        self.to_json(filepath + '.json')
+
+    @classmethod
+    def copy_from_cache(cls, cache_dir, filepath):
+        """Copy and reconstruct an object from the cache directory.
+
+        Will need the JSON file that contains all the column attributes of the file.
+        Once those are successfully loaded, and if the object is a FileOnDiskMixin,
+        it will be able to figure out where all the associated files are saved
+        based on the filepath and extensions in the JSON file.
+        Those files will be copied into the current data directory
+        (i.e., that pointed to by FileOnDiskMixin.local_path).
+        The reconstructed object should be correctly associated
+        with its files but will not necessarily have the correct
+        relationships to other objects.
+
+        Parameters
+        ----------
+        cache_dir: str or path
+            The path to the cache directory.
+        filepath: str or path
+            The name of the JSON file that holds the column attributes.
+
+        Returns
+        -------
+        output: SeeChangeBase
+            The reconstructed object, of the same type as the class.
+        """
+        # allow user to give an absolute path, so long as it is in the cache dir
+        if filepath.startswith(cache_dir):
+            filepath = filepath[len(cache_dir) + 1:]
+
+        # allow the user to give the filepath with or without the .json extension
+        if filepath.endswith('.json'):
+            filepath = filepath[:-5]
+
+        full_path = os.path.join(cache_dir, filepath)
+        with open(full_path + '.json', 'r') as fp:
+            json_dict = json.load(fp)
+
+        output = cls(**json_dict)
+
+        if isinstance(output, FileOnDiskMixin):
+            for target_f in output.get_fullpath():
+                if target_f is None:
+                    continue
+                source_f = os.path.join(cache_dir, f[len(FileOnDiskMixin.local_path) + 1:])
+                _logger.debug(f"Copying {source_f} to {target_f}")
+                shutil.copyfile(source_f, target_f)
+
+        return output
 
 
 Base = declarative_base(cls=SeeChangeBase)

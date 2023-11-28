@@ -1,21 +1,59 @@
 import os
-import pytest
-import re
 import hashlib
 import pathlib
 import random
 import uuid
+import json
 
 import sqlalchemy as sa
 
-import numpy
+import numpy as np
 
 import pytest
 
 import util.config as config
 import models.base
-from models.base import SmartSession
-from models.base import Base, AutoIDMixin, FileOnDiskMixin, FourCorners
+from models.base import Base, SmartSession, AutoIDMixin, FileOnDiskMixin, FourCorners
+from models.image import Image
+
+
+def test_to_dict(data_dir):
+    target = uuid.uuid4().hex
+    filter = np.random.choice( ['g', 'r', 'i', 'z', 'y'] )
+    mjd = np.random.rand() * 10000
+    ra = np.random.rand() * 360
+    dec = np.random.rand() * 180 - 90
+    fwhm_estimate = np.random.rand() * 10
+
+    im1 = Image( target=target, filter=filter, mjd=mjd, ra=ra, dec=dec, fwhm_estimate=fwhm_estimate )
+    output_dict = im1.to_dict()
+    im2 = Image( **output_dict )
+    assert im1.target == im2.target
+    assert im1.filter == im2.filter
+    assert im1.mjd == im2.mjd
+    assert im1.ra == im2.ra
+    assert im1.dec == im2.dec
+    assert im1.fwhm_estimate == im2.fwhm_estimate
+
+    # now try to save it to a YAML file
+    try:
+        filename = os.path.join(data_dir, 'test_to_dict.json')
+        im1.to_json(filename)
+
+        with open(filename, 'r') as fp:
+            output_dict = json.load(fp)
+
+        im3 = Image( **output_dict )
+        assert im1.target == im3.target
+        assert im1.filter == im3.filter
+        assert im1.mjd == im3.mjd
+        assert im1.ra == im3.ra
+        assert im1.dec == im3.dec
+        assert im1.fwhm_estimate == im3.fwhm_estimate
+
+    finally:
+        os.remove(filename)
+
 
 # ======================================================================
 # FileOnDiskMixin test
@@ -60,9 +98,9 @@ def diskfile( diskfiletable ):
 
 
 def test_fileondisk_save_failuremodes( diskfile ):
-    data1 = numpy.random.rand( 32 ).tobytes()
+    data1 = np.random.rand( 32 ).tobytes()
     md5sum1 = hashlib.md5( data1 ).hexdigest()
-    data2 = numpy.random.rand( 32 ).tobytes()
+    data2 = np.random.rand( 32 ).tobytes()
     md5sum2 = hashlib.md5( data2 ).hexdigest()
     fname = "test_diskfile.dat"
     diskfile.filepath = fname
@@ -135,11 +173,11 @@ def test_fileondisk_save_singlefile( diskfile, archive ):
     archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
 
     diskfile.filepath = 'test_fileondisk_save.dat'
-    data1 = numpy.random.rand( 32 ).tobytes()
+    data1 = np.random.rand( 32 ).tobytes()
     md5sum1 = hashlib.md5( data1 ).hexdigest()
-    data2 = numpy.random.rand( 32 ).tobytes()
+    data2 = np.random.rand( 32 ).tobytes()
     md5sum2 = hashlib.md5( data2 ).hexdigest()
-    data3 = numpy.random.rand( 32 ).tobytes()
+    data3 = np.random.rand( 32 ).tobytes()
     md5sum3 = hashlib.md5( data3 ).hexdigest()
     assert md5sum1 != md5sum2
     assert md5sum2 != md5sum3
@@ -263,7 +301,7 @@ def test_fileondisk_save_singlefile_noarchive( diskfile ):
     # when the archive is null.
 
     diskfile.filepath = 'test_fileondisk_save.dat'
-    data1 = numpy.random.rand( 32 ).tobytes()
+    data1 = np.random.rand( 32 ).tobytes()
     md5sum1 = hashlib.md5( data1 ).hexdigest()
 
     cfg = config.Config.get()
@@ -285,11 +323,11 @@ def test_fileondisk_save_multifile( diskfile, archive ):
         archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
 
         diskfile.filepath = 'test_fileondisk_save'
-        data1 = numpy.random.rand( 32 ).tobytes()
+        data1 = np.random.rand( 32 ).tobytes()
         md5sum1 = hashlib.md5( data1 ).hexdigest()
-        data2 = numpy.random.rand( 32 ).tobytes()
+        data2 = np.random.rand( 32 ).tobytes()
         md5sum2 = hashlib.md5( data2 ).hexdigest()
-        data3 = numpy.random.rand( 32 ).tobytes()
+        data3 = np.random.rand( 32 ).tobytes()
         md5sum3 = hashlib.md5( data3 ).hexdigest()
         assert md5sum1 != md5sum2
         assert md5sum2 != md5sum3
@@ -403,9 +441,9 @@ def test_fileondisk_save_multifile_noarchive( diskfile ):
     # when the archive is null.
 
     diskfile.filepath = 'test_fileondisk_save.dat'
-    data1 = numpy.random.rand( 32 ).tobytes()
+    data1 = np.random.rand( 32 ).tobytes()
     md5sum1 = hashlib.md5( data1 ).hexdigest()
-    data2 = numpy.random.rand( 32 ).tobytes()
+    data2 = np.random.rand( 32 ).tobytes()
     md5sum2 = hashlib.md5( data2 ).hexdigest()
     assert md5sum1 != md5sum2
 
