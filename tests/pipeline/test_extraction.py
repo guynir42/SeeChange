@@ -266,7 +266,7 @@ def test_extract_sources_sextractor( decam_example_reduced_image_ds ):
     assert sources.inf_aper_num == 5
     assert psf.fwhm_pixels == pytest.approx( 4.328, abs=0.01 )
     assert psf.fwhm_pixels == pytest.approx( psf.header['PSF_FWHM'], rel=1e-5 )
-    assert psf.data.shape == ( 6, 23, 23 )
+    assert psf.data.shape == ( 6, 25, 25 )
     assert psf.image_id == ds.image.id
 
     assert sources.apfluxadu()[0].min() == pytest.approx( 204.55038, rel=1e-5 )
