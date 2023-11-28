@@ -35,6 +35,8 @@ from pipeline.preprocessing import Preprocessor
 from pipeline.detection import Detector
 from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
+from pipeline.catalog_tools import fetch_GaiaDR3_excerpt
+
 from util import config
 from util.archive import Archive
 from util.retrydownload import retry_download
@@ -875,3 +877,16 @@ def example_psfex_psf_files():
     if not ( psfpath.is_file() and psfxmlpath.is_file() ):
         raise FileNotFoundError( f"Can't read at least one of {psfpath}, {psfxmlpath}" )
     return psfpath, psfxmlpath
+
+
+@pytest.fixture
+def gaiadr3_excerpt( example_ds_with_sources_and_psf ):
+    ds = example_ds_with_sources_and_psf
+    catexp = fetch_GaiaDR3_excerpt( ds.image, minstars=50, maxmags=20, magrange=4)
+    assert catexp is not None
+
+    yield catexp
+
+    with SmartSession() as session:
+        catexp = catexp.recursive_merge( session )
+        catexp.delete_from_disk_and_database( session=session )

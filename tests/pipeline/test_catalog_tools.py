@@ -3,21 +3,8 @@ import pytest
 
 from util.exceptions import CatalogNotFoundError
 from util import ldac
-from models.base import SmartSession, FileOnDiskMixin
+from models.base import FileOnDiskMixin
 from pipeline.catalog_tools import download_GaiaDR3, fetch_GaiaDR3_excerpt
-
-
-@pytest.fixture
-def gaiadr3_excerpt( example_ds_with_sources_and_psf ):
-    ds = example_ds_with_sources_and_psf
-    catexp = fetch_GaiaDR3_excerpt( ds.image, minstars=50, maxmags=20, magrange=4)
-    assert catexp is not None
-
-    yield catexp
-
-    with SmartSession() as session:
-        catexp = catexp.recursive_merge( session )
-        catexp.delete_from_disk_and_database( session=session )
 
 
 def test_download_GaiaDR3():
