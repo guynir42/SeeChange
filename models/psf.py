@@ -340,7 +340,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         return psfwid, psfsamp, stampwid, psfdex1d
 
     def get_clip( self, x, y, flux, norm=True, noisy=False, gain=1., rng=None, dtype=np.float64 ):
-        """Get a image clip with the psf.
+        """Get an image clip with the psf.
 
         The clip will have the same pixel scale as the image.
 
@@ -369,8 +369,8 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
           rng: numpy.random.Generator, default None
             If not None, will use this (already-seeded) random number
-            generator (produced, for example, with numpy.dfeault_rng) to
-            generate the noise.  Pass this if you want reproducable
+            generator (produced, for example, with numpy.default_rng) to
+            generate the noise.  Pass this if you want reproducible
             noise for testing purposes.  If None, will use
             numpy.random.default_rng() (i.e. seeded from system entropy).
 
