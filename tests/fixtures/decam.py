@@ -77,38 +77,34 @@ def decam_default_calibrators():
         session.commit()
 
 
-def get_decam_example_file():
+@pytest.fixture(scope="session")
+def decam_filename(data_dir, cache_dir):
     """Pull a DECam exposure down from the NOIRLab archives.
 
     Because this is a slow process (depending on the NOIRLab archive
-    speed, it can take up to minutes), first look for
-    "{filename}_cached", and if it exists, just symlink to it.  If not,
-    actually download the image from NOIRLab, rename it to
-    "{filename}_cached", and create the symlink.  That way, until the
-    user manually deletes the _cached file, we won't have to redo the
+    speed, it can take up to minutes), first look for this file
+    in the cache_dir, and if it exists, just symlink to it. If not,
+    actually download the image from NOIRLab into the cache_dir,
+    and create a symlink to the temp_dir. That way, until the
+    user manually deletes the cached file, we won't have to redo the
     slow NOIRLab download again.
-
     """
-    filename = os.path.join(CODE_ROOT, 'data/test_data/DECam_examples/c4d_221104_074232_ori.fits.fz')
+    base_name = 'DECam/c4d_221104_074232_ori.fits.fz'
+    filename = os.path.join(data_dir, base_name)
     if not os.path.isfile(filename):
-        cachedfilename = f'{filename}_cached'
-        if not os.path.isfile( cachedfilename ):
+        cachedfilename = os.path.join(cache_dir, base_name)
+        if not os.path.isfile(cachedfilename):
             url = 'https://astroarchive.noirlab.edu/api/retrieve/004d537b1347daa12f8361f5d69bc09b/'
-            response = wget.download( url=url, out=cachedfilename )
+            response = wget.download(url=url, out=cachedfilename)
             assert response == cachedfilename
-        os.symlink( cachedfilename, filename )
+        os.symlink(cachedfilename, filename)
     return filename
 
 
-@pytest.fixture(scope="session")
-def decam_example_file():
-    yield get_decam_example_file()
-
-
 @pytest.fixture
-def decam_example_exposure(decam_example_file):
-    filename = get_decam_example_file()
-    decam_example_file_short = filename[len(CODE_ROOT+'/data/'):]
+def decam_exposure(decam_filename, data_dir):
+    filename = decam_filename
+    decam_example_file_short = filename[len(data_dir):]
 
     with fits.open( filename, memmap=True ) as ifp:
         hdr = ifp[0].header
@@ -119,35 +115,36 @@ def decam_example_exposure(decam_example_file):
     yield exposure
 
     # Just in case this exposure got loaded into the database
-    with SmartSession() as session:
-        session.execute(sa.delete(Exposure).where(Exposure.filepath == decam_example_file_short))
-        session.commit()
+    exposure.delete_from_disk_and_database()
 
 
 @pytest.fixture
-def decam_example_raw_image( decam_example_exposure ):
+def decam_raw_image( decam_example_exposure ):
     image = Image.from_exposure(decam_example_exposure, section_id='N1')
     image.data = image.raw_data.astype(np.float32)
-    return image
+
+    yield image
+
+    image.delete_from_disk_and_database()
 
 
 @pytest.fixture
-def decam_example_reduced_image_ds( code_version, decam_example_exposure ):
+def decam_example_reduced_image_ds( code_version, decam_exposure ):
     """Provides a datastore with an image, source list, and psf.
 
     Preprocessing, source extraction, and PSF estimation were all
     performed as this fixture was written, and saved to
     data/test_data/DECam_examples, so that this fixture will return
-    quickly.  That does mean that if the code has evolved since those
+    quickly. That does mean that if the code has evolved since those
     test files were created, the files may not be exactly consistent
     with the code_version in the provenances they have attached to them,
     but hopefully the actual data and database records are still good
     enough for the tests.
 
-    Has an image (with weight and flags), sources, and psf.  The data
+    Has an image (with weight and flags), sources, and psf. The data
     has not been loaded into the image, sources, or psf fields, but of
     course that will happen if you access (for instance)
-    decam_example_reduced_image_ds.image.data.  The provenances *have*
+    decam_example_reduced_image_ds.image.data. The provenances *have*
     been loaded into the session (and committed to the database), but
     the image, sources, and psf have not been added to the session.
 
@@ -155,7 +152,7 @@ def decam_example_reduced_image_ds( code_version, decam_example_exposure ):
 
     """
 
-    exposure = decam_example_exposure
+    exposure = decam_exposure
     # Have to spoof the md5sum field to let us add it to the database even
     # though we're not really saving it to the archive
     exposure.md5sum = uuid.uuid4()
@@ -192,7 +189,7 @@ def decam_example_reduced_image_ds( code_version, decam_example_exposure ):
         with SmartSession() as session:
             exposure = exposure.recursive_merge( session )
             session.add( exposure )
-            session.commit()              # This will get cleaned up in the decam_example_exposure teardown
+            session.commit()              # This will get cleaned up in the decam_exposure teardown
             prepper = Preprocessor()
             ds = prepper.run( exposure, 'N1', session=session )
             try:

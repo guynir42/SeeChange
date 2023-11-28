@@ -42,10 +42,6 @@ def tests_setup_and_teardown():
 
     Config.get(configfile=test_config_file, setdefault=True)
 
-    FileOnDiskMixin.configure_paths()
-    temp_data_folder = FileOnDiskMixin.local_path
-    # print(f'temp_data_folder: {temp_data_folder}')
-
     yield
     # Will be executed after the last test
     # print('Final teardown fixture executed! ')
@@ -62,13 +58,36 @@ def tests_setup_and_teardown():
         session.execute( sa.text( "DELETE FROM code_versions" ) )
         session.commit()
 
-    # remove all the files created during tests
-    # shutil.rmtree(temp_data_folder)
+
+@pytest.fixture(scope="session")
+def persistent_dir():
+    return os.path.join(CODE_ROOT, 'data')
 
 
 @pytest.fixture(scope="session")
 def cache_dir():
-    return os.path.join(CODE_ROOT, 'data/cache')
+    path = os.path.join(CODE_ROOT, 'data/cache')
+    if not os.path.isdir(path):
+        os.makedirs(path)
+    return path
+
+
+@pytest.fixture(scope="session")
+def data_dir():
+    FileOnDiskMixin.configure_paths()
+    temp_data_folder = FileOnDiskMixin.local_path
+    os.makedirs(temp_data_folder, exist_ok=True)
+    with open(os.path.join(temp_data_folder, 'placeholder'), 'w'):
+        pass  # make an empty file inside this folder to make sure it doesn't get deleted on "remove_data_from_disk"
+
+    # print(f'temp_data_folder: {temp_data_folder}')
+
+    yield temp_data_folder
+
+    # remove all the files created during tests
+    # make sure the test config is pointing the data_dir
+    # to a different location than the rest of the data
+    # shutil.rmtree(temp_data_folder)
 
 
 @pytest.fixture(scope="session")

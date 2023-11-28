@@ -230,6 +230,8 @@ def sim_reference(provenance_base, provenance_extra):
             ref.products.delete_from_disk_and_database(session=session, commit=False)
             if ref.id is not None:
                 session.execute(sa.delete(Reference).where(Reference.id == ref.id))
+            for im in images:
+                im.delete_from_disk_and_database(session=session, commit=False)
             session.commit()
 
 
