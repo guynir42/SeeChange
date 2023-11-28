@@ -12,26 +12,10 @@ from models.base import SmartSession, FileOnDiskMixin
 from models.image import Image
 from models.source_list import SourceList
 
-from tests.conftest import ImageCleanup
 
-
-def test_source_list_bitflag(sim_sources, demo_image, provenance_base, provenance_extra):
-    filenames = []
+def test_source_list_bitflag(sim_sources):
     with SmartSession() as session:
-        sim_sources.provenance = provenance_extra
-        demo_image.provenance = provenance_base
-        _ = ImageCleanup.save_image(demo_image, archive=True)
-
-        filenames.append(demo_image.get_fullpath(as_list=True)[0])
-        sim_sources.save(no_archive=False)
-        filenames.append(sim_sources.get_fullpath(as_list=True)[0])
         sim_sources = sim_sources.recursive_merge( session )
-        session.add(sim_sources)
-        session.commit()
-
-        assert demo_image.id is not None  # was added along with sim_sources
-        assert sim_sources.id is not None
-        assert sim_sources.image_id == demo_image.id
 
         # all these data products should have bitflag zero
         assert sim_sources.bitflag == 0
@@ -44,14 +28,14 @@ def test_source_list_bitflag(sim_sources, demo_image, provenance_base, provenanc
         assert sim_sources.id not in [s.id for s in sim_sources2x]
 
         # now add a badness to the image and exposure
-        demo_image.badness = 'Saturation'
-        demo_image.exposure.badness = 'Banding'
-        demo_image.exposure.update_downstream_badness(session)
-        session.add(demo_image)
+        sim_sources.image.badness = 'Saturation'
+        sim_sources.image.exposure.badness = 'Banding'
+        sim_sources.image.exposure.update_downstream_badness(session)
+        session.add(sim_sources.image)
         session.commit()
 
-        assert demo_image.bitflag == 2 ** 1 + 2 ** 3
-        assert demo_image.badness == 'Banding, Saturation'
+        assert sim_sources.image.bitflag == 2 ** 1 + 2 ** 3
+        assert sim_sources.image.badness == 'Banding, Saturation'
 
         assert sim_sources.bitflag == 2 ** 1 + 2 ** 3
         assert sim_sources.badness == 'Banding, Saturation'
@@ -83,12 +67,12 @@ def test_source_list_bitflag(sim_sources, demo_image, provenance_base, provenanc
         assert sim_sources.id not in [s.id for s in sim_sources4x]
 
         # removing the badness from the exposure is updated directly to the source list
-        demo_image.exposure.bitflag = 0
-        demo_image.exposure.update_downstream_badness(session)
-        session.add(demo_image)
+        sim_sources.image.exposure.bitflag = 0
+        sim_sources.image.exposure.update_downstream_badness(session)
+        session.add(sim_sources.image)
         session.commit()
 
-        assert demo_image.badness == 'Saturation'
+        assert sim_sources.image.badness == 'Saturation'
         assert sim_sources.badness == 'Saturation, Few Sources'
 
         # check the database queries still work
@@ -98,7 +82,7 @@ def test_source_list_bitflag(sim_sources, demo_image, provenance_base, provenanc
         assert sim_sources.id not in [s.id for s in sim_sources5x]
 
         # make sure new SourceList object gets the badness from the Image
-        new_sources = SourceList(image=demo_image)
+        new_sources = SourceList(image=sim_sources.image)
         assert new_sources.badness == 'Saturation'
 
 

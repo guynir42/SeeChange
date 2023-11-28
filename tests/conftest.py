@@ -244,7 +244,6 @@ def provenance_preprocessing(code_version):
         warnings.warn(str(e))
 
 
-
 @pytest.fixture
 def archive():
     cfg = config.Config.get()

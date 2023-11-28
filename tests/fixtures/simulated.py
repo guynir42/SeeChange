@@ -47,8 +47,8 @@ def add_file_to_exposure(exposure):
         os.remove(fullname)
 
 
-def commit_exposure(exposure):
-    with SmartSession() as session:
+def commit_exposure(exposure, session=None):
+    with SmartSession(session) as session:
         session.add(exposure)
         session.commit()
 
@@ -204,47 +204,57 @@ sim_image_uncommitted = generate_image_fixture(commit=False)
 
 
 @pytest.fixture
-def sim_reference(provenance_base, provenance_extra):
+def sim_reference(provenance_preprocessing, provenance_extra):
     ref = None
     filter = np.random.choice(list('grizY'))
     target = rnd_str(6)
     ra = np.random.uniform(0, 360)
     dec = np.random.uniform(-90, 90)
     images = []
+    with SmartSession() as session:
+        provenance_extra = provenance_extra.recursive_merge(session)
 
-    for i in range(5):
-        exp = make_sim_exposure()
+        for i in range(5):
+            exp = make_sim_exposure()
+            add_file_to_exposure(exp)
+            commit_exposure(exp, session)
+            exp.filter = filter
+            exp.target = target
+            exp.project = "coadd_test"
+            exp.ra = ra
+            exp.dec = dec
 
-        exp.filter = filter
-        exp.target = target
-        exp.project = "coadd_test"
-        exp.ra = ra
-        exp.dec = dec
+            exp.update_instrument()
+            im = Image.from_exposure(exp, section_id=0)
+            im.data = im.raw_data - np.median(im.raw_data)
+            im.provenance = provenance_preprocessing
+            im.ra = ra
+            im.dec = dec
+            im.save()
+            im = im.recursive_merge(session)
+            session.add(im)
+            images.append(im)
 
-        exp.update_instrument()
-        im = Image.from_exposure(exp, section_id=0)
-        im.data = im.raw_data - np.median(im.raw_data)
-        im.provenance = provenance_base
-        im.ra = ra
-        im.dec = dec
-        im.save()
-        images.append(im)
+        ref_image = Image.from_images(images)
+        ref_image.is_coadd = True
+        ref_image.data = np.mean(np.array([im.data for im in images]), axis=0)
 
-    ref_image = Image.from_images(images)
-    ref_image.is_coadd = True
-    ref_image.data = np.mean(np.array([im.data for im in images]), axis=0)
+        provenance_extra.process = 'coaddition'
+        ref_image.provenance = provenance_extra
+        ref_image.save()
+        session.add(ref_image)
 
-    provenance_extra.process = 'coaddition'
-    ref_image.provenance = provenance_extra
-    ref_image.save()
+        ref = Reference()
+        ref.products = ref_image.make_image_products()
+        ref.validity_start = Time(50000, format='mjd', scale='utc').isot
+        ref.validity_end = Time(58500, format='mjd', scale='utc').isot
+        ref.section_id = 0
+        ref.filter = filter
+        ref.target = target
+        ref.project = "coadd_test"
 
-    ref = Reference()
-    ref.products = ref_image.make_image_products()
-    ref.validity_start = Time(50000, format='mjd', scale='utc').isot
-    ref.validity_end = Time(58500, format='mjd', scale='utc').isot
-    ref.section_id = 0
-    ref.filter = filter
-    ref.target = target
+        session.add(ref)
+        session.commit()
 
     yield ref
 
@@ -252,7 +262,7 @@ def sim_reference(provenance_base, provenance_extra):
         with SmartSession() as session:
             ref = session.merge(ref)
             ref.products.delete_from_disk_and_database(session=session, commit=False)
-            if ref.id is not None:
+            if sa.inspect(ref).persistent:
                 session.execute(sa.delete(Reference).where(Reference.id == ref.id))
             for im in images:
                 im.delete_from_disk_and_database(session=session, commit=False)
@@ -260,7 +270,7 @@ def sim_reference(provenance_base, provenance_extra):
 
 
 @pytest.fixture
-def sim_sources(sim_image1):
+def sim_sources(sim_image1, provenance_extra):
     num = 100
     x = np.random.uniform(0, sim_image1.raw_data.shape[1], num)
     y = np.random.uniform(0, sim_image1.raw_data.shape[0], num)
@@ -274,11 +284,18 @@ def sim_sources(sim_image1):
     )
     s = SourceList(image=sim_image1, data=data, format='sepnpy')
 
+    with SmartSession() as session:
+        s.provenance = provenance_extra
+        s = s.recursive_merge(session)
+        s.save()
+        session.add(s)
+        session.commit()
+
     yield s
 
     try:
         with SmartSession() as session:
-            s = session.merge(s)
+            s = s.recursive_merge(session)
             s.delete_from_disk_and_database(session=session, commit=True)
     except Exception as e:
         warnings.warn(str(e))

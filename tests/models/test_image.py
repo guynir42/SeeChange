@@ -397,6 +397,7 @@ def test_image_enum_values(sim_image1):
 def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra):
     with SmartSession() as session:
         sim_image1 = sim_image1.recursive_merge(session)
+        sim_reference = sim_reference.recursive_merge(session)
 
         # make sure the new image matches the reference in all these attributes
         sim_image1.filter = sim_reference.filter
@@ -1012,7 +1013,7 @@ def test_image_with_multiple_upstreams(sim_exposure1, sim_exposure2, provenance_
 
     # make sure exposures are in chronological order...
     if sim_exposure1.mjd > sim_exposure2.mjd:
-        sim_exposure1, exposure2 = sim_exposure2, sim_exposure1
+        sim_exposure1, sim_exposure2 = sim_exposure2, sim_exposure1
 
     # get a couple of images from exposure objects
     im1 = Image.from_exposure(sim_exposure1, section_id=0)
@@ -1064,11 +1065,10 @@ def test_image_with_multiple_upstreams(sim_exposure1, sim_exposure2, provenance_
             assert im2.upstream_products == []
 
     finally:  # make sure to clean up all images
-        for id_ in [im_id, im1_id, im2_id]:
-            if id_ is not None:
+        for image in [im, im1, im2]:
+            if image is not None:
                 with SmartSession() as session:
-                    im = session.scalars(sa.select(Image).where(Image.id == id_)).first()
-                    session.delete(im)
+                    image.delete_from_disk_and_database(session=session, commit=False)
                     session.commit()
 
 
