@@ -1914,8 +1914,8 @@ class InstrumentOriginExposures:
         """Download exposures and load them into the database.
 
         Files will first be downloaded to FileOnDiskMixin.local_path
-        with the filename that the origin gave them. The headers of
-        files will be used to construct Exposure objects. When each
+        with the filename that the origin gave them.  The headers of
+        files will be used to construct Exposure objects.  When each
         Exposure object is saved, it will copy the file to the file
         named by Exposure.invent_filpath (relative to
         FileOnDiskMixin.local_path) and upload the exposure to the

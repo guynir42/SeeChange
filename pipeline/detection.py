@@ -632,7 +632,6 @@ class Detector:
                 psfxml = votable.parse( psfxmlfile )
                 psfstats = psfxml.get_table_by_index( 1 )
                 psf_sampling = psfstats.array['Sampling_Mean'][0]
-                psf_sampling = max(1, psf_sampling)
                 if psf_size is None:
                     usepsfsize = int( np.ceil( psfstats.array['FWHM_FromFluxRadius_Mean'][0] * 5. ) )
                     if usepsfsize % 2 == 0:
