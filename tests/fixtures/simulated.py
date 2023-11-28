@@ -43,17 +43,22 @@ def add_file_to_exposure(exposure):
 
     yield exposure
 
-    try:
-        with SmartSession() as session:
-            exposure = exposure.recursive_merge( session )
-            if exposure.id is not None:
-                session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
-                session.commit()
+    if fullname is not None and os.path.isfile(fullname):
+        os.remove(fullname)
 
-        if fullname is not None and os.path.isfile(fullname):
-            os.remove(fullname)
-    except Exception as e:
-        warnings.warn(str(e))
+
+def commit_exposure(exposure):
+    with SmartSession() as session:
+        session.add(exposure)
+        session.commit()
+
+    yield exposure
+
+    with SmartSession() as session:
+        exposure = exposure.recursive_merge(session)
+        if sa.inspect( exposure ).persistent:
+            session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
+            session.commit()
 
 
 # idea taken from: https://github.com/pytest-dev/pytest/issues/2424#issuecomment-333387206
@@ -62,6 +67,7 @@ def generate_exposure_fixture():
     def new_exposure():
         e = make_sim_exposure()
         add_file_to_exposure(e)
+        commit_exposure(e)
         yield e
 
     return new_exposure
@@ -82,6 +88,7 @@ def sim_exposure_filter_array():
     e.filter = None
     e.filter_array = ['r', 'g', 'r', 'i']
     add_file_to_exposure(e)
+    commit_exposure(e)
     yield e
 
 
@@ -144,19 +151,32 @@ class ImageCleanup:
                 self.image.delete_from_disk_and_database()
             else:
                 self.image.remove_data_from_disk()
-        except:
-            pass
+        except Exception as e:
+            warnings.warn(str(e))
 
 
 # idea taken from: https://github.com/pytest-dev/pytest/issues/2424#issuecomment-333387206
-def generate_image_fixture():
+def generate_image_fixture(commit=True):
 
     @pytest.fixture
-    def new_image():
+    def new_image(provenance_preprocessing):
         exp = make_sim_exposure()
         add_file_to_exposure(exp)
+        commit_exposure(exp)
         exp.update_instrument()
+
         im = Image.from_exposure(exp, section_id=0)
+        im.data = np.float32(im.raw_data)  # this replaces the bias/flat preprocessing
+        im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint32)
+        im.weight = np.full(im.raw_data.shape, 4., dtype=np.float32)
+
+        if commit:
+            with SmartSession() as session:
+                im.provenance = provenance_preprocessing
+                im = im.recursive_merge(session)
+                im.save()
+                session.add(im)
+                session.commit()
 
         yield im
 
@@ -177,6 +197,10 @@ def inject_sim_image_fixture(image_name):
 # this will inject 10 images named sim_image1, sim_image2, etc.
 for i in range(1, 10):
     inject_sim_image_fixture(f'sim_image{i}')
+
+
+# use this Image if you want the test to do the saving
+sim_image_uncommitted = generate_image_fixture(commit=False)
 
 
 @pytest.fixture

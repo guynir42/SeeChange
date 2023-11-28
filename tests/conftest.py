@@ -173,7 +173,7 @@ def provenance_base(code_version):
     )
 
     with SmartSession() as session:
-        p.code_version=session.merge(code_version)
+        p.code_version = session.merge(code_version)
         session.add(p)
         session.commit()
         session.refresh(p)
@@ -214,6 +214,35 @@ def provenance_extra( provenance_base ):
             session.commit()
     except Exception as e:
         warnings.warn(str(e))
+
+
+# use this to make all the pre-committed Image fixtures
+@pytest.fixture(scope="session")
+def provenance_preprocessing(code_version):
+    p = Provenance(
+        process="preprocessing",
+        code_version=code_version,
+        parameters={"test_key": "test_value"},
+        upstreams=[],
+        is_testing=True,
+    )
+
+    with SmartSession() as session:
+        p.code_version = session.merge(code_version)
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        pid = p.id
+
+    yield p
+
+    try:
+        with SmartSession() as session:
+            session.execute(sa.delete(Provenance).where(Provenance.id == pid))
+            session.commit()
+    except Exception as e:
+        warnings.warn(str(e))
+
 
 
 @pytest.fixture

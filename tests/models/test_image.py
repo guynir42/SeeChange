@@ -97,31 +97,33 @@ def test_image_no_null_values(provenance_base):
                 session.commit()
 
 
-def test_image_must_have_md5(sim_image1, provenance_base):
-    assert sim_image1.md5sum is None
-    assert sim_image1.md5sum_extensions is None
+def test_image_must_have_md5(sim_image_uncommitted, provenance_base):
+    im = sim_image_uncommitted
+    assert im.md5sum is None
+    assert im.md5sum_extensions is None
 
-    sim_image1.provenance = provenance_base
-    _ = ImageCleanup.save_image(sim_image1, archive=False)
+    im.provenance = provenance_base
+    _ = ImageCleanup.save_image(im, archive=False)
 
-    sim_image1.md5sum = None
+    im.md5sum = None
     with SmartSession() as session:
-        sim_image1.recursive_merge(session)
+        im.recursive_merge(session)
         with pytest.raises(IntegrityError, match='violates check constraint'):
-            session.add(sim_image1)
+            session.add(im)
             session.commit()
         session.rollback()
 
         # adding md5sums should fix this problem
-        _2 = ImageCleanup.save_image(sim_image1, archive=True)
-        session.add(sim_image1)
+        _2 = ImageCleanup.save_image(im, archive=True)
+        session.add(im)
         session.commit()
 
 
-def test_image_archive_singlefile(sim_image1, provenance_base, archive):
-    sim_image1.data = np.float32( sim_image1.raw_data )
-    sim_image1.flags = np.random.randint(0, 100, size=sim_image1.raw_data.shape, dtype=np.uint16)
-    sim_image1.provenance = provenance_base
+def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archive):
+    im = sim_image_uncommitted
+    im.data = np.float32( im.raw_data )
+    im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
+    im.provenance = provenance_base
 
     cfg = config.Config.get()
     archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
@@ -131,60 +133,62 @@ def test_image_archive_singlefile(sim_image1, provenance_base, archive):
         with SmartSession() as session:
             # Do single file first
             cfg.set_value( 'storage.images.single_file', True )
-            sim_image1.exposure.recursive_merge(session)  # make sure the exposure and provenance/code versions merge
+            im.exposure.recursive_merge(session)  # make sure the exposure and provenance/code versions merge
             # Make sure that the archive is *not* written when we tell it not to.
-            sim_image1.save( no_archive=True )
-            assert sim_image1.md5sum is None
+            im.save( no_archive=True )
+            assert im.md5sum is None
             with pytest.raises(FileNotFoundError):
-                ifp = open( f'{archivebase}{sim_image1.filepath}', 'rb' )
+                ifp = open( f'{archivebase}{im.filepath}', 'rb' )
                 ifp.close()
-            sim_image1.remove_data_from_disk()
+            im.remove_data_from_disk()
 
             # Save to the archive, make sure it all worked
-            sim_image1.save()
+            im.save()
             localmd5 = hashlib.md5()
-            with open( sim_image1.get_fullpath( nofile=False ), 'rb' ) as ifp:
+            with open( im.get_fullpath( nofile=False ), 'rb' ) as ifp:
                 localmd5.update( ifp.read() )
-            assert localmd5.hexdigest() == sim_image1.md5sum.hex
+            assert localmd5.hexdigest() == im.md5sum.hex
             archivemd5 = hashlib.md5()
-            with open( f'{archivebase}{sim_image1.filepath}', 'rb' ) as ifp:
+            with open( f'{archivebase}{im.filepath}', 'rb' ) as ifp:
                 archivemd5.update( ifp.read() )
-            assert archivemd5.hexdigest() == sim_image1.md5sum.hex
+            assert archivemd5.hexdigest() == im.md5sum.hex
 
             # Make sure that we can download from the archive
-            sim_image1.remove_data_from_disk()
+            im.remove_data_from_disk()
             with pytest.raises(FileNotFoundError):
-                assert isinstance( sim_image1.get_fullpath( nofile=True ), str )
-                ifp = open( sim_image1.get_fullpath( nofile=True ), "rb" )
+                assert isinstance( im.get_fullpath( nofile=True ), str )
+                ifp = open( im.get_fullpath( nofile=True ), "rb" )
                 ifp.close()
-            p = sim_image1.get_fullpath( nofile=False )
+            p = im.get_fullpath( nofile=False )
             localmd5 = hashlib.md5()
-            with open( sim_image1.get_fullpath( nofile=False ), 'rb' ) as ifp:
+            with open( im.get_fullpath( nofile=False ), 'rb' ) as ifp:
                 localmd5.update( ifp.read() )
-            assert localmd5.hexdigest() == sim_image1.md5sum.hex
+            assert localmd5.hexdigest() == im.md5sum.hex
 
             # Make sure that the md5sum is properly saved to the database
-            sim_image1.provenance = session.merge( sim_image1.provenance )
-            session.add( sim_image1 )
+            im.provenance = session.merge( im.provenance )
+            session.add( im )
             session.commit()
             with SmartSession() as differentsession:
-                dbimage = differentsession.query(Image).filter(Image.id==sim_image1.id)[0]
-                assert dbimage.md5sum.hex == sim_image1.md5sum.hex
+                dbimage = differentsession.query(Image).filter(Image.id == im.id)[0]
+                assert dbimage.md5sum.hex == im.md5sum.hex
 
             # Make sure we can purge the archive
-            sim_image1.delete_from_disk_and_database(session=session, commit=True)
+            im.delete_from_disk_and_database(session=session, commit=True)
             with pytest.raises(FileNotFoundError):
-                ifp = open( f'{archivebase}{sim_image1.filepath}', 'rb' )
+                ifp = open( f'{archivebase}{im.filepath}', 'rb' )
                 ifp.close()
-            assert sim_image1.md5sum is None
+            assert im.md5sum is None
 
     finally:
         cfg.set_value( 'storage.images.single_file', single_fileness )
 
 
-def test_image_archive_multifile(sim_image1, provenance_base, archive):
-    sim_image1.data = np.float32( sim_image1.raw_data )
-    sim_image1.flags = np.random.randint(0, 100, size=sim_image1.raw_data.shape, dtype=np.uint16)
+def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive):
+    im = sim_image_uncommitted
+    im.data = np.float32( im.raw_data )
+    im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
+    im.weight = None
 
     cfg = config.Config.get()
     archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
@@ -193,52 +197,52 @@ def test_image_archive_multifile(sim_image1, provenance_base, archive):
     try:
         with SmartSession() as session:
             # First, work around SQLAlchemy
-            sim_image1.provenance = provenance_base
-            sim_image1 = sim_image1.recursive_merge( session )
+            im.provenance = provenance_base
+            im = im.recursive_merge( session )
 
             # Now do multiple images
             cfg.set_value( 'storage.images.single_file', False )
 
             # Make sure that the archive is not written when we tell it not to
-            sim_image1.save( no_archive=True )
+            im.save( no_archive=True )
             localmd5s = {}
-            assert len(sim_image1.get_fullpath(nofile=True)) == 2
-            for fullpath in sim_image1.get_fullpath(nofile=True):
+            assert len(im.get_fullpath(nofile=True)) == 2
+            for fullpath in im.get_fullpath(nofile=True):
                 localmd5s[fullpath] = hashlib.md5()
                 with open(fullpath, "rb") as ifp:
                     localmd5s[fullpath].update(ifp.read())
-            assert sim_image1.md5sum is None
-            assert sim_image1.md5sum_extensions == [None, None]
-            sim_image1.remove_data_from_disk()
+            assert im.md5sum is None
+            assert im.md5sum_extensions == [None, None]
+            im.remove_data_from_disk()
 
             # Save to the archive
-            sim_image1.save()
-            for ext, fullpath, md5sum in zip(sim_image1.filepath_extensions,
-                                             sim_image1.get_fullpath(nofile=True),
-                                             sim_image1.md5sum_extensions):
+            im.save()
+            for ext, fullpath, md5sum in zip(im.filepath_extensions,
+                                             im.get_fullpath(nofile=True),
+                                             im.md5sum_extensions):
                 assert localmd5s[fullpath].hexdigest() == md5sum.hex
 
                 with open( fullpath, "rb" ) as ifp:
                     m = hashlib.md5()
                     m.update( ifp.read() )
                     assert m.hexdigest() == localmd5s[fullpath].hexdigest()
-                with open( f'{archivebase}{sim_image1.filepath}{ext}', 'rb' ) as ifp:
+                with open( f'{archivebase}{im.filepath}{ext}', 'rb' ) as ifp:
                     m = hashlib.md5()
                     m.update( ifp.read() )
                     assert m.hexdigest() == localmd5s[fullpath].hexdigest()
 
             # Make sure that we can download from the archive
-            sim_image1.remove_data_from_disk()
+            im.remove_data_from_disk()
 
             # using nofile=True will make sure the files are not downloaded from archive
-            filenames = sim_image1.get_fullpath( nofile=True )
+            filenames = im.get_fullpath( nofile=True )
             for filename in filenames:
                 with pytest.raises(FileNotFoundError):
                     ifp = open( filename, "rb" )
                     ifp.close()
 
             # this call to get_fullpath will also download the files to local storage
-            newpaths = sim_image1.get_fullpath( nofile=False )
+            newpaths = im.get_fullpath( nofile=False )
             assert newpaths == filenames
             for filename in filenames:
                 with open( filename, "rb" ) as ifp:
@@ -247,10 +251,10 @@ def test_image_archive_multifile(sim_image1, provenance_base, archive):
                     assert m.hexdigest() == localmd5s[filename].hexdigest()
 
             # Make sure that the md5sum is properly saved to the database
-            session.add( sim_image1 )
+            session.add( im )
             session.commit()
             with SmartSession() as differentsession:
-                dbimage = differentsession.scalars(sa.select(Image).where(Image.id == sim_image1.id)).first()
+                dbimage = differentsession.scalars(sa.select(Image).where(Image.id == im.id)).first()
                 assert dbimage.md5sum is None
 
                 filenames = dbimage.get_fullpath( nofile=True )
@@ -261,17 +265,18 @@ def test_image_archive_multifile(sim_image1, provenance_base, archive):
         cfg.set_value( 'storage.images.single_file', single_fileness )
 
 
-def test_image_save_justheader( sim_image1, provenance_base ):
-    sim_image1.provenance = provenance_base
+def test_image_save_justheader( sim_image1 ):
     sim_image1.data = np.full( (64, 32), 0.125, dtype=np.float32 )
-    sim_image1._weight = np.full( (64, 32), 4., dtype=np.float32 )
+    sim_image1.flags = np.random.randint(0, 100, size=sim_image1.data.shape, dtype=np.uint16)
+    sim_image1.weight = np.full( (64, 32), 4., dtype=np.float32 )
 
     archive = sim_image1.archive
 
     icl = ImageCleanup.save_image( sim_image1, archive=True )
     names = sim_image1.get_fullpath( download=False )
-    assert names[0][-11:] == '.image.fits'
-    assert names[1][-12:] == '.weight.fits'
+    assert names[0].endswith('.image.fits')
+    assert names[1].endswith('.flags.fits')
+    assert names[2].endswith('.weight.fits')
 
     # This is tested elsewhere, but for completeness make sure the
     # md5sum of the file on the archive is what's expected
@@ -280,7 +285,7 @@ def test_image_save_justheader( sim_image1, provenance_base ):
 
     sim_image1._raw_header['ADDEDKW'] = 'This keyword was added'
     sim_image1.data = np.full( (64, 32), 0.5, dtype=np.float32 )
-    sim_image1._weight = np.full( (64, 32), 2., dtype=np.float32 )
+    sim_image1.weight = np.full( (64, 32), 2., dtype=np.float32 )
 
     origimmd5sum = sim_image1.md5sum_extensions[0]
     origwtmd5sum = sim_image1.md5sum_extensions[1]
@@ -298,19 +303,20 @@ def test_image_save_justheader( sim_image1, provenance_base ):
         assert hdul[0].header['ADDEDKW'] == 'This keyword was added'
         assert ( hdul[0].data == np.full( (64, 32), 0.125, dtype=np.float32 ) ).all()
 
-    with fits.open( names[1] ) as hdul:
+    with fits.open( names[2] ) as hdul:
         assert ( hdul[0].data == np.full( (64, 32), 4., dtype=np.float32 ) ).all()
 
 
-def test_image_save_onlyimage( sim_image1, provenance_base ):
-    sim_image1.provenance = provenance_base
+def test_image_save_onlyimage( sim_image1 ):
     sim_image1.data = np.full( (64, 32), 0.125, dtype=np.float32 )
-    sim_image1._weight = np.full( (64, 32), 4., dtype=np.float32 )
+    sim_image1.flags = np.random.randint(0, 100, size=sim_image1.data.shape, dtype=np.uint16)
+    sim_image1.weight = np.full( (64, 32), 4., dtype=np.float32 )
 
     icl = ImageCleanup.save_image( sim_image1, archive=False )
     names = sim_image1.get_fullpath( download=False )
-    assert names[0][-11:] == '.image.fits'
-    assert names[1][-12:] == '.weight.fits'
+    assert names[0].endswith('.image.fits')
+    assert names[1].endswith('.flags.fits')
+    assert names[2].endswith('.weight.fits')
 
     sim_image1._raw_header['ADDEDTOO'] = 'An added keyword'
     sim_image1.data = np.full( (64, 32), 0.0625, dtype=np.float32 )
@@ -327,18 +333,10 @@ def test_image_save_onlyimage( sim_image1, provenance_base ):
         assert ifp.read() == "Hello, world."
 
 
-def test_image_enum_values(sim_image1, provenance_base):
+def test_image_enum_values(sim_image1):
     data_filename = None
     with SmartSession() as session:
-        sim_image1.provenance = provenance_base
         sim_image1 = sim_image1.recursive_merge(session)
-
-        with pytest.raises(RuntimeError, match='The image data is not loaded. Cannot save.'):
-            sim_image1.save( no_archive=True )
-
-        _ = ImageCleanup.save_image(sim_image1, archive=True)
-        data_filename = sim_image1.get_fullpath(as_list=True)[0]
-        assert os.path.exists(data_filename)
 
         try:
             with pytest.raises(ValueError, match='ImageTypeConverter must be one of .* not foo'):
@@ -396,9 +394,8 @@ def test_image_enum_values(sim_image1, provenance_base):
                     os.rmdir(folder)
 
 
-def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_base, provenance_extra):
+def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra):
     with SmartSession() as session:
-        sim_image1.provenance = provenance_base
         sim_image1 = sim_image1.recursive_merge(session)
 
         # make sure the new image matches the reference in all these attributes
@@ -407,7 +404,6 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_base,
         sim_image1.section_id = sim_reference.section_id
 
         # save and delete at the end
-        cleanup1 = ImageCleanup.save_image(sim_image1)
         session.add(sim_image1)
 
         # sim_reference = session.merge(sim_reference)
@@ -446,19 +442,10 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_base,
         assert [new.id] == downstream_ids  # should be the only downstream
 
 
-def test_image_preproc_bitflag( sim_image1, provenance_base ):
+def test_image_preproc_bitflag( sim_image1 ):
 
     with SmartSession() as session:
-        sim_image1.provenance = provenance_base
-        sim_image1.filepath = sim_image1.invent_filepath()
-        # Spoof an md5sum so we can commit this to the database without saving actual data
-        sim_image1.md5sum = uuid.uuid4()
         im = sim_image1.recursive_merge( session )
-        session.add( im )
-        # Need to do this for the defaults to get set
-        # It will be removed from the database in
-        # sim_image1 teardown
-        session.commit()
 
         assert im.preproc_bitflag == 0
         im.preproc_bitflag |= string_to_bitflag( 'zero', image_preprocessing_inverse )
@@ -491,14 +478,10 @@ def test_image_preproc_bitflag( sim_image1, provenance_base ):
         assert q.count() == 0
 
 
-def test_image_badness(sim_image1, provenance_base):
+def test_image_badness(sim_image1):
 
     with SmartSession() as session:
-        sim_image1.provenance = provenance_base
-        cleanup = ImageCleanup.save_image(sim_image1)
         sim_image1 = sim_image1.recursive_merge(session)
-        session.add(sim_image1)
-        session.commit()
 
         # this is not a legit "badness" keyword...
         with pytest.raises(ValueError, match='Keyword "foo" not recognized'):
@@ -550,24 +533,26 @@ def test_multiple_images_badness(
         sim_image3,
         sim_image5,
         sim_image6,
-        provenance_base,
         provenance_extra
 ):
     try:
-        images = [sim_image1, sim_image2, sim_image3, sim_image5, sim_image6]
-        cleanups = []
-        filter = 'g'
-        target = str(uuid.uuid4())
-        project = 'test project'
         with SmartSession() as session:
+            sim_image1 = sim_image1.recursive_merge(session)
+            sim_image2 = sim_image2.recursive_merge(session)
+            sim_image3 = sim_image3.recursive_merge(session)
+            sim_image5 = sim_image5.recursive_merge(session)
+            sim_image6 = sim_image6.recursive_merge(session)
+            images = [sim_image1, sim_image2, sim_image3, sim_image5, sim_image6]
+            cleanups = []
+            filter = 'g'
+            target = str(uuid.uuid4())
+            project = 'test project'
             for im in images:
                 im.filter = filter
                 im.target = target
                 im.project = project
-                im.provenance = provenance_base
-                im = im.recursive_merge(session)
-                cleanups.append(ImageCleanup.save_image(im))
                 session.add(im)
+
             session.commit()
 
             # the image itself is marked bad because of bright sky
@@ -949,7 +934,6 @@ def test_four_corners( provenance_base ):
 
 def test_image_from_exposure(sim_exposure1, provenance_base):
     sim_exposure1.update_instrument()
-    sim_exposure1.type = 'ComSci'
 
     # demo instrument only has one section
     with pytest.raises(ValueError, match='section_id must be 0 for this instrument.'):
@@ -1157,13 +1141,9 @@ def test_image_subtraction(sim_exposure1, sim_exposure2, provenance_base):
                     session.commit()
 
 
-def test_image_filename_conventions(sim_image1, provenance_base):
-    sim_image1.data = np.float32(sim_image1.raw_data)
-    sim_image1.provenance = provenance_base
+def test_image_filename_conventions(sim_image1):
 
-    # use the naming convention in the config file
-    sim_image1.save( no_archive=True )
-
+    # sim_image1 was saved using the naming convention in the config file
     assert re.search(r'\d{3}/Demo_\d{8}_\d{6}_\d+_.+_.{6}\.image\.fits', sim_image1.get_fullpath()[0])
     for f in sim_image1.get_fullpath(as_list=True):
         assert os.path.isfile(f)
@@ -1186,12 +1166,7 @@ def test_image_filename_conventions(sim_image1, provenance_base):
 
         new_convention = '{ra_int:03d}/foo_{date}_{time}_{section_id_int:02d}_{filter}'
         cfg.set_value('storage.images.name_convention', new_convention)
-        # This next line was added because I changed image.save() so
-        # that it will use self.filepath if it is non-None.  (I needed
-        # this change in behavior to be able to control filenames when
-        # called from a DataStore save method; the other option would be
-        # to add options to those methods and then pass those options
-        # on, and that is very cumbersome.)
+        # invent_filepath will try to use the existing filepath value so we clear it first
         sim_image1.filepath = None
         sim_image1.save( no_archive=True )
         assert re.search(r'\d{3}/foo_\d{8}_\d{6}_\d{2}_.\.image\.fits', sim_image1.get_fullpath()[0])
@@ -1218,10 +1193,12 @@ def test_image_filename_conventions(sim_image1, provenance_base):
         cfg.set_value('storage.images.name_convention', convention)
 
 
-def test_image_multifile(sim_image1, provenance_base):
-    sim_image1.data = np.float32(sim_image1.raw_data)
-    sim_image1.flags = np.random.randint(0, 100, size=sim_image1.raw_data.shape, dtype=np.uint32)
-    sim_image1.provenance = provenance_base
+def test_image_multifile(sim_image_uncommitted, provenance_base):
+    im = sim_image_uncommitted
+    im.data = np.float32(im.raw_data)
+    im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint32)
+    im.weight = None
+    im.provenance = provenance_base
 
     cfg = config.Config.get()
     single_fileness = cfg.value('storage.images.single_file')  # store initial value
@@ -1229,11 +1206,11 @@ def test_image_multifile(sim_image1, provenance_base):
     try:
         # first use single file
         cfg.set_value('storage.images.single_file', True)
-        sim_image1.save( no_archive=True )
+        im.save( no_archive=True )
 
-        assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d+_.+_.{6}\.fits', sim_image1.filepath)
+        assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d+_.+_.{6}\.fits', im.filepath)
 
-        files = sim_image1.get_fullpath(as_list=True)
+        files = im.get_fullpath(as_list=True)
         assert len(files) == 1
         assert os.path.isfile(files[0])
 
@@ -1243,21 +1220,21 @@ def test_image_multifile(sim_image1, provenance_base):
             assert isinstance(hdul[0], fits.PrimaryHDU)
             assert hdul[1].header['NAXIS'] == 2
             assert isinstance(hdul[1], fits.ImageHDU)
-            assert np.array_equal(hdul[1].data, sim_image1.data)
+            assert np.array_equal(hdul[1].data, im.data)
             assert hdul[2].header['NAXIS'] == 2
             assert isinstance(hdul[2], fits.ImageHDU)
-            assert np.array_equal(hdul[2].data, sim_image1.flags)
+            assert np.array_equal(hdul[2].data, im.flags)
 
-        for f in sim_image1.get_fullpath(as_list=True):
+        for f in im.get_fullpath(as_list=True):
             os.remove(f)
 
         # now test multiple files
         cfg.set_value('storage.images.single_file', False)
-        sim_image1.filepath = None
-        sim_image1.save( no_archive=True )
+        im.filepath = None
+        im.save( no_archive=True )
 
-        assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d+_.+_.{6}', sim_image1.filepath)
-        fullnames = sim_image1.get_fullpath(as_list=True)
+        assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d+_.+_.{6}', im.filepath)
+        fullnames = im.get_fullpath(as_list=True)
 
         assert len(fullnames) == 2
 
@@ -1267,7 +1244,7 @@ def test_image_multifile(sim_image1, provenance_base):
             assert len(hdul) == 1  # image data is saved on the primary HDU
             assert hdul[0].header['NAXIS'] == 2
             assert isinstance(hdul[0], fits.PrimaryHDU)
-            assert np.array_equal(hdul[0].data, sim_image1.data)
+            assert np.array_equal(hdul[0].data, im.data)
 
         assert os.path.isfile(fullnames[1])
         assert re.search(r'\d{3}/Demo_\d{8}_\d{6}_\d+_.+_.{6}\.flags\.fits', fullnames[1])
@@ -1275,7 +1252,7 @@ def test_image_multifile(sim_image1, provenance_base):
             assert len(hdul) == 1
             assert hdul[0].header['NAXIS'] == 2
             assert isinstance(hdul[0], fits.PrimaryHDU)
-            assert np.array_equal(hdul[0].data, sim_image1.flags)
+            assert np.array_equal(hdul[0].data, im.flags)
 
     finally:
         cfg.set_value('storage.images.single_file', single_fileness)
