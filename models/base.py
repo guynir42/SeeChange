@@ -242,8 +242,7 @@ class SeeChangeBase:
             'psf',
             'wcs',
             'zp',
-            'products',
-            'upstream_products',
+            'upstream_images',
         ]
 
         # recursively call this on the provenance and other parent objects
@@ -1030,6 +1029,8 @@ class FileOnDiskMixin:
                 session.delete(self)
                 if commit:
                     session.commit()
+            elif self in session:
+                session.expunge(self)
 
 
 def safe_mkdir(path):

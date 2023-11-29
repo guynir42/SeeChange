@@ -32,6 +32,8 @@ from models.instrument import Instrument, get_instrument_instance
 from models.decam import DECam
 from models.source_list import SourceList
 from models.psf import PSF
+from models.world_coordinates import WorldCoordinates
+from models.zero_point import ZeroPoint
 from pipeline.data_store import DataStore
 from pipeline.preprocessing import Preprocessor
 from pipeline.detection import Detector
@@ -188,6 +190,28 @@ def provenance_extra( provenance_base ):
         session.commit()
         session.refresh(p)
         pid = p.id
+
+    yield p
+
+    try:
+        with SmartSession() as session:
+            session.execute(sa.delete(Provenance).where(Provenance.id == pid))
+            session.commit()
+    except Exception as e:
+        warnings.warn(str(e))
+
+
+@pytest.fixture
+def provenance_ref_uncommitted( provenance_base ):
+    p = Provenance(
+        process="reference",
+        code_version=provenance_base.code_version,
+        parameters={"test_key": uuid.uuid4().hex},
+        upstreams=[],
+        is_testing=True,
+    )
+    p.update_id()
+    pid = p.id
 
     yield p
 
@@ -685,7 +709,7 @@ for i in range(2, 10):
 
 
 @pytest.fixture
-def sim_reference(provenance_base, provenance_extra):
+def sim_reference(provenance_base, provenance_extra, provenance_ref_uncommitted):
     ref = None
     filter = np.random.choice(list('grizY'))
     target = rnd_str(6)
@@ -719,7 +743,10 @@ def sim_reference(provenance_base, provenance_extra):
     ref_image.save()
 
     ref = Reference()
-    ref.products = ref_image.make_image_products()
+    ref.image = ref_image
+    ref.provenance = provenance_ref_uncommitted
+    ref.provenance.upstreams = [ref_image.provenance]  # add the source list provenance and other data products
+    ref.provenance.update_id()
     ref.validity_start = Time(50000, format='mjd', scale='utc').isot
     ref.validity_end = Time(58500, format='mjd', scale='utc').isot
     ref.section_id = 0
@@ -731,9 +758,24 @@ def sim_reference(provenance_base, provenance_extra):
     if ref is not None:
         with SmartSession() as session:
             ref = session.merge(ref)
-            ref.products.delete_from_disk_and_database(session=session, commit=False)
-            if ref.id is not None:
-                session.execute(sa.delete(Reference).where(Reference.id == ref.id))
+            for im in ref.image.upstream_images:
+                im.exposure.delete_from_disk_and_database(session=session, commit=False)
+                im.delete_from_disk_and_database(session=session, commit=False)
+            if ref.image is not None:
+                ref.image.delete_from_disk_and_database(session=session, commit=False)
+            if ref.sources is not None:
+                ref.sources.delete_from_disk_and_database(session=session, commit=False)
+            if ref.psf is not None:
+                ref.psf.delete_from_disk_and_database(session=session, commit=False)
+            if ref.wcs is not None and ref.wcs.id is not None:
+                session.execute(sa.delete(WorldCoordinates).where(WorldCoordinates.id == ref.wcs.id))
+            if ref.zp is not None and ref.zp.id is not None:
+                session.execute(sa.delete(ZeroPoint).where(ZeroPoint.id == ref.zp.id))
+            if sa.inspect(ref).persistent:
+                session.delete(ref)
+            elif ref in session:
+                session.expunge(ref)
+
             session.commit()
 
 

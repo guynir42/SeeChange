@@ -1,45 +1,44 @@
 import sqlalchemy as sa
 from sqlalchemy import orm
-from sqlalchemy.ext.associationproxy import association_proxy
 
 from models.base import Base, AutoIDMixin, SmartSession
-from models.image import Image, ImageProducts
+from models.image import Image
+from models.provenance import Provenance
+from models.source_list import SourceList
+from models.psf import PSF
+from models.world_coordinates import WorldCoordinates
+from models.zero_point import ZeroPoint
 
 
 class Reference(Base, AutoIDMixin):
     """
-    A table that refers to each reference ImageProducts object,
+    A table that refers to each reference Image object,
     based on the validity time range, and the object/field it is targeting.
-    The ImageProducts includes the Image but also the PSF, SourceList, WorldCoordinates, and ZeroPoint.
+    The provenance of this table (tagged with the "reference" process)
+    will have as its upstream IDs the provenance IDs of the image,
+    the source list, the PSF, the WCS, and the zero point.
+
+    This means that the reference should always come loaded
+    with the image and all its associated products,
+    based on the provenance given when it was created.
     """
 
     __tablename__ = 'references'
 
-    products_id = sa.Column(
-        sa.ForeignKey('image_products.id', ondelete='CASCADE', name='references_image_products_id_fkey'),
+    image_id = sa.Column(
+        sa.ForeignKey('images.id', ondelete='CASCADE', name='references_image_id_fkey'),
         nullable=False,
         index=True,
-        doc="ID of the reference image products that this object is referring to. "
+        doc="ID of the reference image that this object is referring to. "
     )
 
-    products = orm.relationship(
-        'ImageProducts',
+    image = orm.relationship(
+        'Image',
         lazy='selectin',
         cascade='save-update, merge, refresh-expire, expunge',
-        foreign_keys=[products_id],
-        doc="The reference image products that this entry is referring to. "
+        foreign_keys=[image_id],
+        doc="The reference image that this entry is referring to. "
     )
-
-    image_id = association_proxy("products", "image_id")
-    image = association_proxy("products", "image", )
-    sources_id = association_proxy("products", "sources_id")
-    sources = association_proxy("products", "sources")
-    psf_id = association_proxy("products", "psf_id")
-    psf = association_proxy("products", "psf")
-    wcs_id = association_proxy("products", "wcs_id")
-    wcs = association_proxy("products", "wcs")
-    zp_id = association_proxy("products", "zp_id")
-    zp = association_proxy("products", "zp")
 
     # the following can't be association products (as far as I can tell) because they need to be indexed
     target = sa.Column(
@@ -107,47 +106,137 @@ class Reference(Base, AutoIDMixin):
         doc="Any additional comments about why this reference image is bad. "
     )
 
-    # this table doesn't have provenance.
-    # The underlying products will have their own provenance for the "coaddition" process.
+    provenance_id = sa.Column(
+        sa.ForeignKey('provenances.id', ondelete="CASCADE", name='references_provenance_id_fkey'),
+        nullable=False,
+        index=True,
+        doc=(
+            "ID of the provenance of this reference. "
+            "The provenance will contain a record of the code version "
+            "and the parameters used to produce this reference. "
+        )
+    )
 
-    def __setattr__(self, key, value):
-        if key == 'image':
-            if value is not None:
-                self.filter = value.filter
-                self.target = value.target
-                self.section_id = value.section_id
-                # first assign the image, then do stuff with it
-                super().__setattr__(key, value)
-                if self.products is not None:
-                    self.image.psf = self.products.psf
-                    self.image.sources = self.products.sources
-                    self.image.wcs = self.products.wcs
-                    self.image.zp = self.products.zp
-                return
+    provenance = orm.relationship(
+        'Provenance',
+        cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
+        doc=(
+            "Provenance of this reference. "
+            "The provenance will contain a record of the code version "
+            "and the parameters used to produce this reference. "
+        )
+    )
 
-        if key == 'products':
-            if value is not None:
-                self.filter = value.image.filter
-                self.target = value.image.target
-                self.section_id = value.image.section_id
-
-            # first assign the products, then do stuff with it
-            super().__setattr__(key, value)
-            self.image = value.image
-            self.image.psf = value.psf
-            self.image.sources = value.sources
-            self.image.wcs = value.wcs
-            self.image.zp = value.zp
-            return
-
-        super().__setattr__(key, value)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.sources = None
+        self.psf = None
+        self.wcs = None
+        self.zp = None
 
     @orm.reconstructor
     def init_on_load(self):
-        self.products.image.sources = self.products.sources
-        self.products.image.psf = self.products.psf
-        self.products.image.wcs = self.products.wcs
-        self.products.image.zp = self.products.zp
+        self.sources = None
+        self.psf = None
+        self.wcs = None
+        self.zp = None
+        this_object_session = orm.Session.object_session(self)
+        if this_object_session is not None:  # if just loaded, should usually have a session!
+            self.load_upstream_products(this_object_session)
+
+    def get_upstream_provenances(self):
+        """Collect the provenances for all upstream objects.
+        Assumes all the objects are already committed to the DB
+        (or that at least they have provenances with IDs).
+
+        Returns
+        -------
+        list of Provenance objects:
+            a list of unique provenances, one for each data type.
+        """
+        prov = []
+        if self.image is None or self.image.provenance is None or self.image.provenance.id is None:
+            raise ValueError('Reference must have a valid image with a valid provenance ID.')
+        prov.append(self.image.provenance)
+
+        # TODO: it seems like we should require that Reference always has all of these when saved
+        if self.sources is not None and self.sources.provenance is not None and self.sources.provenance.id is not None:
+            prov.append(self.sources.provenance)
+        if self.psf is not None and self.psf.provenance is not None and self.psf.provenance.id is not None:
+            prov.append(self.psf.provenance)
+        if self.wcs is not None and self.wcs.provenance is not None and self.wcs.provenance.id is not None:
+            prov.append(self.wcs.provenance)
+        if self.zp is not None and self.zp.provenance is not None and self.zp.provenance.id is not None:
+            prov.append(self.zp.provenance)
+        return prov
+
+    def load_upstream_products(self, session=None):
+        """Make sure each upstream image has its related products loaded.
+
+        This only works after all the images and products are committed to the database,
+        with provenances consistent with what is saved in this Image's provenance
+        and its own upstream_ids.
+        """
+        with SmartSession(session) as session:
+            prov_ids = self.provenance.upstream_ids
+
+            sources = session.scalars(
+                sa.select(SourceList).where(
+                    SourceList.image_id == self.image_id,
+                    SourceList.provenance_id.in_(prov_ids),
+                )
+            ).all()
+            if len(sources) > 1:
+                raise ValueError(
+                    f"Image {self.image_id} has more than one SourceList matching upstream provenance."
+                )
+            elif len(sources) == 1:
+                self.image.sources = sources[0]
+                self.sources = sources[0]
+
+            psfs = session.scalars(
+                sa.select(PSF).where(
+                    PSF.image_id == self.image_id,
+                    PSF.provenance_id.in_(prov_ids),
+                )
+            ).all()
+            if len(psfs) > 1:
+                raise ValueError(
+                    f"Image {self.image_id} has more than one PSF matching upstream provenance."
+                )
+            elif len(psfs) == 1:
+                self.image.psf = psfs[0]
+                self.psf = psfs[0]
+
+            if self.sources is not None:
+                wcses = session.scalars(
+                    sa.select(WorldCoordinates).where(
+                        WorldCoordinates.source_list_id == self.sources.id,
+                        WorldCoordinates.provenance_id.in_(prov_ids),
+                    )
+                ).all()
+                if len(wcses) > 1:
+                    raise ValueError(
+                        f"Image {self.image_id} has more than one WCS matching upstream provenance."
+                    )
+                elif len(wcses) == 1:
+                    self.image.wcs = wcses[0]
+                    self.wcs = wcses[0]
+
+                zps = session.scalars(
+                    sa.select(ZeroPoint).where(
+                        ZeroPoint.source_list_id == self.sources.id,
+                        ZeroPoint.provenance_id.in_(prov_ids),
+                    )
+                ).all()
+                if len(zps) > 1:
+                    raise ValueError(
+                        f"Image {self.image_id} has more than one ZeroPoint matching upstream provenance."
+                    )
+                elif len(zps) == 1:
+                    self.image.zp = zps[0]
+                    self.zp = zps[0]
 
     def __setattr__(self, key, value):
         if key == 'image':
