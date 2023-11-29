@@ -579,17 +579,18 @@ def ref_for_decam_example_image( provenance_base ):
 
 @pytest.fixture
 def reference_entry_decam_example(ref_for_decam_example_image):
-    ref_entry = ReferenceEntry()
+    ref_entry = Reference()
     ref_entry.image = ref_for_decam_example_image
     ref_entry.validity_start = Time(50000, format='mjd', scale='utc').isot
     ref_entry.validity_end = Time(60500, format='mjd', scale='utc').isot
 
     yield ref_entry
 
-    # with SmartSession() as session:
-    #     ref_entry = session.merge(ref_entry)
-    #     session.execute(sa.delete(ReferenceEntry).where(ReferenceEntry.id == ref_entry.id))
-    #     session.commit()
+    with SmartSession() as session:
+        ref_entry = session.merge(ref_entry)
+        session.delete(ref_entry)
+        session.commit()
+
 
 @pytest.fixture
 def decam_small_image(decam_example_raw_image):
