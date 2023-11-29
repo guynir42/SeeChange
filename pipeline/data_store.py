@@ -895,7 +895,7 @@ class DataStore:
         if self.sub_image is None:
             with SmartSession(session, self.session) as session:
                 image = self.get_image(session=session)
-                ref = self.get_reference_image(session=session)
+                ref = self.get_reference(session=session)
 
                 # this happens when the subtraction is required as an upstream for another process (but isn't in memory)
                 if provenance is None:  # check if in upstream_provs/database
@@ -904,7 +904,7 @@ class DataStore:
                 if provenance is not None:  # if None, it means we can't find it on the DB
                     self.sub_image = session.scalars(
                         sa.select(Image).where(
-                            Image.ref_image_id == ref.id,
+                            Image.ref_image_id == ref.image_id,
                             Image.new_image_id == image.id,
                             Image.provenance.has(id=provenance.id),
                         )

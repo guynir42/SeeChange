@@ -578,11 +578,13 @@ def ref_for_decam_example_image( provenance_base ):
 
 
 @pytest.fixture
-def reference_entry_decam_example(ref_for_decam_example_image):
+def reference_entry_decam_example(ref_for_decam_example_image, provenance_ref_uncommitted):
     ref_entry = Reference()
     ref_entry.image = ref_for_decam_example_image
     ref_entry.validity_start = Time(50000, format='mjd', scale='utc').isot
     ref_entry.validity_end = Time(60500, format='mjd', scale='utc').isot
+
+    ref_entry.provenance = provenance_ref_uncommitted
 
     yield ref_entry
 
