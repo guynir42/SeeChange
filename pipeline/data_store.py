@@ -5,7 +5,7 @@ from pipeline.utils import get_latest_provenance, parse_session
 from models.base import SmartSession, FileOnDiskMixin, safe_merge, _logger
 from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
-from models.image import Image
+from models.image import Image, image_upstreams_association_table
 from models.source_list import SourceList
 from models.psf import PSF
 from models.world_coordinates import WorldCoordinates
@@ -902,12 +902,28 @@ class DataStore:
                     provenance = self._get_provanance_for_an_upstream(process_name, session=session)
 
                 if provenance is not None:  # if None, it means we can't find it on the DB
+                    # self.sub_image = session.scalars(
+                    #     sa.select(Image).where(
+                    #         Image.ref_image_id == ref.image_id,
+                    #         Image.new_image_id == image.id,
+                    #         Image.provenance.has(id=provenance.id),
+                    #     )
+                    # ).first()
+                    aliased_table = sa.orm.aliased(image_upstreams_association_table)
                     self.sub_image = session.scalars(
-                        sa.select(Image).where(
-                            Image.ref_image_id == ref.image_id,
-                            Image.new_image_id == image.id,
-                            Image.provenance.has(id=provenance.id),
-                        )
+                        sa.select(Image).join(
+                            image_upstreams_association_table,
+                            sa.and_(
+                                image_upstreams_association_table.c.upstream_id == ref.image_id,
+                                image_upstreams_association_table.c.downstream_id == Image.id,
+                            )
+                        ).join(
+                            aliased_table,
+                            sa.and_(
+                                aliased_table.c.upstream_id == image.id,
+                                aliased_table.c.downstream_id == Image.id,
+                            )
+                        ).where(Image.provenance.has(id=provenance.id))
                     ).first()
 
         return self.sub_image

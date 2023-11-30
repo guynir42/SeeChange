@@ -618,8 +618,8 @@ def test_multiple_images_badness(
             session.commit()
 
             assert demo_image4.id is not None
-            assert demo_image4.ref_image_id == demo_image2.id
-            assert demo_image4.new_image_id == demo_image3.id
+            assert demo_image4.ref_image == demo_image2
+            assert demo_image4.new_image == demo_image3
 
             # check that badness is loaded correctly from both parents
             assert demo_image4.badness == 'Banding, Bright Sky'

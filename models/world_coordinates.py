@@ -7,7 +7,7 @@ from astropy.wcs import WCS
 from astropy.io import fits
 
 from models.base import Base, AutoIDMixin, HasBitFlagBadness
-from models.enums_and_bitflags import catalog_badness_inverse
+from models.enums_and_bitflags import catalog_match_badness_inverse
 
 
 class WorldCoordinates(Base, AutoIDMixin, HasBitFlagBadness):
@@ -93,7 +93,7 @@ class WorldCoordinates(Base, AutoIDMixin, HasBitFlagBadness):
 
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object"""
-        return catalog_badness_inverse
+        return catalog_match_badness_inverse
 
     def __init__( self, *args, **kwargs ):
         super().__init__( *args, **kwargs )

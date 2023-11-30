@@ -106,52 +106,65 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         doc='Images used to produce a multi-image object, like a coadd or a subtraction. '
     )
 
-    ref_image_id = sa.Column(
-        sa.ForeignKey('images.id', ondelete='SET NULL', name='images_ref_image_id_fkey'),
+    ref_image_index = sa.Column(
+        sa.Integer,
         nullable=True,
-        index=True,
         doc=(
-            "ID of the reference image used to produce a this image. "
-            "This is the image that other images are warped and scaled to match. "
+            "Index of the reference image used to produce this image, in the upstream_images list. "
         )
     )
 
-    ref_image = orm.relationship(
-        'Image',
-        foreign_keys=[ref_image_id],
-        uselist=False,
-        passive_deletes=True,
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
+    @property
+    def ref_image(self):
+        if self.ref_image_index is None:
+            return None
+        if len(self.upstream_images) <= self.ref_image_index:
+            raise RuntimeError(f'Index {self.ref_image_index} is out of range for upstream images!')
+        return self.upstream_images[self.ref_image_index]
+
+    @ref_image.setter
+    def ref_image(self, value):
+        if value is None:
+            self.ref_image_index = None
+        else:
+            if not isinstance(value, Image):
+                raise ValueError(f"ref_image must be an Image object. Got {type(value)} instead.")
+            if value not in self.upstream_images:
+                raise ValueError(f"ref_image must be in the upstream_images list. Got {value} instead.")
+
+            # make sure the upstream_images list is sorted by mjd:
+            self.upstream_images.sort(key=lambda x: x.mjd)
+            self.ref_image_index = self.upstream_images.index(value)
+
+    new_image_index = sa.Column(
+        sa.Integer,
+        nullable=True,
         doc=(
-            "Image which is the reference used to produce this image. "
-            "This is the image that other images are warped and scaled to match. "
+            "Index of the new image used to produce a difference image, in the upstream_images list. "
         )
     )
 
-    new_image_id = sa.Column(
-        sa.ForeignKey('images.id', ondelete='SET NULL', name='images_new_image_id_fkey'),
-        nullable=False,
-        index=True,
-        doc=(
-            "ID of the new image used to produce a difference image. "
-            "When making a warped or difference image, this will refer to the new (science) image. "
-            "For coadded images this will be None. "
-        )
-    )
+    @property
+    def new_image(self):
+        if self.new_image_index is None:
+            return None
+        if len(self.upstream_images) <= self.new_image_index:
+            raise RuntimeError(f'Index {self.new_image_index} is out of range for upstream images!')
+        return self.upstream_images[self.new_image_index]
 
-    new_image = orm.relationship(
-        'Image',
-        foreign_keys=[new_image_id],
-        uselist=False,
-        passive_deletes=True,
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
-        doc=(
-            "The new (science) Image used to produce a warped/difference image. "
-            "For coadded images this will be None. "
-        )
-    )
+    @new_image.setter
+    def new_image(self, value):
+        if value is None:
+            self.new_image_index = None
+        else:
+            if not isinstance(value, Image):
+                raise ValueError(f"new_image must be an Image object. Got {type(value)} instead.")
+            if value not in self.upstream_images:
+                raise ValueError(f"new_image must be in the upstream_images list. Got {value} instead.")
+
+            # make sure the upstream_images list is sorted by mjd:
+            self.upstream_images.sort(key=lambda x: x.mjd)
+            self.new_image_index = self.upstream_images.index(value)
 
     is_sub = sa.Column(
         sa.Boolean,
@@ -167,14 +180,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         default=False,
         index=True,
         doc='Is this image made by stacking multiple images.'
-    )
-
-    is_warped = sa.Column(
-        sa.Boolean,
-        nullable=False,
-        default=False,
-        index=True,
-        doc='Has this image been warped to align with a reference.'
     )
 
     _type = sa.Column(
@@ -441,6 +446,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if self.ra is not None and self.dec is not None:
             self.calculate_coordinates()  # galactic and ecliptic coordinates
 
+    def __setattr__(self, key, value):
+        if key == 'upstream_images':
+            # make sure the upstream_images list is sorted by mjd:
+            value.sort(key=lambda x: x.mjd)
+
+        super().__setattr__(key, value)
+
     @orm.reconstructor
     def init_on_load(self):
         Base.init_on_load(self)
@@ -628,9 +640,18 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         """
         Create a new Image object from a list of other Image objects.
         This is the first step in making a multi-image (usually a coadd).
+        Do not use this to make subtractions! use from_ref_and_new instead.
+
         The output image doesn't have any data, and is created with
         nofile=True. It is up to the calling application to fill in the
         data, flags, weight, etc. using the appropriate preprocessing tools.
+
+        The Image objects used as inputs must have their own data products
+        loaded before calling this method, so their provenances will be recorded.
+        The provenance of the output object should be generated, then a call to
+        output.provenance.upstreams = output.get_upstream_provenances()
+        will make sure the provenance has the correct upstreams.
+
         After that, the data needs to be saved to file, and only then
         can the new Image be added to the database.
 
@@ -652,12 +673,19 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         output = Image(nofile=True)
 
-        # for each attribute, check that all the images have the same value
+        # use the first image to apply these attributes (some must be uniform across images)
         for att in ['section_id', 'instrument', 'telescope', 'type', 'filter', 'project', 'target']:
-            values = set([str(getattr(image, att)) for image in images])
-            if len(values) != 1:
-                raise ValueError(f"Cannot combine images with different {att} values: {values}")
-            output.__setattr__(att, values.pop())
+            # TODO: should replace this condition with a check that RA and Dec are overlapping?
+            #  in that case: what do we consider close enough? how much overlap is reasonable?
+            #  another issue: what happens if the section_id is different, what would be the
+            #  value for the subtracted image? can it live without a value entirely?
+            #  the same goes for target. what about coadded images? can they have no section_id??
+            if att in ['filter', 'section_id', 'target']:  # check these values are the same across all images
+                values = set([str(getattr(image, att)) for image in images])
+                if len(values) != 1:
+                    raise ValueError(f"Cannot combine images with different {att} values: {values}")
+            setattr(output, att, getattr(images[0], att))
+
         # TODO: should RA and Dec also be exactly the same??
         output.ra = images[0].ra
         output.dec = images[0].dec
@@ -688,7 +716,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         output.upstream_images = images
 
         # mark the first image as the reference (this can be overriden later when actually warping into one image)
-        output.ref_image_id = output.upstream_images[0].id
+        output.ref_image_index = 0
 
         output._upstream_bitflag = 0
         for im in images:
@@ -698,17 +726,25 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         return output
 
     @classmethod
-    def from_ref_and_new(cls, ref_image, new_image, im_type=None):
-        return cls.from_new_and_ref(new_image, ref_image, im_type=im_type)
+    def from_ref_and_new(cls, ref_image, new_image):
+        return cls.from_new_and_ref(new_image, ref_image)
 
     @classmethod
-    def from_new_and_ref(cls, new_image, ref_image, im_type=None):
+    def from_new_and_ref(cls, new_image, ref_image):
         """
         Create a new Image object from a reference Image object and a new Image object.
         This is the first step in making a difference image.
+
         The output image doesn't have any data, and is created with
         nofile=True. It is up to the calling application to fill in the
         data, flags, weight, etc. using the appropriate preprocessing tools.
+
+        The Image objects used as inputs must have their own data products
+        loaded before calling this method, so their provenances will be recorded.
+        The provenance of the output object should be generated, then a call to
+        output.provenance.upstreams = output.get_upstream_provenances()
+        will make sure the provenance has the correct upstreams.
+
         After that, the data needs to be saved to file, and only then
         can the new Image be added to the database.
 
@@ -718,11 +754,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             The new image to use.
         ref_image: Image object
             The reference image to use.
-        im_type: str (optional)
-            If given, will also set the output image's type.
-            Use "diff" or "warped", which will be prepended
-            with "Com" if the new image is a "Com..." type image
-            Note that if not given, the output type will remain as "Sci".
+
         Returns
         -------
         output: Image
@@ -744,6 +776,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 ref_value = str(ref_value)
                 new_value = str(new_value)
 
+            # TODO: should replace this condition with a check that RA and Dec are overlapping?
+            #  in that case: what do we consider close enough? how much overlap is reasonable?
+            #  another issue: what happens if the section_id is different, what would be the
+            #  value for the subtracted image? can it live without a value entirely?
+            #  the same goes for target. what about coadded images? can they have no section_id??
             if att in ['section_id', 'filter', 'target'] and ref_value != new_value:
                 raise ValueError(
                     f"Cannot combine images with different {att} values: "
@@ -752,13 +789,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
             # assign the values from the new image
             setattr(output, att, new_value)
-        # TODO: should RA and Dec also be exactly the same??
 
         output.upstream_images = [ref_image, new_image]
-        output.ref_image = ref_image
-        output.ref_image_id = ref_image.id
-        output.new_image = new_image
-        output.new_image_id = new_image.id
+        output.ref_image_index = 0
+        output.new_image_index = 1
 
         output._upstream_bitflag = 0
         output._upstream_bitflag |= ref_image.bitflag
@@ -770,13 +804,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     'dec_corner_00', 'dec_corner_01', 'dec_corner_10', 'dec_corner_11' ]:
             output.__setattr__(att, getattr(new_image, att))
 
-        if im_type is not None:
-            if im_type.lower == 'diff':
-                output.type = 'Diff'
-            elif im_type.lower == 'warped':
-                output.type = 'Warped'
-            else:
-                raise ValueError(f"im_type must be 'diff' or 'warped'. Got {im_type} instead.")
+        output.type = 'Diff'
         if new_image.type.startswith('Com'):
             output.type = 'ComDiff'
 
@@ -1080,7 +1108,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     def get_upstream_provenances(self):
         """Collect the provenances for all upstream objects.
 
-        This will fail if any upstream objects with the same type have differing provenance IDs.
+        This does not recursively go back to the upstreams of the upstreams.
+        It gets only the provenances of the immediate upstream objects.
+
+        Provenances that are the same (have the same hash) are combined (returned only once).
+
+        This is what would generally be put into a new provenance's upstreams list.
+
         Note that upstream_images must each have the other related products
         like sources, psf, wcs, etc. already loaded.
         This happens when the objects are used to produce, e.g., a coadd or
@@ -1088,47 +1122,79 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         To load those products (assuming all were previously committed with their own provenances)
         use the load_upstream_products() method.
 
+        IMPORTANT RESTRICTION: to maintain the ability of a downstream to recover its upstreams
+        using the provenance (which is the definition of why we need a provenance) it is not
+        allowed for images with the same provenance to have related products (e.g., a SourceList)
+        that have different provenances.  This is because the downstream would not know which
+        SourceList to use.  Images from different instruments, or a coadded reference vs.
+        a new image, would have different provenances, so their products could (and indeed must)
+        have different provenances. But images from the same instrument with the same provenance
+        should all be produced using the same code and parameters, otherwise it will be impossible
+        to know which product was processed in which way.
+
         Returns
         -------
         list of Provenance objects:
-            a list of unique provenances, one for each data type.
+            A list of all the provenances for the upstream objects.
         """
-        image_provs = []
-        sources_provs = []
-        psf_provs = []
-        wcs_provs = []
-        zp_provs = []
+        output = []
+        # split the images into groups based on their provenance hash
+        im_prov_hashes = list(set([im.provenance.id for im in self.upstream_images]))
+        for im_prov_hash in im_prov_hashes:
 
-        for im in self.upstream_images:
-            image_provs.append(im.provenance)
-            if im.sources is not None:
-                sources_provs.append(im.sources.provenance)
-            if im.psf is not None:
-                psf_provs.append(im.psf.provenance)
-            if im.wcs is not None:
-                wcs_provs.append(im.wcs.provenance)
-            if im.zp is not None:
-                zp_provs.append(im.zp.provenance)
+            im_group = [im for im in self.upstream_images if im.provenance.id == im_prov_hash]
+            sources_provs = {}
+            psf_provs = {}
+            wcs_provs = {}
+            zp_provs = {}
 
-        if len(set([p.id for p in image_provs])) > 1:
-            raise ValueError("Cannot combine images with different provenance IDs.")
-        if len(set([p.id for p in sources_provs])) > 1:
-            raise ValueError("Cannot combine sources with different provenance IDs.")
-        if len(set([p.id for p in psf_provs])) > 1:
-            raise ValueError("Cannot combine PSFs with different provenance IDs.")
-        if len(set([p.id for p in wcs_provs])) > 1:
-            raise ValueError("Cannot combine WCSs with different provenance IDs.")
-        if len(set([p.id for p in zp_provs])) > 1:
-            raise ValueError("Cannot combine ZPs with different provenance IDs.")
+            for im in im_group:
+                if im.sources is not None:
+                    sources_provs[im.sources.provenance.id] = im.sources.provenance
+                if im.psf is not None:
+                    psf_provs[im.psf.provenance.id] = im.psf.provenance
+                if im.wcs is not None:
+                    wcs_provs[im.wcs.provenance.id] = im.wcs.provenance
+                if im.zp is not None:
+                    zp_provs[im.zp.provenance.id] = im.zp.provenance
 
-        return image_provs + sources_provs + psf_provs + wcs_provs + zp_provs
+            if len(sources_provs) > 1:
+                raise ValueError(
+                    f"Image group with provenance {im_prov_hash} "
+                    "has SourceList objects with different provenances."
+                )
+            if len(psf_provs) > 1:
+                raise ValueError(
+                    f"Image group with provenance {im_prov_hash} "
+                    "has PSF objects with different provenances."
+                )
+            if len(wcs_provs) > 1:
+                raise ValueError(
+                    f"Image group with provenance {im_prov_hash} "
+                    "has WCS objects with different provenances."
+                )
+            if len(zp_provs) > 1:
+                raise ValueError(
+                    f"Image group with provenance {im_prov_hash} "
+                    "has ZeroPoint objects with different provenances."
+                )
+            output += [im_group[0].provenance]
+            output += list(sources_provs.values())
+            output += list(psf_provs.values())
+            output += list(wcs_provs.values())
+            output += list(zp_provs.values())
+
+        # because each Image group has a different prov-hash, no products from different groups
+        # could ever have the same provenance (it is hashed using the upstreams) so we don't need
+        # to also check for repeated provenances between groups
+        return output
 
     def load_upstream_products(self, session=None):
         """Make sure each upstream image has its related products loaded.
 
         This only works after all the images and products are committed to the database,
         with provenances consistent with what is saved in this Image's provenance
-        and its own upstream_ids.
+        and its own upstreams.
         """
         prov_ids = self.provenance.upstream_ids
         # check to make sure there is any need to load
@@ -1155,71 +1221,76 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         from models.world_coordinates import WorldCoordinates
         from models.zero_point import ZeroPoint
 
+        # split the images into groups based on their provenance hash
+        im_prov_hashes = list(set([im.provenance.id for im in self.upstream_images]))
+
         with SmartSession(session) as session:
-            im_ids = [im.id for im in self.upstream_images]
+            for im_prov_hash in im_prov_hashes:
+                im_group = [im for im in self.upstream_images if im.provenance.id == im_prov_hash]
+                im_ids = [im.id for im in im_group]
 
-            # get all the products for all images at once
-            sources_result = session.scalars(
-                sa.select(SourceList).where(
-                    SourceList.image_id.in_(im_ids),
-                    SourceList.provenance_id.in_(prov_ids),
-                )
-            ).all()
-            sources_ids = [s.id for s in sources_result]
-
-            psf_results = session.scalars(
-                sa.select(PSF).where(
-                    PSF.image_id.in_(im_ids),
-                    PSF.provenance_id.in_(prov_ids),
-                )
-            ).all()
-
-            wcs_results = session.scalars(
-                sa.select(WorldCoordinates).where(
-                    WorldCoordinates.source_list_id.in_(sources_ids),
-                    WorldCoordinates.provenance_id.in_(prov_ids),
-                )
-            ).all()
-
-            zp_results = session.scalars(
-                sa.select(ZeroPoint).where(
-                    ZeroPoint.source_list_id.in_(sources_ids),
-                    ZeroPoint.provenance_id.in_(prov_ids),
-                )
-            ).all()
-
-            for im in self.upstream_images:
-                sources = [s for s in sources_result if s.image_id == im.id]  # only get the sources for this image
-                if len(sources) > 1:
-                    raise ValueError(
-                        f"Image {im.id} has more than one SourceList matching upstream provenance."
+                # get all the products for all images in this group
+                sources_result = session.scalars(
+                    sa.select(SourceList).where(
+                        SourceList.image_id.in_(im_ids),
+                        SourceList.provenance_id.in_(prov_ids),
                     )
-                elif len(sources) == 1:
-                    im.sources = sources[0]
+                ).all()
+                sources_ids = [s.id for s in sources_result]
 
-                psfs = [p for p in psf_results if p.image_id == im.id]  # only get the psfs for this image
-                if len(psfs) > 1:
-                    raise ValueError(
-                        f"Image {im.id} has more than one PSF matching upstream provenance."
+                psf_results = session.scalars(
+                    sa.select(PSF).where(
+                        PSF.image_id.in_(im_ids),
+                        PSF.provenance_id.in_(prov_ids),
                     )
-                elif len(psfs) == 1:
-                    im.psf = psfs[0]
+                ).all()
 
-                wcses = [w for w in wcs_results if w.image_id == im.id]  # only get the wcses for this image
-                if len(wcses) > 1:
-                    raise ValueError(
-                        f"Image {im.id} has more than one WCS matching upstream provenance."
+                wcs_results = session.scalars(
+                    sa.select(WorldCoordinates).where(
+                        WorldCoordinates.source_list_id.in_(sources_ids),
+                        WorldCoordinates.provenance_id.in_(prov_ids),
                     )
-                elif len(wcses) == 1:
-                    im.wcs = wcses[0]
+                ).all()
 
-                zps = [z for z in zp_results if z.image_id == im.id]  # only get the zps for this image
-                if len(zps) > 1:
-                    raise ValueError(
-                        f"Image {im.id} has more than one ZeroPoint matching upstream provenance."
+                zp_results = session.scalars(
+                    sa.select(ZeroPoint).where(
+                        ZeroPoint.source_list_id.in_(sources_ids),
+                        ZeroPoint.provenance_id.in_(prov_ids),
                     )
-                elif len(zps) == 1:
-                    im.zp = zps[0]
+                ).all()
+
+                for im in im_group:
+                    sources = [s for s in sources_result if s.image_id == im.id]  # only get the sources for this image
+                    if len(sources) > 1:
+                        raise ValueError(
+                            f"Image {im.id} has more than one SourceList matching upstream provenance."
+                        )
+                    elif len(sources) == 1:
+                        im.sources = sources[0]
+
+                    psfs = [p for p in psf_results if p.image_id == im.id]  # only get the psfs for this image
+                    if len(psfs) > 1:
+                        raise ValueError(
+                            f"Image {im.id} has more than one PSF matching upstream provenance."
+                        )
+                    elif len(psfs) == 1:
+                        im.psf = psfs[0]
+
+                    wcses = [w for w in wcs_results if w.image_id == im.id]  # only get the wcses for this image
+                    if len(wcses) > 1:
+                        raise ValueError(
+                            f"Image {im.id} has more than one WCS matching upstream provenance."
+                        )
+                    elif len(wcses) == 1:
+                        im.wcs = wcses[0]
+
+                    zps = [z for z in zp_results if z.image_id == im.id]  # only get the zps for this image
+                    if len(zps) > 1:
+                        raise ValueError(
+                            f"Image {im.id} has more than one ZeroPoint matching upstream provenance."
+                        )
+                    elif len(zps) == 1:
+                        im.zp = zps[0]
 
     def get_upstreams(self, session=None):
         """
