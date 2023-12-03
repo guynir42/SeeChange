@@ -69,16 +69,15 @@ def persistent_dir():
 
 
 # this is a cache folder that should survive between test runs
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def cache_dir():
     path = os.path.join(CODE_ROOT, 'data/cache')
-    if not os.path.isdir(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     return path
 
 
 # this will be configured to FileOnDiskMixin.local_path, and used as temporary data location
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def data_dir():
     FileOnDiskMixin.configure_paths()
     temp_data_folder = FileOnDiskMixin.local_path
@@ -296,7 +295,7 @@ def example_ds_with_sources_and_psf( example_image_with_sources_and_psf_filename
     with fits.open( weight ) as hdul:
         ds.image._weight = hdul[0].data
     with fits.open( flags ) as hdul:
-        ds.image_flags = hdul[0].data
+        ds.image._flags = hdul[0].data
     ds.image.set_corners_from_header_wcs()
     ds.image.ra = ( ds.image.ra_corner_00 + ds.image.ra_corner_01 +
                     ds.image.ra_corner_10 + ds.image.ra_corner_11 ) / 4.

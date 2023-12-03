@@ -1,6 +1,7 @@
 import os
 import pytest
 import re
+import shutil
 import uuid
 
 import numpy as np
@@ -27,7 +28,6 @@ def test_exposure_instrument_provenance(sim_exposure1, decam_exposure):
         assert sim_exposure1.provenance.id is not None
         assert sim_exposure1.provenance.code_version is not None
         assert sim_exposure1.provenance.parameters == {'instrument': 'DemoInstrument'}
-
 
 
 def test_exposure_no_null_values():
@@ -120,16 +120,19 @@ def test_exposure_guess_demo_instrument():
     assert e.ra == 123
 
 
-def test_exposure_guess_decam_instrument():
+def test_exposure_guess_decam_instrument(persistent_dir, data_dir):
 
     t = datetime.now()
     mjd = Time(t).mjd
-
-    e = Exposure(filepath=f"test_data/DECam_examples/c4d_20221002_040239_r_v1.24.fits", exp_time=30, mjd=mjd,
+    basename = "c4d_20221002_040239_r_v1.24.fits"
+    shutil.copy2(os.path.join(persistent_dir, 'test_data/DECam_examples', basename), os.path.join(data_dir, basename))
+    e = Exposure(filepath=basename, exp_time=30, mjd=mjd,
                  filter="r", ra=123, dec=-23, project='foo', target='bar', nofile=True)
 
     assert e.instrument == 'DECam'
     assert isinstance(e.instrument_object, DECam)
+    if os.path.isfile(e.get_fullpath()):
+        os.remove(e.get_fullpath())
 
 
 def test_exposure_coordinates():
