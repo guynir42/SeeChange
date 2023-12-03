@@ -233,7 +233,6 @@ class SeeChangeBase:
         obj = safe_merge(session, self)
         done_list.add(obj)
 
-        # only do the sub-properties if the object was already added to the session
         attributes = [
             'provenance',
             'code_version',
@@ -244,8 +243,7 @@ class SeeChangeBase:
             'psf',
             'wcs',
             'zp',
-            'products',
-            'upstream_products',
+            'upstream_images',
         ]
 
         # recursively call this on the provenance and other parent objects
@@ -265,11 +263,11 @@ class SeeChangeBase:
         return obj
 
     def get_upstreams(self, session=None):
-        """Get all data products that were used to create this object."""
+        """Get all data products that were directly used to create this object (non-recursive)."""
         raise NotImplementedError('get_upstreams not implemented for this class')
 
     def get_downstreams(self, session=None):
-        """Get all data products that were created using this object."""
+        """Get all data products that were created directly from this object (non-recursive)."""
         raise NotImplementedError('get_downstreams not implemented for this class')
 
     def to_dict(self):
@@ -1167,6 +1165,8 @@ class FileOnDiskMixin:
                 session.delete(self)
                 if commit:
                     session.commit()
+            elif self in session:
+                session.expunge(self)
 
 
 # load the default paths from the config
@@ -1493,8 +1493,29 @@ class HasBitFlagBadness:
         doc='Free text comment about this data product, e.g., why it is bad. '
     )
 
-    def update_downstream_badness(self, session=None):
-        """Send a recursive command to update all downstream objects that have bitflags. """
+    def update_downstream_badness(self, session=None, commit=True):
+        """Send a recursive command to update all downstream objects that have bitflags.
+
+        Since this function is called recursively, it always updates the current
+        object's _upstream_bitflag to reflect the state of this object's upstreams,
+        before calling the same function on all downstream objects.
+
+        Note that this function will session.add() this object and all its
+        recursive downstreams (to update the changes in bitflag) and will
+        commit the new changes on its own (unless given commit=False)
+        but only at the end of the recursion.
+
+        If session=None and commit=False an exception is raised.
+
+        Parameters
+        ----------
+        session: sqlalchemy session
+            The session to use for the update. If None, will open a new session,
+            which will also close at the end of the call. In that case, must
+            provide a commit=True to commit the changes.
+        commit: bool (default True)
+            Whether to commit the changes to the database.
+        """
         # make sure this object is current:
         with SmartSession(session) as session:
             new_bitflag = 0  # start from scratch, in case some upstreams have lost badness
@@ -1509,7 +1530,10 @@ class HasBitFlagBadness:
             # recursively do this for all the other objects
             for downstream in self.get_downstreams(session):
                 if hasattr(downstream, 'update_downstream_badness') and callable(downstream.update_downstream_badness):
-                    downstream.update_downstream_badness(session)
+                    downstream.update_downstream_badness(session=session, commit=False)
+
+            if commit:
+                session.commit()
 
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object

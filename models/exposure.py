@@ -342,39 +342,36 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
         self._section_headers = None  # the headers for individual sections, directly from the FITS file
         self._raw_header = None  # the global (exposure level) header, directly from the FITS file
         self.type = 'Sci'  # default, can override using kwargs
+        self._instrument_object = None
+        self._bitflag = 0
 
         # manually set all properties (columns or not, but don't
         # overwrite instance methods) Do this once here, because some of
         # the values are going to be needed by upcoming function calls.
-        # (See "chicken and egg" comment below).  We will run this exact
-        # code again later so that the keywords can override what's
-        # detected from the header.
+        # We will run this exact code again later so that the keywords
+        # can override what's detected from the header.
         self.set_attributes_from_dict( kwargs )
 
-        # a default provenance for exposures
-        if self.provenance is None:
-            codeversion = Provenance.get_code_version()
-            self.provenance = Provenance( code_version=codeversion, process='load_exposure' )
-            self.provenance.update_id()
+        # must have Instrument to invent a filename (and initialize Provenance)
+        # but if not given, it can be guessed from the filepath
+        if self.filepath is None and self.instrument is None:
+            raise ValueError( "Exposure.__init__: must give at least a filepath or an instrument" )
 
-        self._instrument_object = None
-        self._bitflag = 0
-
-        # Bit of a chicken and egg problem here...
-        # For filepath, invent_filepath tries to use the instrument
-        # For instrument, guess_instrument tries to use the filepath
-        # If we have neither, we're in trouble.
         if self.filepath is None:
-            if self.instrument is None:
-                raise ValueError( "Exposure.__init__: must give at least a filepath or an instrument" )
-            else:
-                if invent_filepath:
-                    self.filepath = self.invent_filepath()
-                elif not self.nofile:
-                    raise ValueError("Exposure.__init__: must give a filepath to initialize an Exposure object. ")
+            # in this case, the instrument must have been given
+            if self.provenance is None:
+                self.make_provenance()  # a default provenance for exposures
+
+            if invent_filepath:
+                self.filepath = self.invent_filepath()
+            elif not self.nofile:
+                raise ValueError("Exposure.__init__: must give a filepath to initialize an Exposure object. ")
 
         if self.instrument is None:
             self.instrument = guess_instrument(self.filepath)
+
+        if self.provenance is None:
+            self.make_provenance()  # a default provenance for exposures
 
         # instrument_obj is lazy loaded when first getting it
         if current_file is None:
@@ -387,6 +384,26 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
 
         if self.ra is not None and self.dec is not None:
             self.calculate_coordinates()  # galactic and ecliptic coordinates
+
+    def make_provenance(self):
+        """Generate a Provenance for this exposure.
+
+        The provenance will have only one parameter,
+        which is the instrument name.
+
+        Why use the instrument as a parameter of the exposure?
+        So we never have data products from different instruments
+        with the same provenance (this is important to how we group
+        the upstream images when e.g., making a coadd).
+        """
+        codeversion = Provenance.get_code_version()
+        self.provenance = Provenance(
+            code_version=codeversion,
+            process='load_exposure',
+            parameters={'instrument': self.instrument},
+            upstreams=[],
+        )
+        self.provenance.update_id()
 
     @sa.orm.reconstructor
     def init_on_load(self):
@@ -707,13 +724,14 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
         return []
 
     def get_downstreams(self, session=None):
-        """An exposure has only Image downstreams """
+        """An exposure has only Image objects as direct downstreams. """
         from models.image import Image
 
         with SmartSession(session) as session:
             images = session.scalars(sa.select(Image).where(Image.exposure_id == self.id)).all()
 
         return images
+
 
 if __name__ == '__main__':
     import os

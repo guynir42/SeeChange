@@ -5,7 +5,6 @@ from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.schema import CheckConstraint
-from sqlalchemy.ext.associationproxy import association_proxy
 
 from astropy.time import Time
 from astropy.wcs import WCS
@@ -36,153 +35,19 @@ from models.enums_and_bitflags import (
 
 import util.config as config
 
-
-# this links each ImageProducts to an Image that has this ImageProducts as an upstream
-# (many images can use the same products object as upstreams)
-# the ImageProduct.image_id is for the one image this product is for
-# (there could be many ImageProducts based on the same Image).
-image_products_association_table = sa.Table(
-    'image_products_association',
+# links many-to-many Image to all the Images used to create it
+image_upstreams_association_table = sa.Table(
+    'image_upstreams_association',
     Base.metadata,
-    sa.Column('prod_id',
+    sa.Column('upstream_id',
               sa.Integer,
-              sa.ForeignKey('image_products.id', ondelete="CASCADE", name='image_products_association_prod_id_fkey'),
+              sa.ForeignKey('images.id', ondelete="CASCADE", name='image_upstreams_association_upstream_id_fkey'),
               primary_key=True),
-    sa.Column('image_id',
+    sa.Column('downstream_id',
               sa.Integer,
-              sa.ForeignKey('images.id', ondelete="CASCADE", name='image_products_association_image_id_fkey'),
+              sa.ForeignKey('images.id', ondelete="CASCADE", name='image_upstreams_association_downstream_id_fkey'),
               primary_key=True),
 )
-
-
-class ImageProducts(Base, AutoIDMixin):
-
-    __tablename__ = 'image_products'
-
-    image_id = sa.Column(
-        sa.ForeignKey('images.id', ondelete='CASCADE', name='image_products_image_id_fkey'),
-        nullable=False,
-        index=True,
-        doc="ID of the image that these products are associated with. "
-    )
-
-    image = orm.relationship(
-        'Image',
-        foreign_keys=[image_id],
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
-        doc="The image that these products are associated with. "
-    )
-
-    psf_id = sa.Column(
-        sa.ForeignKey('psfs.id', name='image_products_psf_id_fkey'),
-        nullable=True,
-        index=True,
-        doc="ID of the PSF object associated with this image. "
-    )
-
-    psf = orm.relationship(
-        'PSF',
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
-        doc="The PSF object associated with this image. "
-    )
-
-    sources_id = sa.Column(
-        sa.ForeignKey('source_lists.id', name='image_products_source_list_id_fkey'),
-        nullable=True,
-        index=True,
-        doc="ID of the source list associated with this image. "
-    )
-
-    sources = orm.relationship(
-        'SourceList',
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
-        doc="The source list associated with this image. "
-    )
-
-    wcs_id = sa.Column(
-        sa.ForeignKey('world_coordinates.id', name='image_products_wcs_id_fkey'),
-        nullable=True,
-        index=True,
-        doc="ID of the WCS object associated with this image. "
-    )
-
-    wcs = orm.relationship(
-        'WorldCoordinates',
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
-        doc="The WCS object associated with this image. "
-    )
-
-    zp_id = sa.Column(
-        sa.ForeignKey('zero_points.id', name='image_products_zp_id_fkey'),
-        nullable=True,
-        index=True,
-        doc="ID of the zero point object associated with this image. "
-    )
-
-    zp = orm.relationship(
-        'ZeroPoint',
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
-        doc="The zero point object associated with this image. "
-    )
-
-    # might need this to sort the loaded objects
-    mjd = sa.Column(
-        sa.Float,
-        nullable=False,
-        index=True,
-        doc="Modified Julian date of the image. "
-    )
-
-    def remove_data_from_disk(self, remove_folders=True):
-        """Call remove_data_from_disk on all the associated objects that are FileOnDiskMixin objects."""
-        if self.image is not None:
-            self.image.remove_data_from_disk(remove_folders=remove_folders)
-        if self.psf is not None:
-            self.psf.remove_data_from_disk(remove_folders=remove_folders)
-        if self.sources is not None:
-            self.sources.remove_data_from_disk(remove_folders=remove_folders)
-
-    def delete_from_disk_and_database(self, session=None, commit=True, remove_folders=True):
-        """Call delete_from_disk_and_database on all the associated objects that are FileOnDiskMixin objects.
-        Objects that are not FileOnDiskMixin objects are just deleted from the database.
-        """
-        if session is None and not commit:
-            raise RuntimeError("When session=None, commit must be True!")
-
-        with SmartSession(session) as session:
-            if self.image is not None:
-                self.image.delete_from_disk_and_database(session=session, commit=False, remove_folders=remove_folders)
-            if self.psf is not None:
-                self.psf.delete_from_disk_and_database(session=session, commit=False, remove_folders=remove_folders)
-            if self.sources is not None:
-                self.sources.delete_from_disk_and_database(session=session, commit=False, remove_folders=remove_folders)
-            if self.wcs is not None and self.wcs.id is not None:
-                session.delete(self.wcs)
-            if self.zp is not None and self.zp.id is not None:
-                session.delete(self.zp)
-            session.delete(self)
-            if commit:
-                session.commit()
-
-    def __getattr__(self, key):
-        value = super().__getattribute__(key)
-        if key == 'image' and value is not None:
-            value._products = self  # attach itself to the image object before giving it out
-        return value
-
-    def __setattr__(self, key, value):
-        if key == 'image':
-            if value is not None:
-                self.mjd = value.mjd
-            else:
-                self.mjd = None
-
-        super().__setattr__(key, value)
 
 
 class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, HasBitFlagBadness):
@@ -229,75 +94,77 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         )
     )
 
-    upstream_products = orm.relationship(
-        'ImageProducts',
-        secondary=image_products_association_table,
+    upstream_images = orm.relationship(
+        'Image',
+        secondary=image_upstreams_association_table,
+        primaryjoin='images.c.id == image_upstreams_association.c.downstream_id',
+        secondaryjoin='images.c.id == image_upstreams_association.c.upstream_id',
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
         lazy='selectin',
-        order_by='ImageProducts.mjd',
-        doc=(
-            "ImageProduct for all images that were used to make this image. "
-        )
+        order_by='images.c.mjd',  # in chronological order of exposure start time
+        doc='Images used to produce a multi-image object, like a coadd or a subtraction. '
     )
 
-    ref_products_id = sa.Column(
-        sa.ForeignKey('image_products.id', ondelete='SET NULL', name='images_ref_image_products_id_fkey'),
+    ref_image_index = sa.Column(
+        sa.Integer,
         nullable=True,
-        index=True,
         doc=(
-            "ID of the reference image products used to produce a this image. "
-            "This is the image that other images are warped and scaled to match. "
-        )
-    )
-
-    ref_products = orm.relationship(
-        'ImageProducts',
-        foreign_keys=[ref_products_id],
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
-        doc=(
-            "ImageProduct for the reference image used to produce this image. "
-            "This is the image that other images are warped and scaled to match. "
+            "Index of the reference image used to produce this image, in the upstream_images list. "
         )
     )
 
     @property
     def ref_image(self):
-        if self.ref_products is None:
+        if self.ref_image_index is None:
             return None
+        if len(self.upstream_images) <= self.ref_image_index:
+            raise RuntimeError(f'Index {self.ref_image_index} is out of range for upstream images!')
+        return self.upstream_images[self.ref_image_index]
+
+    @ref_image.setter
+    def ref_image(self, value):
+        if value is None:
+            self.ref_image_index = None
         else:
-            return self.ref_products.image
+            if not isinstance(value, Image):
+                raise ValueError(f"ref_image must be an Image object. Got {type(value)} instead.")
+            if value not in self.upstream_images:
+                raise ValueError(f"ref_image must be in the upstream_images list. Got {value} instead.")
 
-    new_products_id = sa.Column(
-        sa.ForeignKey('image_products.id', ondelete='SET NULL', name='images_new_image_products_id_fkey'),
+            # make sure the upstream_images list is sorted by mjd:
+            self.upstream_images.sort(key=lambda x: x.mjd)
+            self.ref_image_index = self.upstream_images.index(value)
+
+    new_image_index = sa.Column(
+        sa.Integer,
         nullable=True,
-        index=True,
         doc=(
-            "ID of the new entry used to produce a difference image. "
-            "When making a warped or difference image, this will refer to the new (science) image. "
-            "For coadded images this will be None. "
-        )
-    )
-
-    new_products = orm.relationship(
-        'ImageProducts',
-        foreign_keys=[new_products_id],
-        cascade='save-update, merge, refresh-expire, expunge',
-        lazy='selectin',
-        doc=(
-            "ImageProduct for the new (science) image used to produce a difference image. "
-            "When making a warped or difference image, this will refer to the new (science) image. "
-            "For coadded images this will be None. "
+            "Index of the new image used to produce a difference image, in the upstream_images list. "
         )
     )
 
     @property
     def new_image(self):
-        if self.new_products is None:
+        if self.new_image_index is None:
             return None
+        if len(self.upstream_images) <= self.new_image_index:
+            raise RuntimeError(f'Index {self.new_image_index} is out of range for upstream images!')
+        return self.upstream_images[self.new_image_index]
+
+    @new_image.setter
+    def new_image(self, value):
+        if value is None:
+            self.new_image_index = None
         else:
-            return self.new_products.image
+            if not isinstance(value, Image):
+                raise ValueError(f"new_image must be an Image object. Got {type(value)} instead.")
+            if value not in self.upstream_images:
+                raise ValueError(f"new_image must be in the upstream_images list. Got {value} instead.")
+
+            # make sure the upstream_images list is sorted by mjd:
+            self.upstream_images.sort(key=lambda x: x.mjd)
+            self.new_image_index = self.upstream_images.index(value)
 
     is_sub = sa.Column(
         sa.Boolean,
@@ -313,14 +180,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         default=False,
         index=True,
         doc='Is this image made by stacking multiple images.'
-    )
-
-    is_warped = sa.Column(
-        sa.Boolean,
-        nullable=False,
-        default=False,
-        index=True,
-        doc='Has this image been warped to align with a reference.'
     )
 
     _type = sa.Column(
@@ -575,7 +434,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self.psf = None  # the point-spread-function object (optionally loaded)
         self.wcs = None  # the WorldCoordinates object (optionally loaded)
         self.zp = None  # the zero-point object (optionally loaded)
-        self._products = None  # cache the ImageProducts object so not to regenerate it each time
 
         self._instrument_object = None
         self._bitflag = 0
@@ -587,6 +445,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         if self.ra is not None and self.dec is not None:
             self.calculate_coordinates()  # galactic and ecliptic coordinates
+
+    def __setattr__(self, key, value):
+        if key == 'upstream_images':
+            # make sure the upstream_images list is sorted by mjd:
+            value.sort(key=lambda x: x.mjd)
+
+        super().__setattr__(key, value)
 
     @orm.reconstructor
     def init_on_load(self):
@@ -603,9 +468,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self.psf = None
         self.wcs = None
         self.zp = None
-        self._products = None
 
         self._instrument_object = None
+        this_object_session = orm.Session.object_session(self)
+        if this_object_session is not None:  # if just loaded, should usually have a session!
+            self.load_upstream_products(this_object_session)
 
     def set_corners_from_header_wcs( self ):
         wcs = WCS( self._raw_header )
@@ -632,30 +499,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self.dec_corner_01 = decs[1]
         self.dec_corner_10 = decs[2]
         self.dec_corner_11 = decs[3]
-
-    def make_image_products(self):
-        """Generate an ImageProducts object from this image and any loaded PSF, SourceList, WorldCoordinates, etc."""
-        # use the cached value if possible
-        prod = self._products
-
-        # cache must match the current values
-        if (
-            prod is not None and
-            (self.psf != prod.psf or self.sources != prod.sources or self.wcs != prod.wcs or self.zp != prod.zp)
-        ):
-            prod = None
-
-        # if no matching cache is found, recreate it
-        if prod is None:
-            prod = ImageProducts()
-            prod.image = self
-            prod.psf = self.psf
-            prod.sources = self.sources
-            prod.wcs = self.wcs
-            prod.zp = self.zp
-
-        self._products = prod
-        return prod
 
     @classmethod
     def from_exposure(cls, exposure, section_id):
@@ -797,9 +640,18 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         """
         Create a new Image object from a list of other Image objects.
         This is the first step in making a multi-image (usually a coadd).
+        Do not use this to make subtractions! use from_ref_and_new instead.
+
         The output image doesn't have any data, and is created with
         nofile=True. It is up to the calling application to fill in the
         data, flags, weight, etc. using the appropriate preprocessing tools.
+
+        The Image objects used as inputs must have their own data products
+        loaded before calling this method, so their provenances will be recorded.
+        The provenance of the output object should be generated, then a call to
+        output.provenance.upstreams = output.get_upstream_provenances()
+        will make sure the provenance has the correct upstreams.
+
         After that, the data needs to be saved to file, and only then
         can the new Image be added to the database.
 
@@ -816,14 +668,24 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if len(images) < 1:
             raise ValueError("Must provide at least one image to combine.")
 
+        # sort images by mjd:
+        images = sorted(images, key=lambda x: x.mjd)
+
         output = Image(nofile=True)
 
-        # for each attribute, check that all the images have the same value
+        # use the first image to apply these attributes (some must be uniform across images)
         for att in ['section_id', 'instrument', 'telescope', 'type', 'filter', 'project', 'target']:
-            values = set([str(getattr(image, att)) for image in images])
-            if len(values) != 1:
-                raise ValueError(f"Cannot combine images with different {att} values: {values}")
-            output.__setattr__(att, values.pop())
+            # TODO: should replace this condition with a check that RA and Dec are overlapping?
+            #  in that case: what do we consider close enough? how much overlap is reasonable?
+            #  another issue: what happens if the section_id is different, what would be the
+            #  value for the subtracted image? can it live without a value entirely?
+            #  the same goes for target. what about coadded images? can they have no section_id??
+            if att in ['filter', 'section_id', 'target']:  # check these values are the same across all images
+                values = set([str(getattr(image, att)) for image in images])
+                if len(values) != 1:
+                    raise ValueError(f"Cannot combine images with different {att} values: {values}")
+            setattr(output, att, getattr(images[0], att))
+
         # TODO: should RA and Dec also be exactly the same??
         output.ra = images[0].ra
         output.dec = images[0].dec
@@ -840,8 +702,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         output.exp_time = sum([image.exp_time for image in images])
 
         # start MJD and end MJD
-        output.mjd = min([image.mjd for image in images])
-        output.end_mjd = max([image.end_mjd for image in images])
+        output.mjd = images[0].mjd  # assume sorted by start of exposures
+        output.end_mjd = max([image.end_mjd for image in images])  # exposure ends are not necessarily sorted
 
         # TODO: what about the header? should we combine them somehow?
         output.header = images[0].header
@@ -851,13 +713,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if not base_type.startswith('Com'):
             output.type = 'Com' + base_type
 
-        # make sure to make the image product objects
-        for im in images:
-            prod = im.make_image_products()
-            output.upstream_products.append(prod)
+        output.upstream_images = images
 
         # mark the first image as the reference (this can be overriden later when actually warping into one image)
-        output.ref_products_id = output.upstream_products[0].id
+        output.ref_image_index = 0
 
         output._upstream_bitflag = 0
         for im in images:
@@ -867,17 +726,25 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         return output
 
     @classmethod
-    def from_ref_and_new(cls, ref_image, new_image, im_type=None):
-        return cls.from_new_and_ref(new_image, ref_image, im_type=im_type)
+    def from_ref_and_new(cls, ref_image, new_image):
+        return cls.from_new_and_ref(new_image, ref_image)
 
     @classmethod
-    def from_new_and_ref(cls, new_image, ref_image, im_type=None):
+    def from_new_and_ref(cls, new_image, ref_image):
         """
         Create a new Image object from a reference Image object and a new Image object.
         This is the first step in making a difference image.
+
         The output image doesn't have any data, and is created with
         nofile=True. It is up to the calling application to fill in the
         data, flags, weight, etc. using the appropriate preprocessing tools.
+
+        The Image objects used as inputs must have their own data products
+        loaded before calling this method, so their provenances will be recorded.
+        The provenance of the output object should be generated, then a call to
+        output.provenance.upstreams = output.get_upstream_provenances()
+        will make sure the provenance has the correct upstreams.
+
         After that, the data needs to be saved to file, and only then
         can the new Image be added to the database.
 
@@ -887,16 +754,17 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             The new image to use.
         ref_image: Image object
             The reference image to use.
-        im_type: str (optional)
-            If given, will also set the output image's type.
-            Use "diff" or "warped", which will be prepended
-            with "Com" if the new image is a "Com..." type image
-            Note that if not given, the output type will remain as "Sci".
+
         Returns
         -------
         output: Image
             The new Image object. It would not have any data variables or filepath.
         """
+        if ref_image is None:
+            raise ValueError("Must provide a reference image.")
+        if new_image is None:
+            raise ValueError("Must provide a new image.")
+
         output = Image(nofile=True)
 
         # for each attribute, check the two images have the same value
@@ -908,6 +776,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 ref_value = str(ref_value)
                 new_value = str(new_value)
 
+            # TODO: should replace this condition with a check that RA and Dec are overlapping?
+            #  in that case: what do we consider close enough? how much overlap is reasonable?
+            #  another issue: what happens if the section_id is different, what would be the
+            #  value for the subtracted image? can it live without a value entirely?
+            #  the same goes for target. what about coadded images? can they have no section_id??
             if att in ['section_id', 'filter', 'target'] and ref_value != new_value:
                 raise ValueError(
                     f"Cannot combine images with different {att} values: "
@@ -915,12 +788,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 )
 
             # assign the values from the new image
-            output.__setattr__(att, new_value)
-        # TODO: should RA and Dec also be exactly the same??
+            setattr(output, att, new_value)
 
-        output.upstream_products = [ref_image.make_image_products(), new_image.make_image_products()]
-        output.ref_products = output.upstream_products[0]
-        output.new_products = output.upstream_products[1]
+        output.upstream_images = [ref_image, new_image]
+        output.ref_image_index = 0
+        output.new_image_index = 1
 
         output._upstream_bitflag = 0
         output._upstream_bitflag |= ref_image.bitflag
@@ -932,13 +804,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     'dec_corner_00', 'dec_corner_01', 'dec_corner_10', 'dec_corner_11' ]:
             output.__setattr__(att, getattr(new_image, att))
 
-        if im_type is not None:
-            if im_type.lower == 'diff':
-                output.type = 'Diff'
-            elif im_type.lower == 'warped':
-                output.type = 'Warped'
-            else:
-                raise ValueError(f"im_type must be 'diff' or 'warped'. Got {im_type} instead.")
+        output.type = 'Diff'
         if new_image.type.startswith('Com'):
             output.type = 'ComDiff'
 
@@ -1239,15 +1105,204 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 if not ( gotim and gotweight and gotflags ):
                     raise FileNotFoundError( "Failed to load at least one of image, weight, flags" )
 
+    def get_upstream_provenances(self):
+        """Collect the provenances for all upstream objects.
+
+        This does not recursively go back to the upstreams of the upstreams.
+        It gets only the provenances of the immediate upstream objects.
+
+        Provenances that are the same (have the same hash) are combined (returned only once).
+
+        This is what would generally be put into a new provenance's upstreams list.
+
+        Note that upstream_images must each have the other related products
+        like sources, psf, wcs, etc. already loaded.
+        This happens when the objects are used to produce, e.g., a coadd or
+        a subtraction image, but they would not necessarily be loaded automatically from the DB.
+        To load those products (assuming all were previously committed with their own provenances)
+        use the load_upstream_products() method.
+
+        IMPORTANT RESTRICTION: to maintain the ability of a downstream to recover its upstreams
+        using the provenance (which is the definition of why we need a provenance) it is not
+        allowed for images with the same provenance to have related products (e.g., a SourceList)
+        that have different provenances.  This is because the downstream would not know which
+        SourceList to use.  Images from different instruments, or a coadded reference vs.
+        a new image, would have different provenances, so their products could (and indeed must)
+        have different provenances. But images from the same instrument with the same provenance
+        should all be produced using the same code and parameters, otherwise it will be impossible
+        to know which product was processed in which way.
+
+        Returns
+        -------
+        list of Provenance objects:
+            A list of all the provenances for the upstream objects.
+        """
+        output = []
+        # split the images into groups based on their provenance hash
+        im_prov_hashes = list(set([im.provenance.id for im in self.upstream_images]))
+        for im_prov_hash in im_prov_hashes:
+
+            im_group = [im for im in self.upstream_images if im.provenance.id == im_prov_hash]
+            sources_provs = {}
+            psf_provs = {}
+            wcs_provs = {}
+            zp_provs = {}
+
+            for im in im_group:
+                if im.sources is not None:
+                    sources_provs[im.sources.provenance.id] = im.sources.provenance
+                if im.psf is not None:
+                    psf_provs[im.psf.provenance.id] = im.psf.provenance
+                if im.wcs is not None:
+                    wcs_provs[im.wcs.provenance.id] = im.wcs.provenance
+                if im.zp is not None:
+                    zp_provs[im.zp.provenance.id] = im.zp.provenance
+
+            if len(sources_provs) > 1:
+                raise ValueError(
+                    f"Image group with provenance {im_prov_hash} "
+                    "has SourceList objects with different provenances."
+                )
+            if len(psf_provs) > 1:
+                raise ValueError(
+                    f"Image group with provenance {im_prov_hash} "
+                    "has PSF objects with different provenances."
+                )
+            if len(wcs_provs) > 1:
+                raise ValueError(
+                    f"Image group with provenance {im_prov_hash} "
+                    "has WCS objects with different provenances."
+                )
+            if len(zp_provs) > 1:
+                raise ValueError(
+                    f"Image group with provenance {im_prov_hash} "
+                    "has ZeroPoint objects with different provenances."
+                )
+            output += [im_group[0].provenance]
+            output += list(sources_provs.values())
+            output += list(psf_provs.values())
+            output += list(wcs_provs.values())
+            output += list(zp_provs.values())
+
+        # because each Image group has a different prov-hash, no products from different groups
+        # could ever have the same provenance (it is hashed using the upstreams) so we don't need
+        # to also check for repeated provenances between groups
+        return output
+
+    def load_upstream_products(self, session=None):
+        """Make sure each upstream image has its related products loaded.
+
+        This only works after all the images and products are committed to the database,
+        with provenances consistent with what is saved in this Image's provenance
+        and its own upstreams.
+        """
+        prov_ids = self.provenance.upstream_ids
+        # check to make sure there is any need to load
+        need_to_load = False
+        for im in self.upstream_images:
+            if im.sources is None or im.sources.provenance_id not in prov_ids:
+                need_to_load = True
+                break
+            if im.psf is None or im.psf.provenance_id not in prov_ids:
+                need_to_load = True
+                break
+            if im.wcs is None or im.wcs.provenance_id not in prov_ids:
+                need_to_load = True
+                break
+            if im.zp is None or im.zp.provenance_id not in prov_ids:
+                need_to_load = True
+                break
+
+        if not need_to_load:
+            return
+
+        from models.source_list import SourceList
+        from models.psf import PSF
+        from models.world_coordinates import WorldCoordinates
+        from models.zero_point import ZeroPoint
+
+        # split the images into groups based on their provenance hash
+        im_prov_hashes = list(set([im.provenance.id for im in self.upstream_images]))
+
+        with SmartSession(session) as session:
+            for im_prov_hash in im_prov_hashes:
+                im_group = [im for im in self.upstream_images if im.provenance.id == im_prov_hash]
+                im_ids = [im.id for im in im_group]
+
+                # get all the products for all images in this group
+                sources_result = session.scalars(
+                    sa.select(SourceList).where(
+                        SourceList.image_id.in_(im_ids),
+                        SourceList.provenance_id.in_(prov_ids),
+                    )
+                ).all()
+                sources_ids = [s.id for s in sources_result]
+
+                psf_results = session.scalars(
+                    sa.select(PSF).where(
+                        PSF.image_id.in_(im_ids),
+                        PSF.provenance_id.in_(prov_ids),
+                    )
+                ).all()
+
+                wcs_results = session.scalars(
+                    sa.select(WorldCoordinates).where(
+                        WorldCoordinates.source_list_id.in_(sources_ids),
+                        WorldCoordinates.provenance_id.in_(prov_ids),
+                    )
+                ).all()
+
+                zp_results = session.scalars(
+                    sa.select(ZeroPoint).where(
+                        ZeroPoint.source_list_id.in_(sources_ids),
+                        ZeroPoint.provenance_id.in_(prov_ids),
+                    )
+                ).all()
+
+                for im in im_group:
+                    sources = [s for s in sources_result if s.image_id == im.id]  # only get the sources for this image
+                    if len(sources) > 1:
+                        raise ValueError(
+                            f"Image {im.id} has more than one SourceList matching upstream provenance."
+                        )
+                    elif len(sources) == 1:
+                        im.sources = sources[0]
+
+                    psfs = [p for p in psf_results if p.image_id == im.id]  # only get the psfs for this image
+                    if len(psfs) > 1:
+                        raise ValueError(
+                            f"Image {im.id} has more than one PSF matching upstream provenance."
+                        )
+                    elif len(psfs) == 1:
+                        im.psf = psfs[0]
+
+                    wcses = [w for w in wcs_results if w.image_id == im.id]  # only get the wcses for this image
+                    if len(wcses) > 1:
+                        raise ValueError(
+                            f"Image {im.id} has more than one WCS matching upstream provenance."
+                        )
+                    elif len(wcses) == 1:
+                        im.wcs = wcses[0]
+
+                    zps = [z for z in zp_results if z.image_id == im.id]  # only get the zps for this image
+                    if len(zps) > 1:
+                        raise ValueError(
+                            f"Image {im.id} has more than one ZeroPoint matching upstream provenance."
+                        )
+                    elif len(zps) == 1:
+                        im.zp = zps[0]
+
     def get_upstreams(self, session=None):
         """
-        Get the upstream images that were used to make this image.
-        This includes the reference image, new image, and source images.
+        Get the upstream images and associated products that were used to make this image.
+        This includes the reference/new image (for subtractions) or the set of images
+        used to build a coadd.  Each image will have some products that were generated
+        from it (source lists, PSFs, etc.) that also count as upstreams to this image.
 
         Parameters
         ----------
         session: SQLAlchemy session (optional)
-            The session to use to query the database. If not provided,
+            The session to use to query the database.  If not provided,
             will open a new session that automatically closes at
             the end of the function.
 
@@ -1257,6 +1312,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             The upstream images.
         """
         with SmartSession(session) as session:
+            self.load_upstream_products(session)
             upstreams = []
             # get the exposure
             try:
@@ -1269,18 +1325,17 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             if exposure is not None:
                 upstreams.append(exposure)
 
-            # get the reference entry
-            for prod in self.upstream_products:
-                if prod.image is not None:
-                    upstreams.append(prod.image)
-                if prod.psf is not None:
-                    upstreams.append(prod.psf)
-                if prod.sources is not None:
-                    upstreams.append(prod.sources)
-                if prod.wcs is not None:
-                    upstreams.append(prod.wcs)
-                if prod.zp is not None:
-                    upstreams.append(prod.zp)
+            # get the upstream images and associated products
+            for im in self.upstream_images:
+                upstreams.append(im)
+                if im.sources is not None:
+                    upstreams.append(im.sources)
+                if im.psf is not None:
+                    upstreams.append(im.psf)
+                if im.wcs is not None:
+                    upstreams.append(im.wcs)
+                if im.zp is not None:
+                    upstreams.append(im.zp)
 
         return upstreams
 
@@ -1289,6 +1344,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # avoids circular import
         from models.source_list import SourceList
         from models.psf import PSF
+        from models.world_coordinates import WorldCoordinates
+        from models.zero_point import ZeroPoint
 
         downstreams = []
         with SmartSession(session) as session:
@@ -1304,15 +1361,25 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             ).all()
             downstreams += sources
 
-            # note that the WCS and ZP are downstream of the source list, not the image
+            wcses = []
+            zps = []
+            for s in sources:
+                wcses += session.scalars(
+                    sa.select(WorldCoordinates).where(WorldCoordinates.source_list_id == s.id)
+                ).all()
+
+                zps += session.scalars(
+                    sa.select(ZeroPoint).where(ZeroPoint.source_list_id == s.id)
+                ).all()
 
             # now look for other images that were created based on this one
+            # ref: https://docs.sqlalchemy.org/en/20/orm/join_conditions.html#self-referential-many-to-many
             images = session.scalars(
-                sa.select(Image).where(ImageProducts.image_id == self.id).select_from(
-                    Image
-                ).join(image_products_association_table).where(
-                    Image.id == image_products_association_table.c.image_id,
-                    ImageProducts.id == image_products_association_table.c.prod_id,
+                sa.select(Image).join(
+                    image_upstreams_association_table, sa.and_(
+                        image_upstreams_association_table.c.upstream_id == self.id,
+                        image_upstreams_association_table.c.downstream_id == Image.id,
+                    )
                 ).order_by(Image.mjd).distinct()
             ).all()
             downstreams += images

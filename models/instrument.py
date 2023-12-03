@@ -1222,7 +1222,6 @@ class Instrument:
         gaiamaxbp_rp: float, optional
             The maximum BP-RP color to keep.
 
-
         Returns
         -------
         Returns a copy of the input data structure, with only the
@@ -1332,7 +1331,6 @@ class Instrument:
 
         # we can probably do better than this, but I don't know if it makes any difference
         # ref: https://en.wikipedia.org/wiki/Photometric_system
-
         # wikipedia = dict(
         #     U=Bandpass(332, 398),
         #     R=Bandpass(589, 727),

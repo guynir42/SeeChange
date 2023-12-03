@@ -84,7 +84,7 @@ def test_exposure_no_null_values():
         exposure_id = e.id
         assert exposure_id is not None
         assert e.provenance.process == 'load_exposure'
-        assert e.provenance.parameters == {}
+        assert e.provenance.parameters == {'instrument': e.instrument}
 
     finally:
         # cleanup

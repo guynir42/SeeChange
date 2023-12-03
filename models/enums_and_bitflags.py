@@ -346,12 +346,12 @@ source_list_badness_inverse = {EnumConverter.c(v): k for k, v in source_list_bad
 
 # these are the ways a WorldCoordinates/ZeroPoint object is allowed to be bad
 # mostly due to bad matches to the catalog
-catalog_badness_dict = {
+catalog_match_badness_dict = {
     21: 'No Catalog',
     22: 'X-Match Failed',
     23: 'Big Residuals',
 }
-catalog_badness_inverse = {EnumConverter.c(v): k for k, v in catalog_badness_dict.items()}
+catalog_match_badness_inverse = {EnumConverter.c(v): k for k, v in catalog_match_badness_dict.items()}
 
 
 # these are the ways a Cutouts object is allowed to be bad

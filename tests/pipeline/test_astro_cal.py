@@ -7,7 +7,7 @@ import numpy as np
 from astropy.wcs import WCS
 from astropy.io import fits
 
-from util.exceptions import  BadMatchException
+from util.exceptions import BadMatchException
 from models.base import SmartSession
 from models.image import Image
 from models.world_coordinates import WorldCoordinates

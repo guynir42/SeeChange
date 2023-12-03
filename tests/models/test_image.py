@@ -406,7 +406,6 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
 
         # save and delete at the end
         session.add(sim_image1)
-
         # sim_reference = session.merge(sim_reference)
         new = Image.from_new_and_ref(sim_image1, sim_reference.image)
         new.provenance = provenance_extra
@@ -436,7 +435,7 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
         upstreams = sim_reference.image.get_upstreams(session=session)
         assert len(upstreams) == 5  # was made of five images
         assert all([isinstance(u, Image) for u in upstreams])
-        source_images_ids = [p.image.id for p in sim_reference.image.upstream_products]
+        source_images_ids = [im.id for im in sim_reference.image.upstream_images]
         upstream_ids = [u.id for u in upstreams]
         assert set(upstream_ids) == set(source_images_ids)
         downstream_ids = [d.id for d in sim_reference.image.get_downstreams(session=session)]
@@ -581,17 +580,19 @@ def test_multiple_images_badness(
             assert sim_image3.id in [i.id for i in bad_images]
 
             # make an image from the two bad exposures using subtraction
-            sim_image4 = Image.from_new_and_ref(sim_image3, sim_image2)
-            sim_image4.provenance = provenance_extra
-            cleanups.append(ImageCleanup.save_image(sim_image4))
-            images.append(sim_image4)
-            sim_image4 = sim_image4.recursive_merge(session)
-            session.add(sim_image4)
+
+            demo_image4 = Image.from_new_and_ref(demo_image3, demo_image2)
+            demo_image4.provenance = provenance_extra
+            demo_image4.provenance.upstreams = demo_image4.get_upstream_provenances()
+            cleanups.append(ImageCleanup.save_image(demo_image4))
+            images.append(demo_image4)
+            demo_image4 = demo_image4.recursive_merge(session)
+            session.add(demo_image4)
             session.commit()
 
-            assert sim_image4.id is not None
-            assert sim_image4.ref_products.image_id == sim_image2.id
-            assert sim_image4.new_products.image_id == sim_image3.id
+            assert demo_image4.id is not None
+            assert demo_image4.ref_image == demo_image2
+            assert demo_image4.new_image == demo_image3
 
             # check that badness is loaded correctly from both parents
             assert sim_image4.badness == 'Banding, Bright Sky'
@@ -696,6 +697,7 @@ def test_multiple_images_badness(
 
     finally:  # cleanup
         with SmartSession() as session:
+            session.autoflush = False
             for im in images:
                 im = im.recursive_merge(session)
                 im.delete_from_disk_and_database(session=session, commit=False)
@@ -955,7 +957,7 @@ def test_image_from_exposure(sim_exposure1, provenance_base):
     assert not im.is_sub
     assert im.id is None  # need to commit to get IDs
     assert im.exposure_id is None  # need to commit to get IDs
-    assert im.upstream_products == []
+    assert im.upstream_images == []
     assert im.filepath is None  # need to save file to generate a filename
     assert np.array_equal(im.raw_data, sim_exposure1.data[0])
     assert im.data is None
@@ -1048,7 +1050,7 @@ def test_image_with_multiple_upstreams(sim_exposure1, sim_exposure2, provenance_
             im_id = im.id
             assert im_id is not None
             assert im.exposure_id is None
-            assert [u.image for u in im.upstream_products] == [im1, im2]
+            assert im.upstream_images == [im1, im2]
             assert np.isclose(im.mid_mjd, (im1.mjd + im2.mjd) / 2)
 
             # make sure source images are pulled into the database too

@@ -55,13 +55,12 @@ class Subtractor:
                 raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
             # look for a reference that has to do with the current image
-            ref = ds.get_reference_entry(session=session)
+            ref = ds.get_reference(session=session)
             if ref is None:
                 raise ValueError(
                     f'Cannot find a reference image corresponding to the datastore inputs: {ds.get_inputs()}'
                 )
-
-            sub_image = Image.from_ref_and_new(ref, image)
+            sub_image = Image.from_ref_and_new(ref.image, image)
             # TODO: implement the subtraction algorithm here
             #  I put in a really stupid workaround because for some reason
             #  the reference FITS file and the exposure FITS file are not

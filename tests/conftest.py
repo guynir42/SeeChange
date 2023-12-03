@@ -21,6 +21,8 @@ from models.provenance import CodeVersion, Provenance
 from models.image import Image
 from models.source_list import SourceList
 from models.psf import PSF
+from models.world_coordinates import WorldCoordinates
+from models.zero_point import ZeroPoint
 from pipeline.data_store import DataStore
 from pipeline.catalog_tools import fetch_GaiaDR3_excerpt
 
