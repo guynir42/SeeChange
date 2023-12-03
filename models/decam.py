@@ -277,7 +277,6 @@ class DECam(Instrument):
             return Instrument.average_again( self, None, section_id=section_id )
         return ( float( image.raw_header['GAINA'] ) + float( image.raw_header['GAINB'] ) ) / 2.
 
-
     def average_saturation_limit( self, image, section_id=None ):
         if image is None:
             return Instrument.average_saturation_limit( self, image, section_id=section_id )
@@ -718,7 +717,7 @@ class DECamOriginExposures:
         if indexes is None:
             indexes = range( len(self._frame) )
         if not isinstance( indexes, collections.abc.Sequence ):
-            indexes = [ index ]
+            indexes = [ indexes ]
 
         exposures = []
 

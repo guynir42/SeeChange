@@ -52,13 +52,9 @@ def commit_exposure(exposure, session=None):
         session.add(exposure)
         session.commit()
 
-    yield exposure
+    return exposure
 
-    with SmartSession() as session:
-        exposure = exposure.recursive_merge(session)
-        if sa.inspect( exposure ).persistent:
-            session.execute(sa.delete(Exposure).where(Exposure.id == exposure.id))
-            session.commit()
+
 
 
 # idea taken from: https://github.com/pytest-dev/pytest/issues/2424#issuecomment-333387206
@@ -70,6 +66,11 @@ def generate_exposure_fixture():
         commit_exposure(e)
         yield e
 
+        with SmartSession() as session:
+            e = e.recursive_merge(session)
+            if sa.inspect( e ).persistent:
+                session.delete(e)
+                session.commit()
     return new_exposure
 
 

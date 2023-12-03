@@ -43,7 +43,15 @@ from tests.conftest import CODE_ROOT
 # get mixed up when _get_default_calibrator
 # is called from within another function.
 @pytest.fixture( scope='session' )
-def decam_default_calibrators():
+def decam_default_calibrators(cache_dir, data_dir):
+    # try to get the calibrators from the cache folder
+    if os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators')):
+        shutil.copytree(
+            os.path.join(cache_dir, 'DECam_default_calibrators'),
+            os.path.join(data_dir, 'DECam_default_calibrators'),
+            dirs_exist_ok=True,
+        )
+
     decam = get_instrument_instance( 'DECam' )
     sections = [ 'N1', 'S1' ]
     filters = [ 'r', 'i', 'z' ]
@@ -52,6 +60,18 @@ def decam_default_calibrators():
             for filt in filters:
                 decam._get_default_calibrator( 60000, sec, calibtype=calibtype, filter=filt )
     decam._get_default_calibrator( 60000, sec, calibtype='linearity' )
+
+    # store the calibration files in the cache folder
+    if not os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators')):
+        os.makedirs(os.path.join(cache_dir, 'DECam_default_calibrators'), exist_ok=True)
+    for folder in os.listdir(os.path.join(data_dir, 'DECam_default_calibrators')):
+        if not os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators', folder)):
+            os.makedirs(os.path.join(cache_dir, 'DECam_default_calibrators', folder), exist_ok=True)
+        for file in os.listdir(os.path.join(data_dir, 'DECam_default_calibrators', folder)):
+            shutil.copy2(
+                os.path.join(data_dir, 'DECam_default_calibrators', folder, file),
+                os.path.join(cache_dir, 'DECam_default_calibrators', folder, file)
+            )
 
     yield sections, filters
 

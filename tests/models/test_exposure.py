@@ -19,6 +19,17 @@ from models.decam import DECam
 from tests.conftest import rnd_str
 
 
+def test_exposure_instrument_provenance(sim_exposure1, decam_exposure):
+    with SmartSession() as session:
+        sim_exposure1.recursive_merge( session )
+        assert sim_exposure1.id is not None
+        assert sim_exposure1.provenance is not None
+        assert sim_exposure1.provenance.id is not None
+        assert sim_exposure1.provenance.code_version is not None
+        assert sim_exposure1.provenance.parameters == {'instrument': 'DemoInstrument'}
+
+
+
 def test_exposure_no_null_values():
     # cannot create an exposure without a filepath!
     with pytest.raises(ValueError, match='Exposure.__init__: must give at least a filepath or an instrument'):
