@@ -54,7 +54,7 @@ def decam_default_calibrators(cache_dir, data_dir):
 
     decam = get_instrument_instance( 'DECam' )
     sections = [ 'N1', 'S1' ]
-    filters = [ 'r', 'i', 'z' ]
+    filters = [ 'r', 'i', 'z', 'g']
     for sec in sections:
         for calibtype in [ 'flat', 'fringe' ]:
             for filt in filters:
@@ -79,7 +79,7 @@ def decam_default_calibrators(cache_dir, data_dir):
     datafilestonuke = set()
     with SmartSession() as session:
         for sec in [ 'N1', 'S1' ]:
-            for filt in [ 'r', 'i', 'z' ]:
+            for filt in [ 'r', 'i', 'z', 'g' ]:
                 info = decam.preprocessing_calibrator_files( 'externally_supplied', 'externally_supplied',
                                                              sec, filt, 60000, nofetch=True, session=session )
                 for filetype in [ 'zero', 'flat', 'dark', 'fringe', 'illumination', 'linearity' ]:
@@ -97,27 +97,50 @@ def decam_default_calibrators(cache_dir, data_dir):
         session.commit()
 
 
+@pytest.fixture(scope='module')
+def decam_reduced_origin_exposures():
+    decam = DECam()
+    yield decam.find_origin_exposures( minmjd=60159.15625, maxmjd=60159.16667,
+                                       proposals='2023A-716082',
+                                       skip_exposures_in_database=False,
+                                       proc_type='instcal' )
+
+
+@pytest.fixture(scope='module')
+def decam_raw_origin_exposures():
+    decam = DECam()
+    yield decam.find_origin_exposures( minmjd=60159.15625, maxmjd=60159.16667,
+                                       proposals='2023A-716082',
+                                       skip_exposures_in_database=False,
+                                       proc_type='raw' )
+
+
 @pytest.fixture(scope="session")
 def decam_filename(data_dir, cache_dir):
     """Pull a DECam exposure down from the NOIRLab archives.
 
     Because this is a slow process (depending on the NOIRLab archive
     speed, it can take up to minutes), first look for this file
-    in the cache_dir, and if it exists, just symlink to it. If not,
+    in the cache_dir, and if it exists, and copy it. If not,
     actually download the image from NOIRLab into the cache_dir,
     and create a symlink to the temp_dir. That way, until the
     user manually deletes the cached file, we won't have to redo the
     slow NOIRLab download again.
     """
-    base_name = 'DECam/c4d_221104_074232_ori.fits.fz'
+    base_name = 'c4d_221104_074232_ori.fits.fz'
     filename = os.path.join(data_dir, base_name)
     if not os.path.isfile(filename):
-        cachedfilename = os.path.join(cache_dir, base_name)
+        cachedfilename = os.path.join(cache_dir, 'DECam', base_name)
+        os.makedirs(os.path.dirname(cachedfilename), exist_ok=True)
+
         if not os.path.isfile(cachedfilename):
             url = 'https://astroarchive.noirlab.edu/api/retrieve/004d537b1347daa12f8361f5d69bc09b/'
             response = wget.download(url=url, out=cachedfilename)
             assert response == cachedfilename
-        os.symlink(cachedfilename, filename)
+
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        shutil.copy2(cachedfilename, filename)
+
     return filename
 
 
@@ -139,8 +162,8 @@ def decam_exposure(decam_filename, data_dir):
 
 
 @pytest.fixture
-def decam_raw_image( decam_example_exposure ):
-    image = Image.from_exposure(decam_example_exposure, section_id='N1')
+def decam_raw_image( decam_exposure ):
+    image = Image.from_exposure(decam_exposure, section_id='N1')
     image.data = image.raw_data.astype(np.float32)
 
     yield image

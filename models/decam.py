@@ -421,6 +421,8 @@ class DECam(Instrument):
         filepath = reldatadir / calibtype / rempath.name
         fileabspath = datadir / calibtype / rempath.name
 
+        if not fileabspath.is_file():
+            print(f'downloading: {fileabspath}')
         retry_download( url, fileabspath )
 
         with SmartSession( session ) as dbsess:
@@ -736,7 +738,7 @@ class DECamOriginExposures:
 
         with SmartSession(session) as dbsess:
             provenance = Provenance( process='download',
-                                     parameters={ 'proc_type': self.proc_type },
+                                     parameters={ 'proc_type': self.proc_type, 'Instrument': 'DECam' },
                                      code_version=Provenance.get_code_version(session=dbsess) )
             provenance.update_id()
             provenance = provenance.recursive_merge( dbsess )
@@ -751,7 +753,7 @@ class DECamOriginExposures:
                     # TODO: load these as file extensions (see
                     # FileOnDiskMixin), if we're ever going to actually
                     # use the observatory-reduced DECam images It's more
-                    # work than just what needs to be doe here, because
+                    # work than just what needs to be done here, because
                     # we will need to think about that in
                     # Image.from_exposure(), and perhaps other places as
                     # well.
@@ -772,7 +774,7 @@ class DECamOriginExposures:
 
                 q = ( dbsess.query( Exposure )
                       .filter( Exposure.instrument == 'DECam' )
-                      .filter( Exposure.origin_identifier==origin_identifier )
+                      .filter( Exposure.origin_identifier == origin_identifier )
                      )
                 existing = q.first()
                 # Maybe check that q.count() isn't >1; if it is, throw an exception
