@@ -10,7 +10,6 @@ import pathlib
 import uuid
 
 import numpy as np
-import sqlalchemy as sa
 
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -24,6 +23,7 @@ from models.image import Image
 from models.datafile import DataFile
 from models.source_list import SourceList
 from models.psf import PSF
+from models.world_coordinates import WorldCoordinates
 
 from pipeline.data_store import DataStore
 from pipeline.preprocessing import Preprocessor
@@ -153,6 +153,7 @@ def decam_exposure(decam_filename, data_dir):
     exphdrinfo = Instrument.extract_header_info( hdr, [ 'mjd', 'exp_time', 'filter', 'project', 'target' ] )
 
     exposure = Exposure( filepath=filename, instrument='DECam', **exphdrinfo )
+    exposure.save()  # save to archive and get an MD5 sum
 
     yield exposure
 
@@ -168,6 +169,118 @@ def decam_raw_image( decam_exposure ):
     yield image
 
     image.delete_from_disk_and_database()
+
+
+@pytest.fixture
+def decam_datastore(
+        data_dir,
+        cache_dir,
+        decam_exposure,
+        decam_default_calibrators,
+        preprocessor,
+        extractor,
+        astrometor,
+        photometor,
+        detector,
+        cutter,
+        measurer,
+):
+    """Provide a datastore with all the products based on the DECam exposure
+
+    To use this data store in a test where new data is to be generated,
+    simply change the pipeline object's "test_parameter" value to a unique
+    new value, so the provenance will not match and the data will be regenerated.
+
+    EXAMPLE
+    -------
+    extractor.pars.test_parameter = uuid.uuid().hex
+    extractor.run(datastore)
+    assert extractor.has_recalculated is True
+    """
+    cache_dir = os.path.join(cache_dir, 'DECam')
+    code_version = decam_exposure.provenance.code_version
+    ds = DataStore(decam_exposure, 'N1')  # make a new datastore
+
+    ############ preprocessing to create image ############
+
+    # check if preprocessed image is in cache
+    cache_name = '115/c4d_20221104_074232_N1_g_Sci_HI4PX4.image.fits.json'
+    cache_path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(cache_path):
+        print('loading image from cache. ')
+        ds.image = Image.copy_from_cache(cache_dir, cache_name)
+        ds.image.provenance = Provenance(
+            code_version=code_version,
+            process='preprocessing',
+            upstreams=[ds.exposure.provenance],
+            parameters=preprocessor.pars.to_dict(),
+        )
+
+    if ds.image is None:  # make the preprocessed image
+        print('making preprocessed image. ')
+        ds = preprocessor.run(ds)
+        ds.image.save()
+        ds.image.copy_to_cache(cache_dir)
+
+    ############# extraction to create sources #############
+
+    cache_name = '115/c4d_20221104_074232_N1_g_Sci_HI4PX4.sources.fits.json'
+    cache_path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(cache_path):
+        print('loading source list from cache. ')
+        ds.sources = SourceList.copy_from_cache(cache_dir, cache_name)
+        ds.sources.image = ds.image
+        ds.sources.provenance = Provenance(
+            code_version=code_version,
+            process='extraction',
+            upstreams=[ds.image.provenance],
+            parameters=extractor.pars.to_dict(),
+        )
+    cache_name = '115/c4d_20221104_074232_N1_g_Sci_HI4PX4.psf.json'
+    cache_path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(cache_path):
+        print('loading PSF from cache. ')
+        ds.psf = PSF.copy_from_cache(cache_dir, cache_name)
+        ds.psf.image = ds.image
+        ds.psf.provenance = Provenance(
+            code_version=code_version,
+            process='extraction',
+            upstreams=[ds.image.provenance],
+            parameters=extractor.pars.to_dict(),
+        )
+    if ds.sources is None or ds.psf is None:  # make the source list from the regular image
+        print('extracting sources. ')
+        ds = extractor.run(ds)
+        ds.sources.save()
+        ds.sources.copy_to_cache(cache_dir)
+        ds.psf.save(overwrite=True)
+        ds.psf.copy_to_cache(cache_dir)
+
+    ############## astro_cal to create wcs ################
+
+    cache_name = '115/c4d_20221104_074232_N1_g_Sci_HI4PX4.wcs.json'
+    cache_path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(cache_path):
+        print('loading WCS from cache. ')
+        ds.wcs = WorldCoordinates.copy_from_cache(cache_dir, cache_name)
+        ds.wcs.sources = ds.sources
+        ds.wcs.provenance = Provenance(
+            code_version=code_version,
+            process='astro_cal',
+            upstreams=[ds.sources.provenance],
+            parameters=astrometor.pars.to_dict(),
+        )
+
+    if ds.wcs is None:  # make the WCS
+        print('Running astrometric calibration')
+        ds = astrometor.run(ds)
+        ds.wcs.copy_to_cache(cache_dir, cache_name)  # must provide a name because this one isn't a FileOnDiskMixin
+
+    return ds
+
+
+def test_decam_datastore(decam_datastore):
+    print(decam_datastore)
 
 
 @pytest.fixture

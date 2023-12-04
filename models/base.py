@@ -10,6 +10,7 @@ import shutil
 from uuid import UUID
 
 from contextlib import contextmanager
+import numpy as np
 
 from astropy.coordinates import SkyCoord
 
@@ -283,15 +284,47 @@ class SeeChangeBase:
         that are not saved into the database, but those have to
         be lazy loaded anyway, as they are not persisted.
 
-        To reload, in most cases it should be enough to use the
-        saved output dictionary as kwargs to the constructor of
-        the class, i.e., MyClass(**saved_dict).
+        Will convert non-standard data types:
+        UUID will be converted to string (using the .hex attribute).
+
+        To reload, use the from_dict() method:
+        reloaded_object = MyClass.from_dict( output_dict )
+        This will reconstruct the object, including the non-standard
+        data types like the UUID.
         """
         output = {}
         for key in sa.inspect(self).mapper.columns.keys():
-            output[key] = getattr(self, key)
+            value = getattr(self, key)
+            if key == 'md5sum' and value is not None:
+                if isinstance(value, UUID):
+                    value = value.hex
+            if key == 'md5sum_extensions' and value is not None:
+                if isinstance(value, list):
+                    value = [v.hex if isinstance(v, UUID) else v for v in value]
+
+            if key == 'aper_rads' and isinstance(value, np.ndarray):
+                value = list(value)
+
+            output[key] = value
 
         return output
+
+    @classmethod
+    def from_dict(cls, dictionary):
+        """Convert a dictionary into a new object. """
+        md5sum = dictionary.get('md5sum', None)
+        if md5sum is not None:
+            dictionary['md5sum'] = UUID(md5sum)
+        md5sum_extensions = dictionary.get('md5sum_extensions', None)
+        if md5sum_extensions is not None:
+            new_extensions = [UUID(md5) for md5 in md5sum_extensions if md5 is not None]
+            dictionary['md5sum_extensions'] = new_extensions
+
+        aper_rads = dictionary.get('aper_rads', None)
+        if aper_rads is not None:
+            dictionary['aper_rads'] = np.array(aper_rads)
+
+        return cls(**dictionary)
 
     def to_json(self, filename):
         """Translate a row object's column values to a JSON file.
@@ -334,15 +367,20 @@ class SeeChangeBase:
             if filepath is not None:
                 _logger.warning("FileOnDiskMixin object given filepath argument, but it will be ignored!")
             filepath = self.filepath  # override the filepath argument!
-            for f in self.get_fullpath():
+            if self.filepath_extensions is not None and len(self.filepath_extensions) > 0:
+                filepath += self.filepath_extensions[0]
+            for f in self.get_fullpath(as_list=True):
                 if f is None:
                     continue
                 new_f = os.path.join(cache_dir, f[len(self.local_path) + 1:])
                 _logger.debug(f"Copying {f} to {new_f}")
-                shutil.copyfile(f, new_f)
+                os.makedirs(os.path.dirname(new_f), exist_ok=True)
+                shutil.copy2(f, new_f)
 
         filepath = os.path.join(cache_dir, filepath)
-        self.to_json(filepath + '.json')
+        if not filepath.endswith('.json'):
+            filepath += '.json'
+        self.to_json(filepath)
 
     @classmethod
     def copy_from_cache(cls, cache_dir, filepath):
@@ -382,13 +420,13 @@ class SeeChangeBase:
         with open(full_path + '.json', 'r') as fp:
             json_dict = json.load(fp)
 
-        output = cls(**json_dict)
+        output = cls.from_dict(json_dict)
 
         if isinstance(output, FileOnDiskMixin):
-            for target_f in output.get_fullpath():
+            for target_f in output.get_fullpath(as_list=True):
                 if target_f is None:
                     continue
-                source_f = os.path.join(cache_dir, f[len(FileOnDiskMixin.local_path) + 1:])
+                source_f = os.path.join(cache_dir, target_f[len(FileOnDiskMixin.local_path) + 1:])
                 _logger.debug(f"Copying {source_f} to {target_f}")
                 shutil.copyfile(source_f, target_f)
 

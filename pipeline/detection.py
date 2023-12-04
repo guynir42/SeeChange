@@ -204,7 +204,7 @@ class Detector:
             sources = ds.get_sources(prov, session=session)
             psf = ds.get_psf(prov, session=session)
 
-            if sources is None:
+            if sources is None or psf is None:
                 self.has_recalculated = True
                 # use the latest image in the data store,
                 # or load using the provenance given in the

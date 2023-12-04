@@ -269,7 +269,7 @@ class AstroCalibrator:
 
         if wcs is None:  # must create a new WorldCoordinate object
             self.has_recalculated = True
-            image = ds.get_image()
+            image = ds.get_image(session=session)
             if image.astro_cal_done:
                 _logger.warning( f"Failed to find a wcs for image {pathlib.Path( image.filepath ).name}, "
                                  f"but it has astro_cal_done=True" )

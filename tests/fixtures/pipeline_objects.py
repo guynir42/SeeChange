@@ -13,7 +13,9 @@ from pipeline.measurement import Measurer
 def preprocessor(config_test):
     prep = Preprocessor(**config_test.value('preprocessing'))
     prep.pars._enforce_no_new_attrs = False
-    prep.pars.test_parameter = 'test_value'  # replace with uuid to make a new provenance
+    prep.pars.test_parameter = prep.pars.add_par(
+        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+    )
     prep.pars._enforce_no_new_attrs = True
 
     return prep
@@ -23,7 +25,9 @@ def preprocessor(config_test):
 def extractor(config_test):
     extr = Detector(**config_test.value('extraction'))
     extr.pars._enforce_no_new_attrs = False
-    extr.pars.test_parameter = 'test_value'  # replace with uuid to make a new provenance
+    extr.pars.test_parameter = extr.pars.add_par(
+        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+    )
     extr.pars._enforce_no_new_attrs = True
 
     return extr
@@ -33,7 +37,9 @@ def extractor(config_test):
 def astrometor(config_test):
     astrom = AstroCalibrator(**config_test.value('astro_cal'))
     astrom.pars._enforce_no_new_attrs = False
-    astrom.pars.test_parameter = 'test_value'  # replace with uuid to make a new provenance
+    astrom.pars.test_parameter = astrom.pars.add_par(
+        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+    )
     astrom.pars._enforce_no_new_attrs = True
 
     return astrom
@@ -41,9 +47,11 @@ def astrometor(config_test):
 
 @pytest.fixture
 def photometor(config_test):
-    photom = PhotCalibrator(**config_test.value('phot_cal'))
+    photom = PhotCalibrator(**config_test.value('photo_cal'))
     photom.pars._enforce_no_new_attrs = False
-    photom.pars.test_parameter = 'test_value'  # replace with uuid to make a new provenance
+    photom.pars.test_parameter = photom.pars.add_par(
+        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+    )
     photom.pars._enforce_no_new_attrs = True
 
     return photom
@@ -53,7 +61,9 @@ def photometor(config_test):
 def subtractor(config_test):
     sub = Subtractor(**config_test.value('subtraction'))
     sub.pars._enforce_no_new_attrs = False
-    sub.pars.test_parameter = 'test_value'  # replace with uuid to make a new provenance
+    sub.pars.test_parameter = sub.pars.add_par(
+        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+    )
     sub.pars._enforce_no_new_attrs = True
 
     return sub
@@ -63,7 +73,9 @@ def subtractor(config_test):
 def detector(config_test):
     det = Detector(**config_test.value('detection'))
     det.pars._enforce_no_new_attrs = False
-    det.pars.test_parameter = 'test_value'
+    det.pars.test_parameter = det.pars.add_par(
+        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+    )
     det.pars._enforce_no_new_attrs = False
 
     return det
@@ -71,9 +83,11 @@ def detector(config_test):
 
 @pytest.fixture
 def cutter(config_test):
-    cut = Cutter(**config_test.value('cutout'))
+    cut = Cutter(**config_test.value('cutting'))
     cut.pars._enforce_no_new_attrs = False
-    cut.pars.test_parameter = 'test_value'
+    cut.pars.test_parameter = cut.pars.add_par(
+        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+    )
     cut.pars._enforce_no_new_attrs = False
 
     return cut
@@ -83,7 +97,9 @@ def cutter(config_test):
 def measurer(config_test):
     meas = Measurer(**config_test.value('measurement'))
     meas.pars._enforce_no_new_attrs = False
-    meas.pars.test_parameter = 'test_value'
+    meas.pars.test_parameter = meas.pars.add_par(
+        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+    )
     meas.pars._enforce_no_new_attrs = False
 
     return meas
