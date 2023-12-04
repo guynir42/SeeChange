@@ -18,6 +18,7 @@ from pipeline.data_store import DataStore
 
 from util.config import Config
 
+
 class ParsPreprocessor(Parameters):
     def __init__(self, **kwargs):
         super().__init__()
@@ -70,6 +71,10 @@ class Preprocessor:
         self.stepfilesids = {}
         self.stepfiles = {}
 
+        # this is useful for tests, where we can know if
+        # the object did any work or just loaded from DB or datastore
+        self.has_recalculated = False
+
         # TODO : remove this if/when we actually put sky subtraction in run()
         if self.pars.use_sky_subtraction:
             raise NotImplementedError( "Sky subtraction in preprocessing isn't implemented." )
@@ -94,7 +99,7 @@ class Preprocessor:
           contains the products of the processing.
 
         """
-
+        self.has_recalculated = False
         ds, session = DataStore.from_args( *args, **kwargs )
 
         # This is here just for testing purposes
@@ -148,7 +153,6 @@ class Preprocessor:
                                                                        ds.exposure.mjd,
                                                                        session=session )
 
-
         # get the provenance for this step, using the current parameters:
         # Provenance includes not just self.pars.get_critical_pars(),
         # but also the steps that were performed.  Reason: we may well
@@ -167,6 +171,7 @@ class Preprocessor:
         image = ds.get_image(prov, session=session)
 
         if image is None:  # need to make new image
+            self.has_recalculated = True
             # get the single-chip image from the exposure
             image = Image.from_exposure( ds.exposure, ds.section_id )
 

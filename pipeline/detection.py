@@ -144,6 +144,10 @@ class Detector:
 
         self.pars = ParsDetector(**kwargs)
 
+        # this is useful for tests, where we can know if
+        # the object did any work or just loaded from DB or datastore
+        self.has_recalculated = False
+
     def run(self, *args, **kwargs):
         """Extract sources (and possibly a psf) from a regular image or a subtraction image.
 
@@ -151,6 +155,7 @@ class Detector:
 
         Returns a DataStore object with the products of the processing.
         """
+        self.has_recalculated = False
         ds, session = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step:
@@ -161,6 +166,7 @@ class Detector:
             detections = ds.get_detections(prov, session=session)
 
             if detections is None:
+                self.has_recalculated = True
                 raise NotImplementedError( "This needs to be updated for detection on a subtraction." )
 
                 # load the subtraction image from memory
@@ -199,6 +205,7 @@ class Detector:
             psf = ds.get_psf(prov, session=session)
 
             if sources is None:
+                self.has_recalculated = True
                 # use the latest image in the data store,
                 # or load using the provenance given in the
                 # data store's upstream_provs, or just use

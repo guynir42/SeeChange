@@ -124,6 +124,9 @@ class AstroCalibrator:
     def __init__(self, **kwargs):
         self.pars = ParsAstroCalibrator(**kwargs)
 
+        # this is useful for tests, where we can know if
+        # the object did any work or just loaded from DB or datastore
+        self.has_recalculated = False
     # ----------------------------------------------------------------------
 
     # TODO: should we move all of these catalog fetches into a separate file?
@@ -255,6 +258,7 @@ class AstroCalibrator:
         Arguments are parsed by the DataStore.parse_args() method.
         Returns a DataStore object with the products of the processing.
         """
+        self.has_recalculated = False
         ds, session = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step:
@@ -264,6 +268,7 @@ class AstroCalibrator:
         wcs = ds.get_wcs(prov, session=session)
 
         if wcs is None:  # must create a new WorldCoordinate object
+            self.has_recalculated = True
             image = ds.get_image()
             if image.astro_cal_done:
                 _logger.warning( f"Failed to find a wcs for image {pathlib.Path( image.filepath ).name}, "

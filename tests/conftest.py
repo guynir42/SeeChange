@@ -16,7 +16,13 @@ from models.catalog_excerpt import CatalogExcerpt
 
 from util.archive import Archive
 
-pytest_plugins = ['tests.fixtures.simulated', 'tests.fixtures.decam', 'tests.fixtures.ztf', 'tests.fixtures.ptf']
+pytest_plugins = [
+    'tests.fixtures.simulated',
+    'tests.fixtures.decam',
+    'tests.fixtures.ztf',
+    'tests.fixtures.ptf',
+    'tests.fixtures.pipeline_objects',
+]
 
 
 # idea taken from: https://shay-palachy.medium.com/temp-environment-variables-for-pytest-7253230bd777
