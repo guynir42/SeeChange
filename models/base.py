@@ -304,6 +304,10 @@ class SeeChangeBase:
 
             if key == 'aper_rads' and isinstance(value, np.ndarray):
                 value = list(value)
+            if key == 'aper_cors' and isinstance(value, np.ndarray):
+                value = list(value)
+            if key == 'aper_cor_radii' and isinstance(value, np.ndarray):
+                value = list(value)
 
             output[key] = value
 
@@ -315,6 +319,7 @@ class SeeChangeBase:
         md5sum = dictionary.get('md5sum', None)
         if md5sum is not None:
             dictionary['md5sum'] = UUID(md5sum)
+
         md5sum_extensions = dictionary.get('md5sum_extensions', None)
         if md5sum_extensions is not None:
             new_extensions = [UUID(md5) for md5 in md5sum_extensions if md5 is not None]
@@ -323,6 +328,14 @@ class SeeChangeBase:
         aper_rads = dictionary.get('aper_rads', None)
         if aper_rads is not None:
             dictionary['aper_rads'] = np.array(aper_rads)
+
+        aper_cors = dictionary.get('aper_cors', None)
+        if aper_cors is not None:
+            dictionary['aper_cors'] = np.array(aper_cors)
+
+        aper_cor_radii = dictionary.get('aper_cor_radii', None)
+        if aper_cor_radii is not None:
+            dictionary['aper_cor_radii'] = np.array(aper_cor_radii)
 
         return cls(**dictionary)
 
@@ -358,6 +371,11 @@ class SeeChangeBase:
         filepath: str or path (optional)
             Must be given if the object is not a FileOnDiskMixin.
             If it is a FileOnDiskMixin, it will be ignored.
+
+        Returns
+        -------
+        str
+            The full path to the output json file.
         """
         if not isinstance(self, FileOnDiskMixin):
             if filepath is None:
@@ -381,6 +399,8 @@ class SeeChangeBase:
         if not filepath.endswith('.json'):
             filepath += '.json'
         self.to_json(filepath)
+
+        return filepath
 
     @classmethod
     def copy_from_cache(cls, cache_dir, filepath):

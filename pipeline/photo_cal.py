@@ -275,7 +275,7 @@ class PhotCalibrator:
                     apercors.append( sources.calc_aper_cor( aper_num=i ) )
 
             # Make the ZeroPoint object
-            ds.zp = ZeroPoint( source_list=ds.sources, provenance=prov, zp=zpval, dzp=dzpval,
+            ds.zp = ZeroPoint( sources=ds.sources, provenance=prov, zp=zpval, dzp=dzpval,
                                aper_cor_radii=sources.aper_rads, aper_cors=apercors )
 
             ds.image.zero_point_estimate = ds.zp.zp  # TODO: should we only write if the property is None?

@@ -744,7 +744,7 @@ class DataStore:
                     sources = self.get_sources(session=session)
                     self.wcs = session.scalars(
                         sa.select(WorldCoordinates).where(
-                            WorldCoordinates.source_list_id == sources.id,
+                            WorldCoordinates.sources_id == sources.id,
                             WorldCoordinates.provenance.has(id=provenance.id),
                         )
                     ).first()
@@ -804,7 +804,7 @@ class DataStore:
                 if provenance is not None:  # if None, it means we can't find it on the DB
                     self.zp = session.scalars(
                         sa.select(ZeroPoint).where(
-                            ZeroPoint.source_list_id == sources.id,
+                            ZeroPoint.sources_id == sources.id,
                             ZeroPoint.provenance.has(id=provenance.id),
                         )
                     ).first()

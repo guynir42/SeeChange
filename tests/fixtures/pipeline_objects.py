@@ -1,5 +1,17 @@
+import os
+import warnings
+
 import pytest
 
+from models.base import _logger
+from models.provenance import Provenance
+from models.image import Image
+from models.source_list import SourceList
+from models.psf import PSF
+from models.world_coordinates import WorldCoordinates
+from models.zero_point import ZeroPoint
+
+from pipeline.data_store import DataStore
 from pipeline.preprocessing import Preprocessor
 from pipeline.detection import Detector
 from pipeline.astro_cal import AstroCalibrator
@@ -103,3 +115,146 @@ def measurer(config_test):
     meas.pars._enforce_no_new_attrs = False
 
     return meas
+
+
+@pytest.fixture
+def datastore_factory(
+        data_dir,
+        preprocessor,
+        extractor,
+        astrometor,
+        photometor,
+        detector,
+        cutter,
+        measurer,
+):
+    """Provide a function that returns a datastore with all the products based on the given exposure and section ID.
+
+    To use this data store in a test where new data is to be generated,
+    simply change the pipeline object's "test_parameter" value to a unique
+    new value, so the provenance will not match and the data will be regenerated.
+
+    EXAMPLE
+    -------
+    extractor.pars.test_parameter = uuid.uuid().hex
+    extractor.run(datastore)
+    assert extractor.has_recalculated is True
+    """
+    def make_datastore(exposure, section_id, cache_dir=None, cache_base_name=None):
+        code_version = exposure.provenance.code_version
+        ds = DataStore(exposure, section_id)  # make a new datastore
+
+        ############ preprocessing to create image ############
+
+        if cache_dir is not None and cache_base_name is not None:
+            # check if preprocessed image is in cache
+            cache_name = cache_base_name + '.image.fits.json'
+            cache_path = os.path.join(cache_dir, cache_name)
+            if os.path.isfile(cache_path):
+                _logger.debug('loading image from cache. ')
+                ds.image = Image.copy_from_cache(cache_dir, cache_name)
+                ds.image.provenance = Provenance(
+                    code_version=code_version,
+                    process='preprocessing',
+                    upstreams=[ds.exposure.provenance],
+                    parameters=preprocessor.pars.to_dict(),
+                )
+
+        if ds.image is None:  # make the preprocessed image
+            _logger.debug('making preprocessed image. ')
+            ds = preprocessor.run(ds)
+            ds.image.save()
+            output_path = ds.image.copy_to_cache(cache_dir)
+            if cache_dir is not None and cache_base_name is not None and output_path != cache_path:
+                warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
+
+        ############# extraction to create sources #############
+        if cache_dir is not None and cache_base_name is not None:
+            cache_name = cache_base_name + '.sources.fits.json'
+            cache_path = os.path.join(cache_dir, cache_name)
+            if os.path.isfile(cache_path):
+                _logger.debug('loading source list from cache. ')
+                ds.sources = SourceList.copy_from_cache(cache_dir, cache_name)
+                ds.sources.image = ds.image
+                ds.sources.provenance = Provenance(
+                    code_version=code_version,
+                    process='extraction',
+                    upstreams=[ds.image.provenance],
+                    parameters=extractor.pars.to_dict(),
+                )
+            cache_name = cache_base_name + '.psf.json'
+            cache_path = os.path.join(cache_dir, cache_name)
+            if os.path.isfile(cache_path):
+                _logger.debug('loading PSF from cache. ')
+                ds.psf = PSF.copy_from_cache(cache_dir, cache_name)
+                ds.psf.image = ds.image
+                ds.psf.provenance = Provenance(
+                    code_version=code_version,
+                    process='extraction',
+                    upstreams=[ds.image.provenance],
+                    parameters=extractor.pars.to_dict(),
+                )
+
+        if ds.sources is None or ds.psf is None:  # make the source list from the regular image
+            _logger.debug('extracting sources. ')
+            ds = extractor.run(ds)
+            ds.sources.save()
+            ds.sources.copy_to_cache(cache_dir)
+            ds.psf.save(overwrite=True)
+            output_path = ds.psf.copy_to_cache(cache_dir)
+            if cache_dir is not None and cache_base_name is not None and output_path != cache_path:
+                warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
+
+        ############## astro_cal to create wcs ################
+
+        if cache_dir is not None and cache_base_name is not None:
+            cache_name = cache_base_name + '.wcs.json'
+            cache_path = os.path.join(cache_dir, cache_name)
+            if os.path.isfile(cache_path):
+                _logger.debug('loading WCS from cache. ')
+                ds.wcs = WorldCoordinates.copy_from_cache(cache_dir, cache_name)
+                ds.wcs.sources = ds.sources
+                ds.wcs.provenance = Provenance(
+                    code_version=code_version,
+                    process='astro_cal',
+                    upstreams=[ds.sources.provenance],
+                    parameters=astrometor.pars.to_dict(),
+                )
+
+        if ds.wcs is None:  # make the WCS
+            _logger.debug('Running astrometric calibration')
+            ds = astrometor.run(ds)
+            if cache_dir is not None and cache_base_name is not None:
+                output_path = ds.wcs.copy_to_cache(cache_dir, cache_name)  # must provide a name because this one isn't a FileOnDiskMixin
+                if output_path != cache_path:
+                    warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
+
+        ########### photo_cal to create zero point ############
+
+        if cache_dir is not None and cache_base_name is not None:
+            cache_name = cache_base_name + '.zp.json'
+            cache_path = os.path.join(cache_dir, cache_name)
+            if os.path.isfile(cache_path):
+                _logger.debug('loading zero point from cache. ')
+                ds.zp = ZeroPoint.copy_from_cache(cache_dir, cache_name)
+                ds.zp.sources = ds.sources
+                ds.zp.provenance = Provenance(
+                    code_version=code_version,
+                    process='photo_cal',
+                    upstreams=[ds.sources.provenance],
+                    parameters=photometor.pars.to_dict(),
+                )
+
+        if ds.zp is None:  # make the zero point
+            _logger.debug('Running photometric calibration')
+            ds = photometor.run(ds)
+            if cache_dir is not None and cache_base_name is not None:
+                output_path = ds.zp.copy_to_cache(cache_dir, cache_name)
+                if output_path != cache_path:
+                    warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
+
+        # TODO: add the same cache/load and processing for the rest of the pipeline
+
+        return ds
+
+    return make_datastore

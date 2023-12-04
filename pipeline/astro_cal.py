@@ -245,7 +245,7 @@ class AstroCalibrator:
         self.crossid_rad = crossid_rad
         self.catexp = catexp
 
-        ds.wcs = WorldCoordinates( source_list=sources, provenance=prov )
+        ds.wcs = WorldCoordinates( sources=sources, provenance=prov )
         ds.wcs.wcs = wcs
         if session is not None:
             ds.wcs = ds.wcs.recursive_merge( session )

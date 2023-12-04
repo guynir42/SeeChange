@@ -73,6 +73,9 @@ astro_cal:
 
 photo_cal:
   cross_match_catalog: GaiaDR3
+  max_catalog_mag: [20.0]
+  mag_range_catalog: 4.0
+  min_catalog_stars: 50
 
 subtraction:
   method: hotpants

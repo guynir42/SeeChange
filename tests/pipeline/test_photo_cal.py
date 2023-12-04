@@ -5,9 +5,7 @@ import pathlib
 import numpy as np
 import matplotlib.pyplot as plt
 
-from models.base import SmartSession, CODE_ROOT
-from models.zero_point import ZeroPoint
-from pipeline.photo_cal import PhotCalibrator
+from models.base import CODE_ROOT
 
 # os.environ['INTERACTIVE'] = '1'  # for diagnostics only
 
