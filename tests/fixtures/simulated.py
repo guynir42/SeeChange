@@ -11,6 +11,7 @@ from astropy.io import fits
 from astropy.time import Time
 
 from models.base import SmartSession
+from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.references import Reference
@@ -49,12 +50,11 @@ def add_file_to_exposure(exposure):
 
 def commit_exposure(exposure, session=None):
     with SmartSession(session) as session:
+        exposure = exposure.recursive_merge(session)
         session.add(exposure)
         session.commit()
 
     return exposure
-
-
 
 
 # idea taken from: https://github.com/pytest-dev/pytest/issues/2424#issuecomment-333387206
@@ -206,7 +206,6 @@ sim_image_uncommitted = generate_image_fixture(commit=False)
 
 @pytest.fixture
 def sim_reference(provenance_preprocessing, provenance_extra):
-    ref = None
     filter = np.random.choice(list('grizY'))
     target = rnd_str(6)
     ra = np.random.uniform(0, 360)
@@ -246,7 +245,13 @@ def sim_reference(provenance_preprocessing, provenance_extra):
         session.add(ref_image)
 
         ref = Reference()
-        ref.products = ref_image.make_image_products()
+        ref.image = ref_image
+        ref.provenance = Provenance(
+            code_version=provenance_extra.code_version,
+            process='reference',
+            parameters={},
+            upstreams=[provenance_extra]
+        )
         ref.validity_start = Time(50000, format='mjd', scale='utc').isot
         ref.validity_end = Time(58500, format='mjd', scale='utc').isot
         ref.section_id = 0
@@ -259,14 +264,14 @@ def sim_reference(provenance_preprocessing, provenance_extra):
 
     yield ref
 
-    if ref is not None:
+    if 'ref' in locals():
         with SmartSession() as session:
-            ref = session.merge(ref)
-            ref.products.delete_from_disk_and_database(session=session, commit=False)
+            ref = ref.recursive_merge(session)
+            for im in ref.image.upstream_images:
+                im.exposure.delete_from_disk_and_database(session=session, commit=False)
+            ref.image.delete_from_disk_and_database(session=session, commit=False)
             if sa.inspect(ref).persistent:
-                session.execute(sa.delete(Reference).where(Reference.id == ref.id))
-            for im in images:
-                im.delete_from_disk_and_database(session=session, commit=False)
+                session.delete(ref.provenance)  # should also delete the reference
             session.commit()
 
 

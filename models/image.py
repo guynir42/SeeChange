@@ -790,9 +790,12 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             # assign the values from the new image
             setattr(output, att, new_value)
 
-        output.upstream_images = [ref_image, new_image]
-        output.ref_image_index = 0
-        output.new_image_index = 1
+        if ref_image.mjd < new_image.mjd:
+            output.upstream_images = [ref_image, new_image]
+        else:
+            output.upstream_images = [new_image, ref_image]
+        output.ref_image_index = output.upstream_images.index(ref_image)
+        output.new_image_index = output.upstream_images.index(new_image)
 
         output._upstream_bitflag = 0
         output._upstream_bitflag |= ref_image.bitflag

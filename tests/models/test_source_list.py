@@ -110,8 +110,8 @@ def test_invent_filepath( provenance_base ):
     assert sources.invent_filepath() == 'this.is.a.test.sources.fits'
 
 
-def test_read_sextractor( example_source_list_filename ):
-    fullpath = example_source_list_filename
+def test_read_sextractor( ztf_filepath_sources ):
+    fullpath = ztf_filepath_sources
     filepath = fullpath.relative_to( pathlib.Path( FileOnDiskMixin.local_path ) )
 
     # Make sure things go haywire when we try to load data with inconsistent

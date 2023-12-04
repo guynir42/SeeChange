@@ -217,15 +217,15 @@ def check_example_psfex_psf_values( psf ):
     assert psfstats.array[ 'FWHM_FromFluxRadius_Mean' ] == pytest.approx( 3.13, abs=0.01 )
 
 
-def test_read_psfex_psf( example_image_with_sources_and_psf_filenames ):
-    im, wt, fl, sr, psfpath, psfxmlpath = example_image_with_sources_and_psf_filenames
+def test_read_psfex_psf( ztf_filepaths_image_sources_psf ):
+    im, wt, fl, sr, psfpath, psfxmlpath = ztf_filepaths_image_sources_psf
     psf = PSF( format='psfex' )
     psf.load( psfpath=psfpath, psfxmlpath=psfxmlpath )
     check_example_psfex_psf_values( psf )
 
 
-def test_write_psfex_psf( example_image_with_sources_and_psf_filenames ):
-    image, weight, flags, sourcepath, psfpath, psfxmlpath = example_image_with_sources_and_psf_filenames
+def test_write_psfex_psf( ztf_filepaths_image_sources_psf ):
+    image, weight, flags, sourcepath, psfpath, psfxmlpath = ztf_filepaths_image_sources_psf
     psf = PSF( format='psfex' )
     psf.load( psfpath=psfpath, psfxmlpath=psfxmlpath )
 

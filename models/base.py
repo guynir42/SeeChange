@@ -449,7 +449,7 @@ class FileOnDiskMixin:
     Any object that implements this mixin must call this class' "save"
     method in order to save the data to disk.  (This may be through
     super() if the subclass has to do custom things.)  The save method
-    of this class will save the to the local filestore (undreneath
+    of this class will save to the local filestore (underneath
     path.data_root), and also save it to the archive.  Once a file is
     saved on the archive, the md5sum (or md5sum_extensions) field in the
     database record is updated.  (If the file has not been saved to the
@@ -488,6 +488,7 @@ class FileOnDiskMixin:
     def configure_paths(cls):
         cfg = config.Config.get()
         cls.local_path = cfg.value('path.data_root', None)
+
         if cls.local_path is None:
             cls.local_path = cfg.value('path.data_temp', None)
         if cls.local_path is None:
@@ -1296,7 +1297,6 @@ class FourCorners:
 
         return ( [  ras[dex00],  ras[dex01],  ras[dex10],  ras[dex11] ],
                  [ decs[dex00], decs[dex01], decs[dex10], decs[dex11] ] )
-
 
     @hybrid_method
     def containing( self, ra, dec ):

@@ -144,10 +144,9 @@ def decam_filename(data_dir, cache_dir):
     return filename
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def decam_exposure(decam_filename, data_dir):
     filename = decam_filename
-    decam_example_file_short = filename[len(data_dir):]
 
     with fits.open( filename, memmap=True ) as ifp:
         hdr = ifp[0].header
@@ -397,6 +396,7 @@ def ref_for_decam_example_image( provenance_base ):
     # And just in case the image was added to the database with a different name:
     for ext in [ '.image.fits', '.weight.fits', '.flags.fits' ]:
         ( datadir / f'{filebase}{ext}' ).unlink( missing_ok=True )
+
 
 @pytest.fixture
 def decam_small_image(decam_example_raw_image):

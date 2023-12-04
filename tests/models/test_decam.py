@@ -235,8 +235,8 @@ def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_d
         pass
 
 
-def test_decam_download_and_commit_exposure( code_version, decam_raw_origin_exposures, cache_dir, data_dir ):
-    cfg = config.Config.get()
+def test_decam_download_and_commit_exposure( code_version, decam_raw_origin_exposures, cache_dir, data_dir, config_test ):
+    cfg = config_test
 
     eids = []
     try:
@@ -418,8 +418,9 @@ def test_preprocessing_calibrator_files( decam_default_calibrators ):
                                                      'N1', filt, 60000. )
 
 
-def test_overscan_sections( decam_raw_image ):
+def test_overscan_sections( decam_raw_image, data_dir,  ):
     decam = get_instrument_instance( "DECam" )
+
     # Need the full header, not what's stored in the database
     ovsecs = decam.overscan_sections( decam_raw_image.raw_header )
     assert ovsecs == [ { 'secname': 'A',
@@ -432,8 +433,9 @@ def test_overscan_sections( decam_raw_image ):
                         } ]
 
 
-def test_overscan_and_data_sections( decam_raw_image ):
+def test_overscan_and_data_sections( decam_raw_image, data_dir ):
     decam = get_instrument_instance( "DECam" )
+
     # Need the full header, not what's stored in the database
     ovsecs = decam.overscan_and_data_sections( decam_raw_image.raw_header )
     assert ovsecs == [ { 'secname': 'A',
@@ -448,7 +450,7 @@ def test_overscan_and_data_sections( decam_raw_image ):
                         } ]
 
 
-def test_overscan( decam_raw_image ):
+def test_overscan( decam_raw_image, data_dir ):
     decam = get_instrument_instance( "DECam" )
 
     # Make sure it fails if it gets bad arguments

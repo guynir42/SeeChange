@@ -186,25 +186,19 @@ def test_exposure_load_demo_instrument_data(sim_exposure1):
 
 
 def test_exposure_comes_loaded_with_instrument_from_db(sim_exposure1):
-    try:
-        with SmartSession() as session:
-            sim_exposure1.recursive_merge( session )
-            session.add(sim_exposure1)
-            session.commit()
-            eid = sim_exposure1.id
+    with SmartSession() as session:
+        sim_exposure1.recursive_merge( session )
+        eid = sim_exposure1.id
 
-        assert eid is not None
+    assert eid is not None
 
-        with SmartSession() as session:
-            e2 = session.scalars(sa.select(Exposure).where(Exposure.id == eid)).first()
-            assert e2 is not None
-            assert e2.instrument_object is not None
-            assert isinstance(e2.instrument_object, DemoInstrument)
-            assert e2.instrument_object.sections is not None
-    finally:
-        with SmartSession() as session:
-            session.execute( sa.delete(Exposure).where( Exposure.id == eid ) )
-            session.commit()
+    # now reload this exposure from the DB:
+    with SmartSession() as session:
+        e2 = session.scalars(sa.select(Exposure).where(Exposure.id == eid)).first()
+        assert e2 is not None
+        assert e2.instrument_object is not None
+        assert isinstance(e2.instrument_object, DemoInstrument)
+        assert e2.instrument_object.sections is not None
 
 
 def test_exposure_spatial_indexing(sim_exposure1):

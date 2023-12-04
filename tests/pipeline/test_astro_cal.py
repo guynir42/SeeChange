@@ -14,9 +14,9 @@ from models.world_coordinates import WorldCoordinates
 from pipeline.astro_cal import AstroCalibrator
 
 
-def test_solve_wcs_scamp_failures( gaiadr3_excerpt, example_ds_with_sources_and_psf ):
-    catexp = gaiadr3_excerpt
-    ds = example_ds_with_sources_and_psf
+def test_solve_wcs_scamp_failures( ztf_gaiadr3_excerpt, ztf_datastore_with_sources_and_psf ):
+    catexp = ztf_gaiadr3_excerpt
+    ds = ztf_datastore_with_sources_and_psf
 
     # Make sure it fails if we give too stringent of a minimum residual
     astrometor = AstroCalibrator( catalog='GaiaDR3', method='scamp', max_mag=[20.], mag_range=4., min_stars=50,
@@ -48,9 +48,9 @@ def test_solve_wcs_scamp_failures( gaiadr3_excerpt, example_ds_with_sources_and_
         wcs = astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp )
 
 
-def test_solve_wcs_scamp( gaiadr3_excerpt, example_ds_with_sources_and_psf ):
-    catexp = gaiadr3_excerpt
-    ds = example_ds_with_sources_and_psf
+def test_solve_wcs_scamp( ztf_gaiadr3_excerpt, ztf_datastore_with_sources_and_psf ):
+    catexp = ztf_gaiadr3_excerpt
+    ds = ztf_datastore_with_sources_and_psf
 
     # Make True for visual testing purposes
     if False:

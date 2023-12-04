@@ -123,7 +123,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
     im = sim_image_uncommitted
     im.data = np.float32( im.raw_data )
     im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
-    im.provenance = provenance_base
+
 
     cfg = config.Config.get()
     archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
@@ -133,7 +133,8 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
         with SmartSession() as session:
             # Do single file first
             cfg.set_value( 'storage.images.single_file', True )
-            im.exposure.recursive_merge(session)  # make sure the exposure and provenance/code versions merge
+            im.provenance = provenance_base.recursive_merge(session)
+            im.exposure = im.exposure.recursive_merge(session)  # make sure the exposure and provenance/code versions merge
             # Make sure that the archive is *not* written when we tell it not to.
             im.save( no_archive=True )
             assert im.md5sum is None
@@ -166,7 +167,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             assert localmd5.hexdigest() == im.md5sum.hex
 
             # Make sure that the md5sum is properly saved to the database
-            im.provenance = session.merge( im.provenance )
+            im.provenance = im.provenance.recursive_merge(session)
             session.add( im )
             session.commit()
             with SmartSession() as differentsession:
@@ -581,18 +582,18 @@ def test_multiple_images_badness(
 
             # make an image from the two bad exposures using subtraction
 
-            demo_image4 = Image.from_new_and_ref(demo_image3, demo_image2)
-            demo_image4.provenance = provenance_extra
-            demo_image4.provenance.upstreams = demo_image4.get_upstream_provenances()
-            cleanups.append(ImageCleanup.save_image(demo_image4))
-            images.append(demo_image4)
-            demo_image4 = demo_image4.recursive_merge(session)
-            session.add(demo_image4)
+            sim_image4 = Image.from_new_and_ref(sim_image3, sim_image2)
+            sim_image4.provenance = provenance_extra
+            sim_image4.provenance.upstreams = sim_image4.get_upstream_provenances()
+            cleanups.append(ImageCleanup.save_image(sim_image4))
+            images.append(sim_image4)
+            sim_image4 = sim_image4.recursive_merge(session)
+            session.add(sim_image4)
             session.commit()
 
-            assert demo_image4.id is not None
-            assert demo_image4.ref_image == demo_image2
-            assert demo_image4.new_image == demo_image3
+            assert sim_image4.id is not None
+            assert sim_image4.ref_image == sim_image2
+            assert sim_image4.new_image == sim_image3
 
             # check that badness is loaded correctly from both parents
             assert sim_image4.badness == 'Banding, Bright Sky'
@@ -956,7 +957,6 @@ def test_image_from_exposure(sim_exposure1, provenance_base):
     assert not im.is_coadd
     assert not im.is_sub
     assert im.id is None  # need to commit to get IDs
-    assert im.exposure_id is None  # need to commit to get IDs
     assert im.upstream_images == []
     assert im.filepath is None  # need to save file to generate a filename
     assert np.array_equal(im.raw_data, sim_exposure1.data[0])
@@ -1058,13 +1058,13 @@ def test_image_with_multiple_upstreams(sim_exposure1, sim_exposure2, provenance_
             assert im1_id is not None
             assert im1.exposure_id is not None
             assert im1.exposure_id == sim_exposure1.id
-            assert im1.upstream_products == []
+            assert im1.upstream_images == []
 
             im2_id = im2.id
             assert im2_id is not None
             assert im2.exposure_id is not None
             assert im2.exposure_id == sim_exposure2.id
-            assert im2.upstream_products == []
+            assert im2.upstream_images == []
 
     finally:  # make sure to clean up all images
         for image in [im, im1, im2]:
@@ -1126,13 +1126,13 @@ def test_image_subtraction(sim_exposure1, sim_exposure2, provenance_base):
             assert im1_id is not None
             assert im1.exposure_id is not None
             assert im1.exposure_id == sim_exposure1.id
-            assert im1.upstream_products == []
+            assert im1.upstream_images == []
 
             im2_id = im2.id
             assert im2_id is not None
             assert im2.exposure_id is not None
             assert im2.exposure_id == sim_exposure2.id
-            assert im2.upstream_products == []
+            assert im2.upstream_images == []
 
     finally:  # make sure to clean up all images
         for id_ in [im_id, im1_id, im2_id]:
