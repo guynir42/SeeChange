@@ -3,6 +3,7 @@ from sqlalchemy import orm
 
 from models.base import Base, SeeChangeBase, AutoIDMixin, FileOnDiskMixin
 
+
 class DataFile( Base, AutoIDMixin, FileOnDiskMixin ):
     """Miscellaneous data files."""
 
