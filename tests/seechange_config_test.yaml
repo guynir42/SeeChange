@@ -16,8 +16,8 @@ archive:
   archive_url: http://archive:8080/
   verify_cert: false
   path_base: test/
-  local_read_dir: null
-  local_write_dir: null
+  local_read_dir: /archive_storage/base/
+  local_write_dir: /archive_storage/base/
   token: insecure
 
 subtraction:

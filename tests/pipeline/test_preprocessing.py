@@ -59,7 +59,7 @@ def test_preprocessing( decam_exposure, config_test, decam_default_calibrators )
         archpath = pathlib.Path(config_test.value('archive.local_read_dir'))
         archpath /= pathlib.Path( config_test.value('archive.path_base'))
         archpath /= ds.image.filepath
-        # archpath = pathlib.Path( "/archive_storage/base/test" )/ ds.image.filepath
+
         for suffix, compimage in zip( [ '.image.fits', '.weight.fits', '.flags.fits' ],
                                       [ ds.image.data, ds.image._weight, ds.image._flags ] ):
             path = basepath.parent / f'{basepath.name}{suffix}'
