@@ -14,7 +14,7 @@ from models.base import SmartSession
 from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
-from models.references import Reference
+from models.reference import Reference
 from models.source_list import SourceList
 
 from tests.conftest import rnd_str

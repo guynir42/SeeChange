@@ -16,13 +16,6 @@ from models.measurements import Measurements
 from pipeline.top_level import Pipeline
 
 
-def match_exposure_to_reference_entry(exposure, reference_entry):
-    """Make sure the exposure has the same target, project, filter, and section_id as the reference image."""
-    exposure.target = reference_entry.target
-    exposure.project = reference_entry.image.project
-    exposure.filter = reference_entry.filter
-
-
 def check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session, ds):
     """
     Check that all the required objects are saved on the database
@@ -145,37 +138,23 @@ def test_parameters( config_test ):
 
 
 # TODO: need to finish this test (i.e., finish subtraction, source extraction from sub image, etc)
-def test_data_flow(decam_example_exposure, reference_entry_decam_example):
+def test_data_flow(decam_exposure, decam_reference):
     """Test that the pipeline runs end-to-end."""
-    exposure = decam_example_exposure
+    exposure = decam_exposure
     exposure.save()
-    ref = reference_entry_decam_example
-    ref.image.save()
+    ref = decam_reference
     sec_id = ref.section_id
-    exp_id = None
-    ds = None
     try:  # cleanup the file at the end
-        # add the exposure to DB and use that ID to run the pipeline
         with SmartSession() as session:
             ref = ref.recursive_merge(session)
-            session.add(ref)
-            exposure.provenance = session.merge( exposure.provenance )
-            match_exposure_to_reference_entry(exposure, ref)
-
-            session.add(exposure)
-            session.commit()
-            exp_id = exposure.id
-
-            filename = exposure.get_fullpath()
-            open(filename, 'a').close()
-            ref_id = ref.image.id
+            exposure = exposure.recursive_merge(session)
 
         p = Pipeline()
         assert p.extractor.pars.threshold != 3.14
         assert p.detector.pars.threshold != 3.14
 
         with pytest.raises(NotImplementedError, match="This needs to be updated for detection on a subtraction."):
-            ds = p.run(exp_id, sec_id)
+            ds = p.run(exposure, sec_id)
         return  # TODO: need to finish subtraction and detection etc and bring this back:
         # commit to DB using this session
         with SmartSession() as session:
@@ -236,13 +215,5 @@ def test_data_flow(decam_example_exposure, reference_entry_decam_example):
                 check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session, ds)
 
     finally:
-        if ds is not None:
+        if 'ds' in locals():
             ds.delete_everything()
-        if exp_id is not None:
-            with SmartSession() as session:
-                exposure = session.scalars(sa.select(Exposure).where(Exposure.id == exp_id)).first()
-                if exposure is not None:
-                    exposure.remove_data_from_disk()
-                    session.delete(exposure)
-                    session.commit()
-

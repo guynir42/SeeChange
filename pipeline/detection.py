@@ -266,68 +266,70 @@ class Detector:
         psfpath = pathlib.Path( psffile ) if psffile is not None else None
         psfxmlpath = None
 
-        if self.pars.apers is None:
-            apers = np.array( image.instrument_object.standard_apertures() )
-            inf_aper_num = image.instrument_object.fiducial_aperture()
-        else:
-            apers = self.pars.apers
-            inf_aper_num = self.pars.inf_aper_num
-            if inf_aper_num is None:
-                inf_aper_num = len( apers ) - 1
-
-        if self.pars.measure_psf:
-            # Run sextractor once without a psf to get objects from
-            # which to build the psf.
-            #
-            # As for the aperture, if the units are FWHM, then we don't
-            # know one yet, so guess that it's 2".  This doesn't really
-            # matter that much, because we're not going to save these
-            # values.
-            aperrad = apers[0]
-            if self.pars.aperunit == 'fwhm':
-                if image.instrument_object.pixel_scale is not None:
-                    aperrad *= 2. / image.instrument_object.pixel_scale
-            _logger.debug( "detection: running sextractor once without PSF to get sources" )
-            sources = self._run_sextractor_once( image, apers=[aperrad], psffile=None, tempname=tempnamebase )
-
-            # Get the PSF
-            _logger.debug( "detection: determining psf" )
-            psf = self._run_psfex( tempnamebase, image.id, do_not_cleanup=True )
-            psfpath = pathlib.Path( FileOnDiskMixin.temp_path ) / f'{tempnamebase}.sources.psf'
-            psfxmlpath = pathlib.Path( FileOnDiskMixin.temp_path ) / f'{tempnamebase}.sources.psf.xml'
-            psf.image = image
-        elif self.pars.psf is not None:
-            psf = self.pars.psf
-            psfpath, psfxmlpath = psf.get_fullpath()
-        else:
-            psf = None
-
-        if self.pars.aperunit == 'fwhm':
-            if psf is None:
-                raise RuntimeError( "No psf measured or passed to extract_sources_sextractor, so apertures can "
-                                    "not be based on the FWHM." )
+        try:  # cleanup at the end
+            if self.pars.apers is None:
+                apers = np.array( image.instrument_object.standard_apertures() )
+                inf_aper_num = image.instrument_object.fiducial_aperture()
             else:
-                apers *= psf.fwhm_pixels
+                apers = self.pars.apers
+                inf_aper_num = self.pars.inf_aper_num
+                if inf_aper_num is None:
+                    inf_aper_num = len( apers ) - 1
 
-        # Now that we have a psf, run sextractor (maybe a second time)
-        # to get the actual measurements.
-        _logger.debug( "detection: running sextractor with psf to get final source list" )
-        sources = self._run_sextractor_once( image, apers=apers, psffile=psfpath, tempname=tempnamebase )
-        _logger.debug( f"detection: sextractor found {len(sources.data)} sources" )
+            if self.pars.measure_psf:
+                # Run sextractor once without a psf to get objects from
+                # which to build the psf.
+                #
+                # As for the aperture, if the units are FWHM, then we don't
+                # know one yet, so guess that it's 2".  This doesn't really
+                # matter that much, because we're not going to save these
+                # values.
+                aperrad = apers[0]
+                if self.pars.aperunit == 'fwhm':
+                    if image.instrument_object.pixel_scale is not None:
+                        aperrad *= 2. / image.instrument_object.pixel_scale
+                _logger.debug( "detection: running sextractor once without PSF to get sources" )
+                sources = self._run_sextractor_once( image, apers=[aperrad], psffile=None, tempname=tempnamebase )
 
-        snr = sources.apfluxadu()[0] / sources.apfluxadu()[1]
-        if snr.min() > self.pars.threshold:
-            _logger.warning( "SExtractor may not have detected everything down to your threshold." )
-        w = np.where( snr >= self.pars.threshold )
-        sources.data = sources.data[w]
-        sources.num_sources = len( sources.data )
-        sources._inf_aper_num = inf_aper_num
+                # Get the PSF
+                _logger.debug( "detection: determining psf" )
+                psf = self._run_psfex( tempnamebase, image.id, do_not_cleanup=True )
+                psfpath = pathlib.Path( FileOnDiskMixin.temp_path ) / f'{tempnamebase}.sources.psf'
+                psfxmlpath = pathlib.Path( FileOnDiskMixin.temp_path ) / f'{tempnamebase}.sources.psf.xml'
+                psf.image = image
+            elif self.pars.psf is not None:
+                psf = self.pars.psf
+                psfpath, psfxmlpath = psf.get_fullpath()
+            else:
+                psf = None
 
-        # Clean up the temporary files created (that weren't already cleaned up by _run_sextractor_once)
-        sourcepath.unlink( missing_ok=True )
-        if ( psffile is None ) and ( self.pars.psf is None ):
-            if psfpath is not None: psfpath.unlink( missing_ok=True )
-            if psfxmlpath is not None: psfxmlpath.unlink( missing_ok=True )
+            if self.pars.aperunit == 'fwhm':
+                if psf is None:
+                    raise RuntimeError( "No psf measured or passed to extract_sources_sextractor, so apertures can "
+                                        "not be based on the FWHM." )
+                else:
+                    apers *= psf.fwhm_pixels
+
+            # Now that we have a psf, run sextractor (maybe a second time)
+            # to get the actual measurements.
+            _logger.debug( "detection: running sextractor with psf to get final source list" )
+            sources = self._run_sextractor_once( image, apers=apers, psffile=psfpath, tempname=tempnamebase )
+            _logger.debug( f"detection: sextractor found {len(sources.data)} sources" )
+
+            snr = sources.apfluxadu()[0] / sources.apfluxadu()[1]
+            if snr.min() > self.pars.threshold:
+                _logger.warning( "SExtractor may not have detected everything down to your threshold." )
+            w = np.where( snr >= self.pars.threshold )
+            sources.data = sources.data[w]
+            sources.num_sources = len( sources.data )
+            sources._inf_aper_num = inf_aper_num
+
+        finally:
+            # Clean up the temporary files created (that weren't already cleaned up by _run_sextractor_once)
+            sourcepath.unlink( missing_ok=True )
+            if ( psffile is None ) and ( self.pars.psf is None ):
+                if psfpath is not None: psfpath.unlink( missing_ok=True )
+                if psfxmlpath is not None: psfxmlpath.unlink( missing_ok=True )
 
         return sources, psf
 
@@ -431,7 +433,7 @@ class Detector:
         # file.  We need to edit it, though, so that the number of
         # apertures we have matches the apertures we ask for.
         # TODO : review the default param file and make sure we have the
-        # things we want, and don't have too much.
+        #  things we want, and don't have too much.
         #
         # (Note that adding the SPREAD_MODEL parameter seems to add
         # substantially to sextractor runtime-- on the decam test image
@@ -472,17 +474,17 @@ class Detector:
             fits.writeto( tmpflags, image.flags )
 
             # TODO : right now, we're assuming that the default background
-            # subtraction is fine.  Experience shows that in crowded fields
-            # (e.g. star-choked galactic fields), a much slower algorithm
-            # can do a lot better.
+            #  subtraction is fine.  Experience shows that in crowded fields
+            #  (e.g. star-choked galactic fields), a much slower algorithm
+            #  can do a lot better.
 
             # TODO: Understand RESCALE_WEIGHTS and WEIGHT_GAIN.
-            # Since we believe our weight image is right, we don't
-            # want to be doing any rescaling of it, but it's possible
-            # that I don't fully understand what these parameters
-            # really are.  (Documentation is lacking; see
-            # https://www.astromatic.net/2009/06/02/playing-the-weighting-game-i/
-            # and notice the "...to be continued".)
+            #  Since we believe our weight image is right, we don't
+            #  want to be doing any rescaling of it, but it's possible
+            #  that I don't fully understand what these parameters
+            #  really are.  (Documentation is lacking; see
+            #  https://www.astromatic.net/2009/06/02/playing-the-weighting-game-i/
+            #  and notice the "...to be continued".)
 
             # The sextractor DETECT_THRESH and ANALYSIS_THRESH don't
             # exactly correspond to what we want when we set a

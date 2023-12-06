@@ -74,7 +74,7 @@ class Subtractor:
             #  and some extra rows and columns that need to be trimmed).
             #  I have a feeling this will be solved when we insert the
             #  alignment phase into the subtraction. See issue #128
-            sub_image.data = image.data[:100, :100] - ref.data[:100, :100]
+            sub_image.data = image.data[:100, :100] - ref.image.data[:100, :100]
             if sub_image.provenance is None:
                 sub_image.provenance = prov
             else:

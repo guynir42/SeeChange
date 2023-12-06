@@ -116,6 +116,7 @@ class Provenance(Base):
         primaryjoin='provenances.c.id == provenance_upstreams.c.downstream_id',
         secondaryjoin='provenances.c.id == provenance_upstreams.c.upstream_id',
         passive_deletes=True,
+        cascade="save-update, merge, expunge, refresh-expire",
         lazy='selectin',  # should be able to get upstream_hashes without a session!
     )
 
@@ -221,13 +222,12 @@ class Provenance(Base):
 
         self.parameters = kwargs.get('parameters', {})
         upstreams = kwargs.get('upstreams', [])
-        if not isinstance(upstreams, list):
+        if upstreams is None:
+            self.upstreams = []
+        elif not isinstance(upstreams, list):
             self.upstreams = [upstreams]
-        if len(upstreams) > 0:
-            if isinstance(upstreams[0], Provenance):
-                self.upstreams = upstreams
-            else:
-                raise ValueError('upstreams must be a list of Provenance objects')
+        else:
+            self.upstreams = upstreams
 
     def __repr__(self):
         return (
@@ -238,6 +238,28 @@ class Provenance(Base):
             f'parameters={self.parameters}, '
             f'upstreams={[h[:6] for h in self.upstream_hashes]})>'
         )
+
+    def __setattr__(self, key, value):
+        if key == 'upstreams':
+            if value is None:
+                super().__setattr__(key, [])
+            elif isinstance(value, list):
+                if not all([isinstance(u, Provenance) for u in value]):
+                    raise ValueError('upstreams must be a list of Provenance objects')
+
+                # make sure no duplicate upstreams are added
+                hashes = set([u.id for u in value])
+                new_list = []
+                for p in value:
+                    if p.id in hashes:
+                        new_list.append(p)
+                        hashes.remove(p.id)
+
+                super().__setattr__(key, new_list)
+            else:
+                raise ValueError('upstreams must be a list of Provenance objects')
+        else:
+            super().__setattr__(key, value)
 
     def update_id(self):
         """

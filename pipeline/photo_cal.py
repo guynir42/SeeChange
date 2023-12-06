@@ -194,6 +194,7 @@ class PhotCalibrator:
         zpvars = transformed_magerr**2 + ( 1.0857362 * sourcefluxerr / sourceflux )**2
 
         # Save these values so that tests outside can pull them and interrogate them
+        self.individual_mags = transformed_mag
         self.individual_zps = zps
         self.individual_zpvars = zpvars
 

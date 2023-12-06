@@ -85,8 +85,31 @@ def test_solve_wcs_scamp( ztf_gaiadr3_excerpt, ztf_datastore_with_sources_and_ps
         assert scold.dec.value == pytest.approx( scnew.dec.value, abs=1./3600. )
 
 
-def test_run_scamp( decam_example_reduced_image_ds_with_wcs ):
-    ds, origwcs, xvals, yvals, origmd5 = decam_example_reduced_image_ds_with_wcs
+def test_run_scamp( decam_datastore, astrometor ):
+    ds = decam_datastore
+    with open(ds.image.get_fullpath()[0], "rb") as ifp:
+        md5 = hashlib.md5()
+        md5.update(ifp.read())
+        origmd5 = uuid.UUID(md5.hexdigest())
+
+    xvals = [0, 0, 2047, 2047]
+    yvals = [0, 4095, 0, 4095]
+    origwcs = WCS(ds.image.raw_header)
+
+    astrometor.pars.cross_match_catalog = 'GaiaDR3'
+    astrometor.pars.solution_method = 'scamp'
+    astrometor.pars.max_catalog_mag = [20.]
+    astrometor.pars.mag_range_catalog = 4.
+    astrometor.pars.min_catalog_stars = 50
+    astrometor.pars.max_resid = 0.15
+    astrometor.pars.crossid_radius = [2.0]
+    astrometor.pars.min_frac_matched = 0.1
+    astrometor.pars.min_matched_stars = 10
+    astrometor.pars.test_parameter = uuid.uuid4().hex  # make sure it gets a different Provenance
+
+    ds = astrometor.run(ds)
+
+    assert astrometor.has_recalculated
 
     # Make sure that the new WCS is different from the original wcs
     # (since we know the one that came in the decam exposure is approximate)
@@ -111,8 +134,8 @@ def test_run_scamp( decam_example_reduced_image_ds_with_wcs ):
     with SmartSession() as session:
         # Make sure the WCS made it into the databse
         q = ( session.query( WorldCoordinates )
-              .filter( WorldCoordinates.source_list_id==ds.sources.id )
-              .filter( WorldCoordinates.provenance_id==ds.wcs.provenance.id ) )
+              .filter( WorldCoordinates.sources_id == ds.sources.id )
+              .filter( WorldCoordinates.provenance_id == ds.wcs.provenance.id ) )
         assert q.count() == 1
         dbwcs = q.first()
         dbscs = dbwcs.wcs.pixel_to_world( xvals, yvals )
@@ -122,7 +145,7 @@ def test_run_scamp( decam_example_reduced_image_ds_with_wcs ):
 
         # Make sure the image got updated properly on the database
         # and on disk
-        q = session.query( Image ).filter( Image.id==ds.image.id )
+        q = session.query( Image ).filter( Image.id == ds.image.id )
         assert q.count() == 1
         foundim = q.first()
         assert foundim.md5sum_extensions[0] == ds.image.md5sum_extensions[0]

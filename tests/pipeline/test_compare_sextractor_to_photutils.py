@@ -10,9 +10,9 @@ from models.base import _logger
 from improc.sextrsky import sextrsky
 
 
-@pytest.mark.skipif( os.getenv('INTERACTIVE') is None, reason='Set INTERACTIVE to run this test' )
-def test_compare_sextr_photutils( decam_example_reduced_image_ds ):
-    ds = decam_example_reduced_image_ds
+# @pytest.mark.skipif( os.getenv('INTERACTIVE') is None, reason='Set INTERACTIVE to run this test' )
+def test_compare_sextr_photutils( decam_datastore ):
+    ds = decam_datastore
     image = ds.get_image()
     sources = ds.get_sources()
     mask = np.full( image.flags.shape, False )
@@ -45,7 +45,6 @@ def test_compare_sextr_photutils( decam_example_reduced_image_ds ):
         dphot[ :, i ] = res['aperture_sum_err']
 
     _logger.info( "Done with photutils aperture photometry." )
-
 
     # Futz around a whole lot doing comparisons
 
@@ -197,4 +196,3 @@ def test_compare_sextr_photutils( decam_example_reduced_image_ds ):
         fig.savefig( f'twoaperratio_sexvsphot_ap{big}.svg' )
         pyplot.close( fig )
 
-    pass

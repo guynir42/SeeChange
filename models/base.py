@@ -7,6 +7,7 @@ import pathlib
 import logging
 import json
 import shutil
+import datetime
 from uuid import UUID
 
 from contextlib import contextmanager
@@ -44,7 +45,7 @@ if len(_logger.handlers) == 0:
     _logger.addHandler( _logout )
     _formatter = logging.Formatter( f"[%(asctime)s - %(levelname)s] - %(message)s", datefmt="%Y-%m-%d %H:%M:%S" )
     _logout.setFormatter( _formatter )
-_logout.setLevel( logging.DEBUG )
+# _logout.setLevel( logging.DEBUG )
 
 # this is the root SeeChange folder
 CODE_ROOT = os.path.abspath(os.path.join(__file__, os.pardir, os.pardir))
@@ -138,8 +139,11 @@ def safe_merge(session, obj):
     if obj.id is None:
         return obj
 
-    if obj in session:
-        return obj
+    # if obj in session:
+    #     return obj
+    #
+    # if obj.id in [item.id for item in session.new | session.dirty | session.deleted if isinstance(item, type(obj))]:
+    #     return obj
 
     return session.merge(obj)
 
@@ -228,10 +232,9 @@ class SeeChangeBase:
         if done_list is None:
             done_list = set()
 
-        if self in done_list:
-            return self
-
         obj = safe_merge(session, self)
+        if obj in done_list:
+            return obj
         done_list.add(obj)
 
         attributes = [
@@ -309,6 +312,9 @@ class SeeChangeBase:
             if key == 'aper_cor_radii' and isinstance(value, np.ndarray):
                 value = list(value)
 
+            if key in ['modified', 'created_at'] and isinstance(value, datetime.datetime):
+                value = value.isoformat()
+
             output[key] = value
 
         return output
@@ -316,6 +322,8 @@ class SeeChangeBase:
     @classmethod
     def from_dict(cls, dictionary):
         """Convert a dictionary into a new object. """
+        dictionary.pop('modified')  # we do not want to recreate the object with an old "modified" time
+
         md5sum = dictionary.get('md5sum', None)
         if md5sum is not None:
             dictionary['md5sum'] = UUID(md5sum)
@@ -336,6 +344,10 @@ class SeeChangeBase:
         aper_cor_radii = dictionary.get('aper_cor_radii', None)
         if aper_cor_radii is not None:
             dictionary['aper_cor_radii'] = np.array(aper_cor_radii)
+
+        created_at = dictionary.get('created_at', None)
+        if created_at is not None:
+            dictionary['created_at'] = datetime.datetime.fromisoformat(created_at)
 
         return cls(**dictionary)
 
@@ -448,6 +460,7 @@ class SeeChangeBase:
                     continue
                 source_f = os.path.join(cache_dir, target_f[len(FileOnDiskMixin.local_path) + 1:])
                 _logger.debug(f"Copying {source_f} to {target_f}")
+                os.makedirs(os.path.dirname(target_f), exist_ok=True)
                 shutil.copyfile(source_f, target_f)
 
         return output

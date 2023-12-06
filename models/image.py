@@ -1250,14 +1250,14 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
                 wcs_results = session.scalars(
                     sa.select(WorldCoordinates).where(
-                        WorldCoordinates.source_list_id.in_(sources_ids),
+                        WorldCoordinates.sources_id.in_(sources_ids),
                         WorldCoordinates.provenance_id.in_(prov_ids),
                     )
                 ).all()
 
                 zp_results = session.scalars(
                     sa.select(ZeroPoint).where(
-                        ZeroPoint.source_list_id.in_(sources_ids),
+                        ZeroPoint.sources_id.in_(sources_ids),
                         ZeroPoint.provenance_id.in_(prov_ids),
                     )
                 ).all()
@@ -1368,11 +1368,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             zps = []
             for s in sources:
                 wcses += session.scalars(
-                    sa.select(WorldCoordinates).where(WorldCoordinates.source_list_id == s.id)
+                    sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == s.id)
                 ).all()
 
                 zps += session.scalars(
-                    sa.select(ZeroPoint).where(ZeroPoint.source_list_id == s.id)
+                    sa.select(ZeroPoint).where(ZeroPoint.sources_id == s.id)
                 ).all()
 
             # now look for other images that were created based on this one

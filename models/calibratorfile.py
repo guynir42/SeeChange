@@ -7,6 +7,7 @@ from models.image import Image
 from models.datafile import DataFile
 from models.enums_and_bitflags import CalibratorTypeConverter, CalibratorSetConverter, FlatTypeConverter
 
+
 class CalibratorFile(Base, AutoIDMixin):
     __tablename__ = 'calibrator_files'
 

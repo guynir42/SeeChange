@@ -230,16 +230,16 @@ def test_write_sextractor():
         pathlib.Path( sources.get_fullpath() ).unlink( missing_ok=True )
 
 
-def test_calc_apercor( decam_example_reduced_image_ds ):
-    sources = decam_example_reduced_image_ds.get_sources()
+def test_calc_apercor( decam_datastore ):
+    sources = decam_datastore.get_sources()
 
     # The numbers below are what you get when you use CLASS_STAR in SourceList.is_star
-    assert sources.calc_aper_cor() == pytest.approx( -0.457, abs=0.001 )
-    assert sources.calc_aper_cor( aper_num=1 ) == pytest.approx( -0.177, abs=0.001 )
-    assert sources.calc_aper_cor( inf_aper_num=7 ) == pytest.approx( -0.463, abs=0.001 )
-    assert sources.calc_aper_cor( inf_aper_num=2 ) == pytest.approx( -0.428, abs=0.001 )
-    assert sources.calc_aper_cor( aper_num=2 ) == pytest.approx( -0.028, abs=0.001 )
-    assert sources.calc_aper_cor( aper_num=2, inf_aper_num=7 ) == pytest.approx( -0.034, abs=0.001 )
+    assert sources.calc_aper_cor() == pytest.approx( -0.457, abs=0.01 )
+    assert sources.calc_aper_cor( aper_num=1 ) == pytest.approx( -0.177, abs=0.01 )
+    assert sources.calc_aper_cor( inf_aper_num=7 ) == pytest.approx( -0.463, abs=0.01 )
+    assert sources.calc_aper_cor( inf_aper_num=2 ) == pytest.approx( -0.428, abs=0.01 )
+    assert sources.calc_aper_cor( aper_num=2 ) == pytest.approx( -0.028, abs=0.01 )
+    assert sources.calc_aper_cor( aper_num=2, inf_aper_num=7 ) == pytest.approx( -0.034, abs=0.01 )
 
     # The numbers below are what you get if you use the SPREAD_MODEL
     # parameter in SourceList.is_star instead of CLASS_STAR

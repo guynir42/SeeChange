@@ -8,7 +8,7 @@ from models.base import Base, AutoIDMixin, HasBitFlagBadness
 from models.enums_and_bitflags import catalog_match_badness_inverse
 
 
-class ZeroPoint(Base, AutoIDMixin):
+class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
     __tablename__ = 'zero_points'
 
     sources_id = sa.Column(

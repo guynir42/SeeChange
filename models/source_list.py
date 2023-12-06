@@ -702,8 +702,8 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         from models.zero_point import ZeroPoint
 
         with SmartSession(session) as session:
-            wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.source_list_id == self.id)).all()
-            zps = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.source_list_id == self.id)).all()
+            wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == self.id)).all()
+            zps = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == self.id)).all()
 
         return wcs + zps
 

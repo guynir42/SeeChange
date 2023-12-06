@@ -9,13 +9,13 @@ from models.image import Image
 from pipeline.preprocessing import Preprocessor
 
 
-def test_preprocessing( decam_example_exposure, decam_default_calibrators ):
+def test_preprocessing( decam_exposure, config_test, decam_default_calibrators ):
     # The decam_default_calibrators fixture is included so that
     # _get_default_calibrators won't be called as a side effect of calls
     # to Preprocessor.run().  (To avoid committing.)
 
     preppor = Preprocessor()
-    ds = preppor.run( decam_example_exposure, 'N1' )
+    ds = preppor.run( decam_exposure, 'N1' )
 
     # Check some Preprocesor internals
     assert preppor._calibset == 'externally_supplied'
@@ -56,7 +56,10 @@ def test_preprocessing( decam_example_exposure, decam_default_calibrators ):
     try:
         ds.save_and_commit()
         basepath = pathlib.Path( FileOnDiskMixin.local_path ) / ds.image.filepath
-        archpath = pathlib.Path( "/archive_storage/base/test" )/ ds.image.filepath
+        archpath = pathlib.Path(config_test.value('archive.local_read_dir'))
+        archpath /= pathlib.Path( config_test.value('archive.path_base'))
+        archpath /= ds.image.filepath
+        # archpath = pathlib.Path( "/archive_storage/base/test" )/ ds.image.filepath
         for suffix, compimage in zip( [ '.image.fits', '.weight.fits', '.flags.fits' ],
                                       [ ds.image.data, ds.image._weight, ds.image._flags ] ):
             path = basepath.parent / f'{basepath.name}{suffix}'
@@ -83,7 +86,7 @@ def test_preprocessing( decam_example_exposure, decam_default_calibrators ):
     # Test some overriding
 
     preppor = Preprocessor()
-    ds = preppor.run( decam_example_exposure, 'N1', steps=['overscan','linearity'] )
+    ds = preppor.run( decam_exposure, 'N1', steps=['overscan','linearity'] )
     assert preppor._calibset == 'externally_supplied'
     assert preppor._flattype == 'externally_supplied'
     assert preppor._stepstodo == [ 'overscan', 'linearity' ]

@@ -13,7 +13,8 @@ data/test_data/DECam_examples/*_cached
 data/DECam_default_calibrators
 data/GaiaDR3_excerpt
 .pytest.ini
-tests/plots/*
+tests/plots
+tests/temp_data
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
