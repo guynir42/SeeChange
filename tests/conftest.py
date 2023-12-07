@@ -132,7 +132,7 @@ def rnd_str(n):
 
 
 @pytest.fixture(autouse=True)
-def config_test():
+def test_config():
     return Config.get()
 
 
@@ -243,7 +243,7 @@ def provenance_preprocessing(code_version):
 @pytest.fixture
 def archive(config_test):
     # cfg = config.Config.get()
-    archive_specs = config_test.value('archive')
+    archive_specs = test_config.value('archive')
     if archive_specs is None:
         raise ValueError( "archive in config is None" )
     archive = Archive( **archive_specs )
@@ -253,7 +253,7 @@ def archive(config_test):
         # To tear down, we need to blow away the archive server's directory.
         # For the test suite, we've also mounted that directory locally, so
         # we can do that
-        archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
+        archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
         try:
             shutil.rmtree( archivebase )
         except FileNotFoundError:

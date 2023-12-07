@@ -56,8 +56,8 @@ def test_preprocessing( decam_exposure, config_test, decam_default_calibrators )
     try:
         ds.save_and_commit()
         basepath = pathlib.Path( FileOnDiskMixin.local_path ) / ds.image.filepath
-        archpath = pathlib.Path(config_test.value('archive.local_read_dir'))
-        archpath /= pathlib.Path( config_test.value('archive.path_base'))
+        archpath = pathlib.Path(test_config.value('archive.local_read_dir'))
+        archpath /= pathlib.Path(test_config.value('archive.path_base'))
         archpath /= ds.image.filepath
 
         for suffix, compimage in zip( [ '.image.fits', '.weight.fits', '.flags.fits' ],

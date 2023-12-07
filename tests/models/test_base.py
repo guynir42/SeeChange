@@ -169,7 +169,7 @@ def test_fileondisk_save_failuremodes( diskfile ):
 
 
 def test_fileondisk_save_singlefile( diskfile, archive, config_test ):
-    archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
+    archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
 
     diskfile.filepath = 'test_fileondisk_save.dat'
     data1 = np.random.rand( 32 ).tobytes()
@@ -318,7 +318,7 @@ def test_fileondisk_save_singlefile_noarchive( diskfile ):
 
 def test_fileondisk_save_multifile( diskfile, archive, config_test ):
     try:
-        archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
+        archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
 
         diskfile.filepath = 'test_fileondisk_save'
         data1 = np.random.rand( 32 ).tobytes()

@@ -124,13 +124,13 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
     im.data = np.float32( im.raw_data )
     im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
 
-    archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
-    single_fileness = config_test.value( 'storage.images.single_file' )
+    archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
+    single_fileness = test_config.value('storage.images.single_file')
 
     try:
         with SmartSession() as session:
             # Do single file first
-            config_test.set_value( 'storage.images.single_file', True )
+            test_config.set_value('storage.images.single_file', True)
             im.provenance = provenance_base.recursive_merge(session)
             im.exposure = im.exposure.recursive_merge(session)  # make sure the exposure and provenance/code versions merge
             # Make sure that the archive is *not* written when we tell it not to.
@@ -180,7 +180,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             assert im.md5sum is None
 
     finally:
-        config_test.set_value( 'storage.images.single_file', single_fileness )
+        test_config.set_value('storage.images.single_file', single_fileness)
 
 
 def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive, config_test):
@@ -189,8 +189,8 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
     im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
     im.weight = None
 
-    archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
-    single_fileness = config_test.value( 'storage.images.single_file' )
+    archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
+    single_fileness = test_config.value('storage.images.single_file')
 
     try:
         with SmartSession() as session:
@@ -199,7 +199,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
             im = im.recursive_merge( session )
 
             # Now do multiple images
-            config_test.set_value( 'storage.images.single_file', False )
+            test_config.set_value('storage.images.single_file', False)
 
             # Make sure that the archive is not written when we tell it not to
             im.save( no_archive=True )
@@ -260,7 +260,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
                     assert localmd5s[fullpath].hexdigest() == md5sum.hex
 
     finally:
-        config_test.set_value( 'storage.images.single_file', single_fileness )
+        test_config.set_value('storage.images.single_file', single_fileness)
 
 
 def test_image_save_justheader( sim_image1 ):
@@ -1149,9 +1149,9 @@ def test_image_filename_conventions(sim_image1, config_test):
         os.remove(f)
 
     # try to set the name convention to None, to load the default hard-coded one
-    convention = config_test.value('storage.images.name_convention')
+    convention = test_config.value('storage.images.name_convention')
     try:
-        config_test.set_value('storage.images.name_convention', None)
+        test_config.set_value('storage.images.name_convention', None)
         sim_image1.save( no_archive=True )
         assert re.search(r'Demo_\d{8}_\d{6}_\d+_.+_.{6}\.image\.fits', sim_image1.get_fullpath()[0])
         for f in sim_image1.get_fullpath(as_list=True):
@@ -1162,7 +1162,7 @@ def test_image_filename_conventions(sim_image1, config_test):
                 os.rmdir(folder)
 
         new_convention = '{ra_int:03d}/foo_{date}_{time}_{section_id_int:02d}_{filter}'
-        config_test.set_value('storage.images.name_convention', new_convention)
+        test_config.set_value('storage.images.name_convention', new_convention)
         # invent_filepath will try to use the existing filepath value so we clear it first
         sim_image1.filepath = None
         sim_image1.save( no_archive=True )
@@ -1175,7 +1175,7 @@ def test_image_filename_conventions(sim_image1, config_test):
                 os.rmdir(folder)
 
         new_convention = 'bar_{date}_{time}_{section_id_int:02d}_{ra_int_h:02d}{dec_int:+03d}'
-        config_test.set_value('storage.images.name_convention', new_convention)
+        test_config.set_value('storage.images.name_convention', new_convention)
         sim_image1.filepath = None
         sim_image1.save( no_archive=True )
         assert re.search(r'bar_\d{8}_\d{6}_\d{2}_\d{2}[+-]\d{2}\.image\.fits', sim_image1.get_fullpath()[0])
@@ -1187,7 +1187,7 @@ def test_image_filename_conventions(sim_image1, config_test):
                 os.rmdir(folder)
 
     finally:  # return to the original convention
-        config_test.set_value('storage.images.name_convention', convention)
+        test_config.set_value('storage.images.name_convention', convention)
 
 
 def test_image_multifile(sim_image_uncommitted, provenance_base, config_test):
@@ -1197,11 +1197,11 @@ def test_image_multifile(sim_image_uncommitted, provenance_base, config_test):
     im.weight = None
     im.provenance = provenance_base
 
-    single_fileness = config_test.value('storage.images.single_file')  # store initial value
+    single_fileness = test_config.value('storage.images.single_file')  # store initial value
 
     try:
         # first use single file
-        config_test.set_value('storage.images.single_file', True)
+        test_config.set_value('storage.images.single_file', True)
         im.save( no_archive=True )
 
         assert re.match(r'\d{3}/Demo_\d{8}_\d{6}_\d+_.+_.{6}\.fits', im.filepath)
@@ -1225,7 +1225,7 @@ def test_image_multifile(sim_image_uncommitted, provenance_base, config_test):
             os.remove(f)
 
         # now test multiple files
-        config_test.set_value('storage.images.single_file', False)
+        test_config.set_value('storage.images.single_file', False)
         im.filepath = None
         im.save( no_archive=True )
 
@@ -1251,7 +1251,7 @@ def test_image_multifile(sim_image_uncommitted, provenance_base, config_test):
             assert np.array_equal(hdul[0].data, im.flags)
 
     finally:
-        config_test.set_value('storage.images.single_file', single_fileness)
+        test_config.set_value('storage.images.single_file', single_fileness)
 
 
 

@@ -276,7 +276,7 @@ def test_decam_download_and_commit_exposure(code_version, decam_raw_origin_expos
                 assert ( pathlib.Path( exposure.get_fullpath( download=False ) ) ==
                          pathlib.Path( FileOnDiskMixin.local_path ) / exposure.filepath )
                 assert pathlib.Path( exposure.get_fullpath( download=False ) ).is_file()
-                archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
+                archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
 
                 assert ( pathlib.Path( archivebase ) / exposure.filepath ).is_file()
                 # Perhaps do m5dsums to verify that the local and archive files are the same?
