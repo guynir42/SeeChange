@@ -253,7 +253,7 @@ def archive(config_test):
         # To tear down, we need to blow away the archive server's directory.
         # For the test suite, we've also mounted that directory locally, so
         # we can do that
-        archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{config_test.value('archive.path_base')}"
+        archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
         try:
             shutil.rmtree( archivebase )
         except FileNotFoundError:

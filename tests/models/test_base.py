@@ -168,9 +168,8 @@ def test_fileondisk_save_failuremodes( diskfile ):
     filepath.unlink()
 
 
-def test_fileondisk_save_singlefile( diskfile, archive ):
-    cfg = config.Config.get()
-    archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
+def test_fileondisk_save_singlefile( diskfile, archive, config_test ):
+    archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
 
     diskfile.filepath = 'test_fileondisk_save.dat'
     data1 = np.random.rand( 32 ).tobytes()
@@ -317,10 +316,9 @@ def test_fileondisk_save_singlefile_noarchive( diskfile ):
         models.base.ARCHIVE = origarchive
 
 
-def test_fileondisk_save_multifile( diskfile, archive ):
+def test_fileondisk_save_multifile( diskfile, archive, config_test ):
     try:
-        cfg = config.Config.get()
-        archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
+        archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
 
         diskfile.filepath = 'test_fileondisk_save'
         data1 = np.random.rand( 32 ).tobytes()

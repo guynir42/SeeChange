@@ -18,7 +18,6 @@ from models.calibratorfile import CalibratorFile
 from models.image import Image
 from models.instrument import Instrument
 from models.decam import DECam
-import util.config as config
 import util.radec
 
 from tests.conftest import CODE_ROOT
@@ -235,9 +234,7 @@ def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_d
         pass
 
 
-def test_decam_download_and_commit_exposure( code_version, decam_raw_origin_exposures, cache_dir, data_dir, config_test ):
-    cfg = config_test
-
+def test_decam_download_and_commit_exposure(code_version, decam_raw_origin_exposures, cache_dir, data_dir, config_test):
     eids = []
     try:
         with SmartSession() as session:
@@ -279,7 +276,7 @@ def test_decam_download_and_commit_exposure( code_version, decam_raw_origin_expo
                 assert ( pathlib.Path( exposure.get_fullpath( download=False ) ) ==
                          pathlib.Path( FileOnDiskMixin.local_path ) / exposure.filepath )
                 assert pathlib.Path( exposure.get_fullpath( download=False ) ).is_file()
-                archivebase = f"{os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')}/{cfg.value('archive.path_base')}"
+                archivebase = f"{config_test.value('archive.local_read_dir')}/{config_test.value('archive.path_base')}"
 
                 assert ( pathlib.Path( archivebase ) / exposure.filepath ).is_file()
                 # Perhaps do m5dsums to verify that the local and archive files are the same?
