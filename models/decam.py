@@ -62,7 +62,6 @@ class DECam(Instrument):
         # Notice that the "N" chips are to the south and the "S" chips
         # are to the north; this is correct! See:
         # https://noirlab.edu/science/programs/ctio/instruments/Dark-Energy-Camera/characteristics
-        # will apply kwargs to attributes, and register instrument in the INSTRUMENT_INSTANCE_CACHE
         self._chip_radec_off = {
             'S29': { 'ccdnum':  1, 'dra':  -0.30358, 'ddec':   0.90579 },
             'S30': { 'ccdnum':  2, 'dra':   0.00399, 'ddec':   0.90370 },
@@ -128,6 +127,7 @@ class DECam(Instrument):
             'N31': { 'ccdnum': 62, 'dra':   0.30889, 'ddec':  -0.90498 },
         }
 
+        # will apply kwargs to attributes, and register instrument in the INSTRUMENT_INSTANCE_CACHE
         Instrument.__init__(self, **kwargs)
 
         self.preprocessing_steps = [ 'overscan', 'linearity', 'flat', 'fringe' ]
@@ -148,7 +148,7 @@ class DECam(Instrument):
     def check_section_id(cls, section_id):
         """
         Check that the type and value of the section is compatible with the instrument.
-        In this case, it must be an integer in the range [0, 63].
+        In this case, it must be a string starting with 'N' or 'S' and a number between 1 and 31.
         """
         if not isinstance(section_id, str):
             raise ValueError(f"The section_id must be a string. Got {type(section_id)}. ")

@@ -17,6 +17,11 @@ def test_preprocessing( decam_exposure, test_config, preprocessor, decam_default
     ds = preprocessor.run( decam_exposure, 'N1' )
     assert preprocessor.has_recalculated
 
+    # TODO: this might not work, because for some filters (g) the fringe correction doesn't happen
+    # check that running the same processing on the same datastore is a no-op
+    ds = preprocessor.run( ds )
+    assert not preprocessor.has_recalculated
+
     # Check some Preprocesor internals
     assert preprocessor._calibset == 'externally_supplied'
     assert preprocessor._flattype == 'externally_supplied'

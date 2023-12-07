@@ -206,6 +206,8 @@ class Preprocessor:
                 if stepfileid is None:
                     _logger.warning( f"Skipping step {step} for filter {ds.exposure.filter_short} "
                                      f"because there is no calibration file (this may be normal)" )
+                    # should we also mark it as having "done" this step? otherwise it will not know it's done
+                    image.preproc_bitflag |= string_to_bitflag( step, image_preprocessing_inverse )
                     continue
 
                 # Use the cached calibrator file for this step if it's the right one; otherwise, grab it

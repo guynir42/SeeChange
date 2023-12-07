@@ -368,12 +368,14 @@ class SeeChangeBase:
         """Save a copy of the object (and associated files) into a cache directory.
 
         If the object is a FileOnDiskMixin, then the file(s) pointed by get_fullpath()
-        will be copied to the cache directory with their original names.
+        will be copied to the cache directory with their original names,
+        unless filepath is specified, in which case the cached files will
+        have a different name than the files in the data folder (and the database filepath).
         The filepath (without extensions) will be used to create a JSON file
         which holds the object's column attributes (i.e., only those that are
         database persistent).
 
-        If caching a non FileOnDiskMixin object, the filepath argument must be given,
+        If caching a non-FileOnDiskMixin object, the filepath argument must be given,
         because it is used to name the JSON file.
 
         Parameters
@@ -382,7 +384,8 @@ class SeeChangeBase:
             The path to the cache directory.
         filepath: str or path (optional)
             Must be given if the object is not a FileOnDiskMixin.
-            If it is a FileOnDiskMixin, it will be ignored.
+            If it is a FileOnDiskMixin, it will be used to name
+            the data files and the JSON file in the cache folder.
 
         Returns
         -------
@@ -394,15 +397,17 @@ class SeeChangeBase:
                 raise ValueError("filepath must be given when caching a non FileOnDiskMixin object")
 
         else:
-            if filepath is not None:
-                _logger.warning("FileOnDiskMixin object given filepath argument, but it will be ignored!")
-            filepath = self.filepath  # override the filepath argument!
-            if self.filepath_extensions is not None and len(self.filepath_extensions) > 0:
-                filepath += self.filepath_extensions[0]
-            for f in self.get_fullpath(as_list=True):
+            if filepath is None:  # use the FileOnDiskMixin filepath as default
+                filepath = self.filepath  # override the filepath argument!
+                if self.filepath_extensions is not None and len(self.filepath_extensions) > 0:
+                    filepath += self.filepath_extensions[0]
+
+            for i, f in enumerate(self.get_fullpath(as_list=True)):
                 if f is None:
                     continue
-                new_f = os.path.join(cache_dir, f[len(self.local_path) + 1:])
+                new_f = os.path.join(cache_dir, filepath)
+                if self.filepath_extensions is not None and i < len(self.filepath_extensions):
+                    new_f += self.filepath_extensions[i]
                 _logger.debug(f"Copying {f} to {new_f}")
                 os.makedirs(os.path.dirname(new_f), exist_ok=True)
                 shutil.copy2(f, new_f)
@@ -455,10 +460,12 @@ class SeeChangeBase:
         output = cls.from_dict(json_dict)
 
         if isinstance(output, FileOnDiskMixin):
-            for target_f in output.get_fullpath(as_list=True):
+            for i, target_f in enumerate(output.get_fullpath(as_list=True)):
                 if target_f is None:
                     continue
-                source_f = os.path.join(cache_dir, target_f[len(FileOnDiskMixin.local_path) + 1:])
+                source_f = os.path.join(cache_dir, full_path)
+                if output.filepath_extensions is not None and i < len(output.filepath_extensions):
+                    source_f += output.filepath_extensions[i]
                 _logger.debug(f"Copying {source_f} to {target_f}")
                 os.makedirs(os.path.dirname(target_f), exist_ok=True)
                 shutil.copyfile(source_f, target_f)

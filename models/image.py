@@ -925,6 +925,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         # TODO: which elements of the naming convention are really necessary?
         #  and what is a good way to make sure the filename actually depends on them?
+        self.filepath = filename
+
         return filename
 
     def save(self, filename=None, only_image=False, just_update_header=True, **kwargs ):
@@ -987,7 +989,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if filename is not None:
             self.filepath = filename
         if self.filepath is None:
-            self.filepath = self.invent_filepath()
+            self.invent_filepath()
 
         cfg = config.Config.get()
         single_file = cfg.value('storage.images.single_file', default=False)
