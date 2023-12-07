@@ -279,7 +279,7 @@ def decam_reference(decam_ref_datastore):
         prov = Provenance(
             code_version=ds.image.provenance.code_version,
             process='reference',
-            parameters={},
+            parameters={'test_parameter': 'test_value'},
             upstreams=[
                 ds.image.provenance,
                 ds.sources.provenance,

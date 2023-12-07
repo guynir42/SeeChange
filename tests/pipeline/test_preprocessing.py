@@ -9,21 +9,21 @@ from models.image import Image
 from pipeline.preprocessing import Preprocessor
 
 
-def test_preprocessing( decam_exposure, config_test, decam_default_calibrators ):
+def test_preprocessing( decam_exposure, test_config, preprocessor, decam_default_calibrators ):
     # The decam_default_calibrators fixture is included so that
     # _get_default_calibrators won't be called as a side effect of calls
     # to Preprocessor.run().  (To avoid committing.)
 
-    preppor = Preprocessor()
-    ds = preppor.run( decam_exposure, 'N1' )
+    ds = preprocessor.run( decam_exposure, 'N1' )
+    assert preprocessor.has_recalculated
 
     # Check some Preprocesor internals
-    assert preppor._calibset == 'externally_supplied'
-    assert preppor._flattype == 'externally_supplied'
-    assert preppor._stepstodo == [ 'overscan', 'linearity', 'flat', 'fringe' ]
-    assert preppor._ds.exposure.filter[:1] == 'g'
-    assert preppor._ds.section_id == 'N1'
-    assert set( preppor.stepfiles.keys() ) == { 'flat', 'linearity' }
+    assert preprocessor._calibset == 'externally_supplied'
+    assert preprocessor._flattype == 'externally_supplied'
+    assert preprocessor._stepstodo == [ 'overscan', 'linearity', 'flat', 'fringe' ]
+    assert preprocessor._ds.exposure.filter[:1] == 'g'
+    assert preprocessor._ds.section_id == 'N1'
+    assert set( preprocessor.stepfiles.keys() ) == { 'flat', 'linearity' }
 
     # Make sure that the BSCALE and BZERO keywords got stripped
     #  from the raw image header.  (If not, when the file gets
@@ -84,14 +84,18 @@ def test_preprocessing( decam_exposure, config_test, decam_default_calibrators )
     # (Look at image header once we have HISTORY adding in there.)
 
     # Test some overriding
+    # clear these caches
+    preprocessor.instrument = None
+    preprocessor.stepfilesids = {}
+    preprocessor.stepfiles = {}
 
-    preppor = Preprocessor()
-    ds = preppor.run( decam_exposure, 'N1', steps=['overscan','linearity'] )
-    assert preppor._calibset == 'externally_supplied'
-    assert preppor._flattype == 'externally_supplied'
-    assert preppor._stepstodo == [ 'overscan', 'linearity' ]
-    assert preppor._ds.exposure.filter[:1] == 'g'
-    assert preppor._ds.section_id == 'N1'
-    assert set( preppor.stepfiles.keys() ) == { 'linearity' }
+    ds = preprocessor.run( decam_exposure, 'N1', steps=['overscan', 'linearity'] )
+    assert preprocessor.has_recalculated
+    assert preprocessor._calibset == 'externally_supplied'
+    assert preprocessor._flattype == 'externally_supplied'
+    assert preprocessor._stepstodo == [ 'overscan', 'linearity' ]
+    assert preprocessor._ds.exposure.filter[:1] == 'g'
+    assert preprocessor._ds.section_id == 'N1'
+    assert set( preprocessor.stepfiles.keys() ) == { 'linearity' }
 
 

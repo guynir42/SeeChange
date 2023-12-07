@@ -43,7 +43,7 @@ def ztf_filepaths_image_sources_psf(data_dir, persistent_dir):
 
 
 @pytest.fixture
-def ztf_datastore_with_sources_and_psf( ztf_filepaths_image_sources_psf ):
+def ztf_datastore_uncommitted( ztf_filepaths_image_sources_psf ):
     image, weight, flags, sources, psf, psfxml = ztf_filepaths_image_sources_psf
     ds = DataStore()
 
@@ -72,7 +72,9 @@ def ztf_datastore_with_sources_and_psf( ztf_filepaths_image_sources_psf ):
     tab = votable.parse( bio ).get_table_by_index( 1 )
     ds.psf.fwhm_pixels = float( tab.array['FWHM_FromFluxRadius_Mean'][0] )
 
-    return ds
+    yield ds
+
+    ds.delete_everything()
 
 
 @pytest.fixture
@@ -82,8 +84,8 @@ def ztf_filepath_sources( ztf_filepaths_image_sources_psf ):
 
 
 @pytest.fixture
-def ztf_gaiadr3_excerpt( ztf_datastore_with_sources_and_psf ):
-    ds = ztf_datastore_with_sources_and_psf
+def ztf_gaiadr3_excerpt( ztf_datastore_uncommitted ):
+    ds = ztf_datastore_uncommitted
     catexp = fetch_GaiaDR3_excerpt( ds.image, minstars=50, maxmags=20, magrange=4)
     assert catexp is not None
 

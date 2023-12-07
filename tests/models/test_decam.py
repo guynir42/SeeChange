@@ -234,7 +234,7 @@ def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_d
         pass
 
 
-def test_decam_download_and_commit_exposure(code_version, decam_raw_origin_exposures, cache_dir, data_dir, config_test):
+def test_decam_download_and_commit_exposure(code_version, decam_raw_origin_exposures, cache_dir, data_dir, test_config):
     eids = []
     try:
         with SmartSession() as session:

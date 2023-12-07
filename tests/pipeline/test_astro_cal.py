@@ -1,3 +1,4 @@
+import os
 import pytest
 import hashlib
 import uuid
@@ -8,19 +9,18 @@ from astropy.wcs import WCS
 from astropy.io import fits
 
 from util.exceptions import BadMatchException
-from models.base import SmartSession
+from models.base import SmartSession, CODE_ROOT
 from models.image import Image
 from models.world_coordinates import WorldCoordinates
-from pipeline.astro_cal import AstroCalibrator
 
 
-def test_solve_wcs_scamp_failures( ztf_gaiadr3_excerpt, ztf_datastore_with_sources_and_psf ):
+def test_solve_wcs_scamp_failures( ztf_gaiadr3_excerpt, ztf_datastore_uncommitted, astrometor ):
     catexp = ztf_gaiadr3_excerpt
-    ds = ztf_datastore_with_sources_and_psf
+    ds = ztf_datastore_uncommitted
 
-    # Make sure it fails if we give too stringent of a minimum residual
-    astrometor = AstroCalibrator( catalog='GaiaDR3', method='scamp', max_mag=[20.], mag_range=4., min_stars=50,
-                                  max_resid=0.01 )
+    astrometor.pars.method = 'scamp'
+    astrometor.pars.max_resid = 0.01
+
     with pytest.raises( BadMatchException, match="which isn.*t good enough" ):
         wcs = astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp )
 
@@ -30,36 +30,31 @@ def test_solve_wcs_scamp_failures( ztf_gaiadr3_excerpt, ztf_datastore_with_sourc
     # constructor, because that is an array of crossid_rad values to
     # try, whereas _solve_wcs_scamp needs a single value.  (The
     # iteration happens outsice _solve_wcs_scamp.)
-    astrometor = AstroCalibrator( catalog='GaiaDR3', method='scamp', max_mag=[20.], mag_range=4., min_stars=50 )
+
     with pytest.raises( BadMatchException, match="which isn.*t good enough" ):
         wcs = astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp, crossid_rad=0.01 )
 
-    # Make sure it fails if min_frac_matched is too high
-    astrometor = AstroCalibrator( catalog='GaiaDR3', method='scamp', max_mag=[20.], mag_range=4., min_stars=50,
-                                  min_frac_matched=0.8 )
+    astrometor.pars.min_frac_matched = 0.8
     with pytest.raises( BadMatchException, match="which isn.*t good enough" ):
         wcs = astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp )
 
-    # Make sure it fails if min_matched_stars is too high
-    # (For this test image, there's only something like 120 objects in the source list.)
-    astrometor = AstroCalibrator( catalog='GaiaDR3', method='scamp', max_mag=[20.], mag_range=4., min_stars=50,
-                                  min_matches=50 )
+    astrometor.pars.min_matched_stars = 50
     with pytest.raises( BadMatchException, match="which isn.*t good enough" ):
         wcs = astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp )
 
 
-def test_solve_wcs_scamp( ztf_gaiadr3_excerpt, ztf_datastore_with_sources_and_psf ):
+def test_solve_wcs_scamp( ztf_gaiadr3_excerpt, ztf_datastore_uncommitted, astrometor, blocking_plots ):
     catexp = ztf_gaiadr3_excerpt
-    ds = ztf_datastore_with_sources_and_psf
+    ds = ztf_datastore_uncommitted
 
     # Make True for visual testing purposes
-    if False:
-        catexp.ds9_regfile( 'catexp.reg', radius=4 )
-        ds.sources.ds9_regfile( 'sources.reg', radius=3 )
+    if os.getenv('INTERACTIVE', False):
+        basename = os.path.join(CODE_ROOT, 'tests/plots')
+        catexp.ds9_regfile( os.path.join(basename, 'catexp.reg'), radius=4 )
+        ds.sources.ds9_regfile( os.path.join(basename, 'sources.reg'), radius=3 )
 
     orighdr = ds.image._raw_header.copy()
 
-    astrometor = AstroCalibrator( catalog='GaiaDR3', method='scamp', max_mag=[20.], mag_range=4., min_stars=50 )
     astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp )
 
     # Because this was a ZTF image that had a WCS already, the new WCS

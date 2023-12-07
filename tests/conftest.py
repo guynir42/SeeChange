@@ -162,7 +162,7 @@ def provenance_base(code_version):
     p = Provenance(
         process="test_base_process",
         code_version=code_version,
-        parameters={"test_key": uuid.uuid4().hex},
+        parameters={"test_parameter": uuid.uuid4().hex},
         upstreams=[],
         is_testing=True,
     )
@@ -189,7 +189,7 @@ def provenance_extra( provenance_base ):
     p = Provenance(
         process="test_base_process",
         code_version=provenance_base.code_version,
-        parameters={"test_key": uuid.uuid4().hex},
+        parameters={"test_parameter": uuid.uuid4().hex},
         upstreams=[provenance_base],
         is_testing=True,
     )
@@ -217,7 +217,7 @@ def provenance_preprocessing(code_version):
     p = Provenance(
         process="preprocessing",
         code_version=code_version,
-        parameters={"test_key": "test_value"},
+        parameters={"test_parameter": "test_value"},
         upstreams=[],
         is_testing=True,
     )
@@ -241,7 +241,7 @@ def provenance_preprocessing(code_version):
 
 
 @pytest.fixture
-def archive(config_test):
+def archive(test_config):
     # cfg = config.Config.get()
     archive_specs = test_config.value('archive')
     if archive_specs is None:

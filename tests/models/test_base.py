@@ -168,7 +168,7 @@ def test_fileondisk_save_failuremodes( diskfile ):
     filepath.unlink()
 
 
-def test_fileondisk_save_singlefile( diskfile, archive, config_test ):
+def test_fileondisk_save_singlefile( diskfile, archive, test_config ):
     archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
 
     diskfile.filepath = 'test_fileondisk_save.dat'
@@ -316,7 +316,7 @@ def test_fileondisk_save_singlefile_noarchive( diskfile ):
         models.base.ARCHIVE = origarchive
 
 
-def test_fileondisk_save_multifile( diskfile, archive, config_test ):
+def test_fileondisk_save_multifile( diskfile, archive, test_config ):
     try:
         archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
 

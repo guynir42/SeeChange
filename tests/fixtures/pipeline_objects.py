@@ -24,7 +24,7 @@ from pipeline.measurement import Measurer
 
 
 @pytest.fixture
-def preprocessor(config_test):
+def preprocessor(test_config):
     prep = Preprocessor(**test_config.value('preprocessing'))
     prep.pars._enforce_no_new_attrs = False
     prep.pars.test_parameter = prep.pars.add_par(
@@ -36,7 +36,7 @@ def preprocessor(config_test):
 
 
 @pytest.fixture
-def extractor(config_test):
+def extractor(test_config):
     extr = Detector(**test_config.value('extraction'))
     extr.pars._enforce_no_new_attrs = False
     extr.pars.test_parameter = extr.pars.add_par(
@@ -48,7 +48,7 @@ def extractor(config_test):
 
 
 @pytest.fixture
-def astrometor(config_test):
+def astrometor(test_config):
     astrom = AstroCalibrator(**test_config.value('astro_cal'))
     astrom.pars._enforce_no_new_attrs = False
     astrom.pars.test_parameter = astrom.pars.add_par(
@@ -60,7 +60,7 @@ def astrometor(config_test):
 
 
 @pytest.fixture
-def photometor(config_test):
+def photometor(test_config):
     photom = PhotCalibrator(**test_config.value('photo_cal'))
     photom.pars._enforce_no_new_attrs = False
     photom.pars.test_parameter = photom.pars.add_par(
@@ -72,7 +72,7 @@ def photometor(config_test):
 
 
 @pytest.fixture
-def subtractor(config_test):
+def subtractor(test_config):
     sub = Subtractor(**test_config.value('subtraction'))
     sub.pars._enforce_no_new_attrs = False
     sub.pars.test_parameter = sub.pars.add_par(
@@ -84,7 +84,7 @@ def subtractor(config_test):
 
 
 @pytest.fixture
-def detector(config_test):
+def detector(test_config):
     det = Detector(**test_config.value('detection'))
     det.pars._enforce_no_new_attrs = False
     det.pars.test_parameter = det.pars.add_par(
@@ -96,7 +96,7 @@ def detector(config_test):
 
 
 @pytest.fixture
-def cutter(config_test):
+def cutter(test_config):
     cut = Cutter(**test_config.value('cutting'))
     cut.pars._enforce_no_new_attrs = False
     cut.pars.test_parameter = cut.pars.add_par(
@@ -108,7 +108,7 @@ def cutter(config_test):
 
 
 @pytest.fixture
-def measurer(config_test):
+def measurer(test_config):
     meas = Measurer(**test_config.value('measurement'))
     meas.pars._enforce_no_new_attrs = False
     meas.pars.test_parameter = meas.pars.add_par(

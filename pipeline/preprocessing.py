@@ -1,16 +1,12 @@
 import pathlib
-from types import SimpleNamespace
 
 import numpy as np
-import sqlalchemy as sa
 
 import sep
 
 from models.base import SmartSession, _logger
-from models.exposure import Exposure, ExposureImageIterator
 from models.image import Image
 from models.datafile import DataFile
-from models.instrument import get_instrument_instance, Instrument, SensorSection
 from models.enums_and_bitflags import image_preprocessing_inverse, string_to_bitflag, flag_image_bits_inverse
 
 from pipeline.parameters import Parameters
@@ -171,7 +167,6 @@ class Preprocessor:
         image = ds.get_image(prov, session=session)
 
         if image is None:  # need to make new image
-            self.has_recalculated = True
             # get the single-chip image from the exposure
             image = Image.from_exposure( ds.exposure, ds.section_id )
 
@@ -181,123 +176,129 @@ class Preprocessor:
         if image.preproc_bitflag is None:
             image.preproc_bitflag = 0
 
-        # Overscan is always first (as it reshapes the image)
-        if 'overscan' in self._stepstodo:
-            image.data = self.instrument.overscan_and_trim( image )
-            image.preproc_bitflag |= string_to_bitflag( 'overscan', image_preprocessing_inverse )
-        else:
-            image.data = image.raw_data
-
-        # Apply steps in the order expected by the instrument
+        required_bitflag = 0
         for step in self._stepstodo:
-            if step == 'overscan':
-                continue
+            required_bitflag |= string_to_bitflag( step, image_preprocessing_inverse )
 
-            stepfileid = None
-            # Acquire the calibration file
-            if f'{step}_fileid' in kwargs:
-                stepfileid = kwargs[ f'{step}_fileid' ]
-            elif f'{step}_fileid' in preprocparam:
-                stepfileid = preprocparam[ f'{step}_fileid' ]
+        if image.preproc_bitflag != required_bitflag:
+            self.has_recalculated = True
+            # Overscan is always first (as it reshapes the image)
+            if 'overscan' in self._stepstodo:
+                image.data = self.instrument.overscan_and_trim( image )
+                image.preproc_bitflag |= string_to_bitflag( 'overscan', image_preprocessing_inverse )
             else:
-                raise RuntimeError( f"Can't find calibration file for preprocessing step {step}" )
+                image.data = image.raw_data
 
-            if stepfileid is None:
-                _logger.warning( f"Skipping step {step} for filter {ds.exposure.filter_short} "
-                                 f"because there is no calibration file (this may be normal)" )
-                continue
+            # Apply steps in the order expected by the instrument
+            for step in self._stepstodo:
+                if step == 'overscan':
+                    continue
 
-            # Use the cached calibrator file for this step if it's the right one; otherwise, grab it
-            if ( stepfileid in self.stepfilesids ) and ( self.stepfilesids[step] == stepfileid ):
-                calibfile = self.stepfiles[ calibfile ]
+                stepfileid = None
+                # Acquire the calibration file
+                if f'{step}_fileid' in kwargs:
+                    stepfileid = kwargs[ f'{step}_fileid' ]
+                elif f'{step}_fileid' in preprocparam:
+                    stepfileid = preprocparam[ f'{step}_fileid' ]
+                else:
+                    raise RuntimeError( f"Can't find calibration file for preprocessing step {step}" )
+
+                if stepfileid is None:
+                    _logger.warning( f"Skipping step {step} for filter {ds.exposure.filter_short} "
+                                     f"because there is no calibration file (this may be normal)" )
+                    continue
+
+                # Use the cached calibrator file for this step if it's the right one; otherwise, grab it
+                if ( stepfileid in self.stepfilesids ) and ( self.stepfilesids[step] == stepfileid ):
+                    calibfile = self.stepfiles[ calibfile ]
+                else:
+
+                    with SmartSession( session ) as session:
+                        if step in [ 'zero', 'dark', 'flat', 'illumination', 'fringe' ]:
+                            calibfile = session.get( Image, stepfileid )
+                            if calibfile is None:
+                                raise RuntimeError( f"Unable to load image id {stepfileid} for preproc step {step}" )
+                        elif step == 'linearity':
+                            calibfile = session.get( DataFile, stepfileid )
+                            if calibfile is None:
+                                raise RuntimeError( f"Unable to load datafile id {stepfileid} for preproc step {step}" )
+                        else:
+                            raise ValueError( f"Preprocessing step {step} has an unknown file type (image vs. datafile)" )
+                    self.stepfilesids[ step ] = stepfileid
+                    self.stepfiles[ step ] = calibfile
+                if step in [ 'zero', 'dark' ]:
+                    # Subtract zeros and darks
+                    image.data -= calibfile.data
+
+                elif step in [ 'flat', 'illumination' ]:
+                    # Divide flats and illuminations
+                    image.data /= calibfile.data
+
+                elif step == 'fringe':
+                    # TODO FRINGE CORRECTION
+                    _logger.warning( "Fringe correction not implemented" )
+
+                elif step == 'linearity':
+                    # Linearity is instrument-specific
+                    self.instrument.linearity_correct( image, linearitydata=calibfile )
+
+                else:
+                    # TODO: Replace this with a call into an instrument method?
+                    # In that case, the logic above about acquiring step files
+                    # will need to be updated.
+                    raise ValueError( f"Unknown preprocessing step {step}" )
+
+                image.preproc_bitflag |= string_to_bitflag( step, image_preprocessing_inverse )
+
+            # Get the Instrument standard bad pixel mask for this image
+            image._flags = self.instrument.get_standard_flags_image( ds.section_id )
+
+            # Estimate the background rms with sep
+            boxsize = self.instrument.background_box_size
+            filtsize = self.instrument.background_filt_size
+            _logger.debug( "Subtracting sky and estimating sky RMS" )
+            # Dysfunctionality alert: sep requires a *float* image for the mask
+            # IEEE 32-bit floats have 23 bits in the mantissa, so they should
+            # be able to precisely represent a 16-bit integer mask image
+            # In any event, sep.Background uses >0 as "bad"
+            fmask = np.array( image._flags, dtype=np.float32 )
+            backgrounder = sep.Background( image.data, mask=fmask,
+                                           bw=boxsize, bh=boxsize, fw=filtsize, fh=filtsize )
+            fmask = None
+            rms = backgrounder.rms()
+            sky = backgrounder.back()
+            subim = image.data - sky
+            _logger.debug( "Building weight image and augmenting flags image" )
+
+            wbad = np.where( rms <= 0 )
+            wgood = np.where( rms > 0 )
+            rms = rms ** 2
+            subim[ subim < 0 ] = 0
+            gain = self.instrument.average_gain( image )
+            gain = gain if gain is not None else 1.
+            # Shot noise from image above background
+            rms += subim / gain
+            image._weight = np.zeros( image.data.shape, dtype=np.float32 )
+            image._weight[ wgood ] = 1. / rms[ wgood ]
+            image._flags[ wbad ] |= string_to_bitflag( "zero weight", flag_image_bits_inverse )
+            # Now make the weight zero on the bad pixels too
+            image._weight[ image._flags != 0 ] = 0.
+            # Figure out saturated pixels
+            satlevel = self.instrument.average_saturation_limit( image )
+            if satlevel is not None:
+                wsat = image.data >= satlevel
+                image._flags[ wsat ] |= string_to_bitflag( "saturated", flag_image_bits_inverse )
+                image._weight[ wsat ] = 0.
+
+            if image.provenance is None:
+                image.provenance = prov
             else:
+                if image.provenance.id != prov.id:
+                    # Logically, this should never happen
+                    raise ValueError('Provenance mismatch for image and provenance!')
 
-                with SmartSession( session ) as session:
-                    if step in [ 'zero', 'dark', 'flat', 'illumination', 'fringe' ]:
-                        calibfile = session.get( Image, stepfileid )
-                        if calibfile is None:
-                            raise RuntimeError( f"Unable to load image id {stepfileid} for preproc step {step}" )
-                    elif step == 'linearity':
-                        calibfile = session.get( DataFile, stepfileid )
-                        if calibfile is None:
-                            raise RuntimeError( f"Unable to load datafile id {stepfileid} for preproc step {step}" )
-                    else:
-                        raise ValueError( f"Preprocessing step {step} has an unknown file type (image vs. datafile)" )
-                self.stepfilesids[ step ] = stepfileid
-                self.stepfiles[ step ] = calibfile
-            if step in [ 'zero', 'dark' ]:
-                # Subtract zeros and darks
-                image.data -= calibfile.data
-
-            elif step in [ 'flat', 'illumination' ]:
-                # Divide flats and illuminations
-                image.data /= calibfile.data
-
-            elif step == 'fringe':
-                # TODO FRINGE CORRECTION
-                _logger.warning( "Fringe correction not implemented" )
-
-            elif step == 'linearity':
-                # Linearity is instrument-specific
-                self.instrument.linearity_correct( image, linearitydata=calibfile )
-
-            else:
-                # TODO: Replace this with a call into an instrument method?
-                # In that case, the logic above about acquiring step files
-                # will need to be updated.
-                raise ValueError( f"Unknown preprocessing step {step}" )
-
-            image.preproc_bitflag |= string_to_bitflag( step, image_preprocessing_inverse )
-
-        # Get the Instrument standard bad pixel mask for this image
-        image._flags = self.instrument.get_standard_flags_image( ds.section_id )
-
-        # Estimate the background rms with sep
-        boxsize = self.instrument.background_box_size
-        filtsize = self.instrument.background_filt_size
-        _logger.debug( "Subtracting sky and estimating sky RMS" )
-        # Dysfunctionality alert: sep requires a *float* image for the mask
-        # IEEE 32-bit floats have 23 bits in the mantissa, so they should
-        # be able to precisely represent a 16-bit integer mask image
-        # In any event, sep.Background uses >0 as "bad"
-        fmask = np.array( image._flags, dtype=np.float32 )
-        backgrounder = sep.Background( image.data, mask=fmask,
-                                       bw=boxsize, bh=boxsize, fw=filtsize, fh=filtsize )
-        fmask = None
-        rms = backgrounder.rms()
-        sky = backgrounder.back()
-        subim = image.data - sky
-        _logger.debug( "Building weight image and augmenting flags image" )
-
-        wbad = np.where( rms <= 0 )
-        wgood = np.where( rms > 0 )
-        rms = rms ** 2
-        subim[ subim < 0 ] = 0
-        gain = self.instrument.average_gain( image )
-        gain = gain if gain is not None else 1.
-        # Shot noise from image above background
-        rms += subim / gain
-        image._weight = np.zeros( image.data.shape, dtype=np.float32 )
-        image._weight[ wgood ] = 1. / rms[ wgood ]
-        image._flags[ wbad ] |= string_to_bitflag( "zero weight", flag_image_bits_inverse )
-        # Now make the weight zero on the bad pixels too
-        image._weight[ image._flags != 0 ] = 0.
-        # Figure out saturated pixels
-        satlevel = self.instrument.average_saturation_limit( image )
-        if satlevel is not None:
-            wsat = image.data >= satlevel
-            image._flags[ wsat ] |= string_to_bitflag( "saturated", flag_image_bits_inverse )
-            image._weight[ wsat ] = 0.
-
-        if image.provenance is None:
-            image.provenance = prov
-        else:
-            if image.provenance.id != prov.id:
-                # Logically, this should never happen
-                raise ValueError('Provenance mismatch for image and provenance!')
+            image.filepath = image.invent_filepath()
+            _logger.debug( f"Done with {pathlib.Path(image.filepath).name}" )
 
         ds.image = image
-        ds.image.filepath = ds.image.invent_filepath()
-        _logger.debug( f"Done with {pathlib.Path(ds.image.filepath).name}" )
-
         return ds

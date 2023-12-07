@@ -249,7 +249,7 @@ def sim_reference(provenance_preprocessing, provenance_extra):
         ref.provenance = Provenance(
             code_version=provenance_extra.code_version,
             process='reference',
-            parameters={},
+            parameters={'test_parameter': 'test_value'},
             upstreams=[provenance_extra]
         )
         ref.validity_start = Time(50000, format='mjd', scale='utc').isot

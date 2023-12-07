@@ -43,8 +43,8 @@ def test_download_GaiaDR3(data_dir):
             pathlib.Path( secondfilepath ).unlink( missing_ok=True )
 
 
-def test_gaiadr3_excerpt_failures( ztf_datastore_with_sources_and_psf, ztf_gaiadr3_excerpt ):
-    ds = ztf_datastore_with_sources_and_psf
+def test_gaiadr3_excerpt_failures( ztf_datastore_uncommitted, ztf_gaiadr3_excerpt ):
+    ds = ztf_datastore_uncommitted
 
     # Make sure it fails if we give it a ridiculous max mag
     with pytest.raises( CatalogNotFoundError, match="Failed to fetch Gaia DR3 stars at" ):
@@ -63,9 +63,9 @@ def test_gaiadr3_excerpt_failures( ztf_datastore_with_sources_and_psf, ztf_gaiad
         catexp = fetch_GaiaDR3_excerpt( ds.image, maxmags=[20.0], magrange=0.01, minstars=50 )
 
 
-def test_gaiadr3_excerpt( ztf_datastore_with_sources_and_psf, ztf_gaiadr3_excerpt ):
+def test_gaiadr3_excerpt( ztf_datastore_uncommitted, ztf_gaiadr3_excerpt ):
     catexp = ztf_gaiadr3_excerpt
-    ds = ztf_datastore_with_sources_and_psf
+    ds = ztf_datastore_uncommitted
 
     assert catexp.num_items == 172
     assert catexp.num_items == len( catexp.data )

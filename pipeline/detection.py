@@ -1,7 +1,5 @@
-import io
 import pathlib
 import random
-import copy
 import subprocess
 
 import numpy as np
@@ -17,7 +15,7 @@ from util.config import Config
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 
-from models.base import SmartSession, FileOnDiskMixin, CODE_ROOT, _logger
+from models.base import FileOnDiskMixin, CODE_ROOT, _logger
 from models.image import Image
 from models.psf import PSF
 from models.source_list import SourceList

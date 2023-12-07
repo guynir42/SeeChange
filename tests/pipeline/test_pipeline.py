@@ -91,7 +91,7 @@ def check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session
     # TODO: add the cutouts and measurements, but we need to produce them first!
 
 
-def test_parameters( config_test ):
+def test_parameters( test_config ):
     """Test that pipeline parameters are being set properly"""
 
     # Verify that we _enforce_no_new_attrs works

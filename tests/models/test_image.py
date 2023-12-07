@@ -119,7 +119,7 @@ def test_image_must_have_md5(sim_image_uncommitted, provenance_base):
         session.commit()
 
 
-def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archive, config_test):
+def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archive, test_config):
     im = sim_image_uncommitted
     im.data = np.float32( im.raw_data )
     im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
@@ -183,7 +183,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
         test_config.set_value('storage.images.single_file', single_fileness)
 
 
-def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive, config_test):
+def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive, test_config):
     im = sim_image_uncommitted
     im.data = np.float32( im.raw_data )
     im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
@@ -1140,7 +1140,7 @@ def test_image_subtraction(sim_exposure1, sim_exposure2, provenance_base):
                     session.commit()
 
 
-def test_image_filename_conventions(sim_image1, config_test):
+def test_image_filename_conventions(sim_image1, test_config):
 
     # sim_image1 was saved using the naming convention in the config file
     assert re.search(r'\d{3}/Demo_\d{8}_\d{6}_\d+_.+_.{6}\.image\.fits', sim_image1.get_fullpath()[0])
@@ -1190,7 +1190,7 @@ def test_image_filename_conventions(sim_image1, config_test):
         test_config.set_value('storage.images.name_convention', convention)
 
 
-def test_image_multifile(sim_image_uncommitted, provenance_base, config_test):
+def test_image_multifile(sim_image_uncommitted, provenance_base, test_config):
     im = sim_image_uncommitted
     im.data = np.float32(im.raw_data)
     im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint32)
