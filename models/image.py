@@ -1086,7 +1086,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             self._score = read_fits_image(filename, ext='score')
             # TODO: add more if needed!
 
-        else:  # save each data array to a separate file
+        else:  # load each data array from a separate file
             if self.filepath_extensions is None:
                 self._data, self._raw_header = read_fits_image( self.get_fullpath(), output='both' )
             else:

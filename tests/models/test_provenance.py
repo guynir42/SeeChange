@@ -101,6 +101,7 @@ def test_provenances(code_version):
                 code_version=code_version,
                 parameters={"test_parameter": "test_value1"},
                 upstreams=[],
+                is_testing=True,
             )
 
             # adding the provenance also calculates the hash
@@ -117,6 +118,7 @@ def test_provenances(code_version):
                 parameters={"test_parameter": "test_value2"},
                 process="test_process",
                 upstreams=[],
+                is_testing=True,
             )
 
             # adding the provenance also calculates the hash
@@ -139,7 +141,8 @@ def test_unique_provenance_hash(code_version):
         process='test_process',
         code_version=code_version,
         parameters={'test_parameter': parameter},
-        upstreams=[]
+        upstreams=[],
+        is_testing=True,
     )
 
     try:  # cleanup
@@ -155,7 +158,8 @@ def test_unique_provenance_hash(code_version):
                 process='test_process',
                 code_version=code_version,
                 parameters={'test_parameter': parameter},
-                upstreams=[]
+                upstreams=[],
+                is_testing=True,
             )
             p2.update_id()
             assert p2.id == hash
@@ -186,6 +190,7 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
                 code_version=provenance_base.code_version,
                 parameters={"test_parameter": "test_value1"},
                 upstreams=[provenance_base],
+                is_testing=True,
             )
 
             session.add(p1)
@@ -202,6 +207,7 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
                 code_version=provenance_base.code_version,
                 parameters={"test_parameter": "test_value1"},
                 upstreams=[provenance_base, provenance_extra],
+                is_testing=True,
             )
 
             session.add(p2)
@@ -220,6 +226,7 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
                 parameters={"test_parameter": "test_value1"},
                 process="test_downstream_process",
                 upstreams=[],
+                is_testing=True,
             )
             p2.upstreams.append(p3)
             session.commit()
@@ -300,11 +307,11 @@ def test_recursive_merge( provenance_base ):
 
     finally:
         if 'p1' in locals():
-            session.delete(p1)
+            session.execute(sa.delete(Provenance).where(Provenance.id == p1.id))
         if 'p2' in locals():
-            session.delete(p2)
+            session.execute(sa.delete(Provenance).where(Provenance.id == p2.id))
         if 'p3' in locals():
-            session.delete(p3)
+            session.execute(sa.delete(Provenance).where(Provenance.id == p3.id))
         if 'p4' in locals():
-            session.delete(p4)
+            session.execute(sa.delete(Provenance).where(Provenance.id == p4.id))
         session.commit()

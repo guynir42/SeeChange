@@ -397,7 +397,7 @@ class DECam(Instrument):
 
         cfg = Config.get()
         cv = Provenance.get_code_version()
-        prov = Provenance( process='DECam Default Calibrator', code_version=cv )
+        prov = Provenance( process='DECam Default Calibrator', code_version=cv, is_testing=True )
         prov.update_id()
 
         reldatadir = pathlib.Path( "DECam_default_calibrators" )
@@ -445,7 +445,7 @@ class DECam(Instrument):
                 FileOnDiskMixin.save( image, fileabspath )
                 calfile = CalibratorFile( type=calibtype,
                                           calibrator_set='externally_supplied',
-                                          flat_type='externally_supplied' if calibtype=='flat' else None,
+                                          flat_type='externally_supplied' if calibtype == 'flat' else None,
                                           instrument='DECam',
                                           sensor_section=section,
                                           image=image )
@@ -737,9 +737,12 @@ class DECamOriginExposures:
                       }
 
         with SmartSession(session) as dbsess:
-            provenance = Provenance( process='download',
-                                     parameters={ 'proc_type': self.proc_type, 'Instrument': 'DECam' },
-                                     code_version=Provenance.get_code_version(session=dbsess) )
+            provenance = Provenance(
+                process='download',
+                parameters={ 'proc_type': self.proc_type, 'Instrument': 'DECam' },
+                code_version=Provenance.get_code_version(session=dbsess),
+                is_testing=True,
+            )
             provenance.update_id()
             provenance = provenance.recursive_merge( dbsess )
             dbsess.add( provenance )

@@ -15,13 +15,15 @@ class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
         sa.ForeignKey('source_lists.id', ondelete='CASCADE', name='zero_points_source_list_id_fkey'),
         nullable=False,
         index=True,
-        doc="ID of the source list this zero point is associated with. "
+        doc="ID of the source list this zero point is associated with. ",
     )
 
     sources = orm.relationship(
         'SourceList',
         lazy='selectin',
-        doc="The source list this zero point is associated with. "
+        cascade='save-update, merge, refresh-expire, expunge',
+        passive_deletes=True,
+        doc="The source list this zero point is associated with. ",
     )
 
     image = association_proxy( "sources", "image" )

@@ -49,10 +49,10 @@ def tests_setup_and_teardown():
         # So, make sure that the database is wiped.  Deleting just
         # provenances and codeversions should do it, because most things
         # have a cascading foreign key into provenances.
-        session.execute( sa.text( "DELETE FROM provenances" ) )
-        session.execute( sa.text( "DELETE FROM code_versions" ) )
-        session.commit()
-
+        # session.execute( sa.text( "DELETE FROM provenances" ) )
+        # session.execute( sa.text( "DELETE FROM code_versions" ) )
+        # session.commit()
+        pass
 
 # data that is included in the repo and should be available for tests
 @pytest.fixture(scope="session")
@@ -176,12 +176,9 @@ def provenance_base(code_version):
 
     yield p
 
-    try:
-        with SmartSession() as session:
-            session.execute(sa.delete(Provenance).where(Provenance.id == pid))
-            session.commit()
-    except Exception as e:
-        warnings.warn(str(e))
+    with SmartSession() as session:
+        session.delete(p)
+        session.commit()
 
 
 @pytest.fixture
@@ -203,12 +200,9 @@ def provenance_extra( provenance_base ):
 
     yield p
 
-    try:
-        with SmartSession() as session:
-            session.execute(sa.delete(Provenance).where(Provenance.id == pid))
-            session.commit()
-    except Exception as e:
-        warnings.warn(str(e))
+    with SmartSession() as session:
+        session.delete(p)
+        session.commit()
 
 
 # use this to make all the pre-committed Image fixtures
@@ -274,3 +268,6 @@ def catexp(data_dir, persistent_dir):
     filepath = os.path.join(data_dir, "Gaia_DR3_151.0926_1.8312_17.0_19.0.fits")
 
     yield CatalogExcerpt.create_from_file( filepath, 'GaiaDR3' )
+
+    if os.path.isfile(filepath):
+        os.remove(filepath)

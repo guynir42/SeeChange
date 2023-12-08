@@ -1,6 +1,6 @@
 import os
 import pytest
-
+import shutil
 import sqlalchemy as sa
 
 from models.base import SmartSession, FileOnDiskMixin
@@ -154,6 +154,7 @@ def test_data_flow(decam_exposure, decam_reference):
         assert p.detector.pars.threshold != 3.14
 
         with pytest.raises(NotImplementedError, match="This needs to be updated for detection on a subtraction."):
+            # TODO: failure modes! if the run fails we never get a datastore back, and can't issue a delete_everything!
             ds = p.run(exposure, sec_id)
         return  # TODO: need to finish subtraction and detection etc and bring this back:
         # commit to DB using this session
@@ -217,3 +218,6 @@ def test_data_flow(decam_exposure, decam_reference):
     finally:
         if 'ds' in locals():
             ds.delete_everything()
+        # added this cleanup to make sure the temp data folder is cleaned up
+        # this should be removed after we add datastore failure modes (issue #150)
+        shutil.rmtree(os.path.join(os.path.dirname(exposure.get_fullpath()), '115'), ignore_errors=True)

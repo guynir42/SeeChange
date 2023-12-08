@@ -168,7 +168,7 @@ def test_fileondisk_save_failuremodes( diskfile ):
     filepath.unlink()
 
 
-def test_fileondisk_save_singlefile( diskfile, archive, test_config ):
+def test_fileondisk_save_singlefile( diskfile, archive, test_config, data_dir ):
     archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
 
     diskfile.filepath = 'test_fileondisk_save.dat'
@@ -362,11 +362,11 @@ def test_fileondisk_save_multifile( diskfile, archive, test_config ):
             assert md5sum2 == hashlib.md5( ifp.read() ).hexdigest()
 
         # Verify that if we save the first extension again, but without noarchive,
-        # that it goes up to the arhive
+        # that it goes up to the archive
         diskfile.save( data1, extension='_1.dat' )
         assert diskfile.filepath_extensions == [ '_1.dat', '_2.dat' ]
         assert diskfile.md5sum_extensions == [ uuid.UUID(md5sum1), uuid.UUID(md5sum2) ]
-        assert diskfile.md5sum == None
+        assert diskfile.md5sum is None
         paths = diskfile.get_fullpath()
         assert paths == [ f'{diskfile.local_path}/{diskfile.filepath}_1.dat',
                           f'{diskfile.local_path}/{diskfile.filepath}_2.dat' ]

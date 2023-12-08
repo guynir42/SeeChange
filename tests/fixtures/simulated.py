@@ -250,7 +250,8 @@ def sim_reference(provenance_preprocessing, provenance_extra):
             code_version=provenance_extra.code_version,
             process='reference',
             parameters={'test_parameter': 'test_value'},
-            upstreams=[provenance_extra]
+            upstreams=[provenance_extra],
+            is_testing=True,
         )
         ref.validity_start = Time(50000, format='mjd', scale='utc').isot
         ref.validity_end = Time(58500, format='mjd', scale='utc').isot
@@ -269,6 +270,7 @@ def sim_reference(provenance_preprocessing, provenance_extra):
             ref = ref.recursive_merge(session)
             for im in ref.image.upstream_images:
                 im.exposure.delete_from_disk_and_database(session=session, commit=False)
+                im.delete_from_disk_and_database(session=session, commit=False)
             ref.image.delete_from_disk_and_database(session=session, commit=False)
             if sa.inspect(ref).persistent:
                 session.delete(ref.provenance)  # should also delete the reference

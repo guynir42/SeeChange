@@ -59,6 +59,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     image = orm.relationship(
         'Image',
         cascade='save-update, merge, refresh-expire, expunge',
+        passive_deletes=True,
         doc="Image for which this is the PSF."
     )
 

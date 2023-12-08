@@ -120,6 +120,16 @@ class Provenance(Base):
         lazy='selectin',  # should be able to get upstream_hashes without a session!
     )
 
+    downstreams = relationship(
+        "Provenance",
+        secondary=provenance_self_association_table,
+        primaryjoin='provenances.c.id == provenance_upstreams.c.upstream_id',
+        secondaryjoin='provenances.c.id == provenance_upstreams.c.downstream_id',
+        passive_deletes=True,
+        cascade="save-update, merge, expunge, refresh-expire, delete",
+        overlaps="upstreams",
+    )
+
     CodeVersion.provenances = relationship(
         "Provenance",
         back_populates="code_version",

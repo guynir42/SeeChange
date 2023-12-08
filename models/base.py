@@ -113,6 +113,58 @@ def SmartSession(*args):
         yield session
 
 
+def get_all_database_objects(display=False, session=None):
+    """Find all the objects and their associated IDs in the database.
+
+    Parameters
+    ----------
+    display: bool (optional)
+        If True, print the results to stdout.
+    session: sqlalchemy.orm.session.Session (optional)
+        The session to use. If None, a new session will be created.
+
+    Returns
+    -------
+    dict
+        A dictionary with the object class names as keys and the IDs list as values.
+
+    """
+    from models.provenance import Provenance, CodeVersion, CodeHash
+    from models.datafile import DataFile
+    from models.exposure import Exposure
+    from models.image import Image
+    from models.source_list import SourceList
+    from models.psf import PSF
+    from models.world_coordinates import WorldCoordinates
+    from models.zero_point import ZeroPoint
+    from models.cutouts import Cutouts
+    from models.measurements import Measurements
+    from models.calibratorfile import CalibratorFile
+    from models.catalog_excerpt import CatalogExcerpt
+    from models.reference import Reference
+    from models.instrument import SensorSection
+
+    models = [
+        CodeHash, CodeVersion, Provenance, DataFile, Exposure, Image,
+        SourceList, PSF, WorldCoordinates, ZeroPoint, Cutouts, Measurements,
+        CalibratorFile, CatalogExcerpt, Reference, SensorSection
+    ]
+
+    output = {}
+    with SmartSession(session) as session:
+        for model in models:
+            object_ids = session.scalars(sa.select(model.id)).all()
+            output[model.__name__] = object_ids
+
+            if display:
+                print(f"{model.__name__:16s}: ", end='')
+                for obj_id in object_ids:
+                    print(obj_id, end=', ')
+                print()
+
+    return output
+
+
 def safe_merge(session, obj):
     """
     Only merge the object if it has a valid ID,
@@ -392,32 +444,35 @@ class SeeChangeBase:
         str
             The full path to the output json file.
         """
+        json_filepath = filepath
         if not isinstance(self, FileOnDiskMixin):
             if filepath is None:
                 raise ValueError("filepath must be given when caching a non FileOnDiskMixin object")
 
         else:
             if filepath is None:  # use the FileOnDiskMixin filepath as default
-                filepath = self.filepath  # override the filepath argument!
+                filepath = self.filepath  # use this filepath for the data files
+                json_filepath = self.filepath  # use the same filepath for the json file too
                 if self.filepath_extensions is not None and len(self.filepath_extensions) > 0:
-                    filepath += self.filepath_extensions[0]
+                    json_filepath += self.filepath_extensions[0]  # only append this extension to the json filename
 
-            for i, f in enumerate(self.get_fullpath(as_list=True)):
-                if f is None:
+            for i, source_f in enumerate(self.get_fullpath(as_list=True)):
+                if source_f is None:
                     continue
-                new_f = os.path.join(cache_dir, filepath)
+                target_f = os.path.join(cache_dir, filepath)
                 if self.filepath_extensions is not None and i < len(self.filepath_extensions):
-                    new_f += self.filepath_extensions[i]
-                _logger.debug(f"Copying {f} to {new_f}")
-                os.makedirs(os.path.dirname(new_f), exist_ok=True)
-                shutil.copy2(f, new_f)
+                    target_f += self.filepath_extensions[i]
+                _logger.debug(f"Copying {source_f} to {target_f}")
+                os.makedirs(os.path.dirname(target_f), exist_ok=True)
+                shutil.copy2(source_f, target_f)
 
-        filepath = os.path.join(cache_dir, filepath)
-        if not filepath.endswith('.json'):
-            filepath += '.json'
-        self.to_json(filepath)
+        # attach the cache_dir and the .json extension if needed
+        json_filepath = os.path.join(cache_dir, json_filepath)
+        if not json_filepath.endswith('.json'):
+            json_filepath += '.json'
+        self.to_json(json_filepath)
 
-        return filepath
+        return json_filepath
 
     @classmethod
     def copy_from_cache(cls, cache_dir, filepath):
@@ -459,7 +514,16 @@ class SeeChangeBase:
 
         output = cls.from_dict(json_dict)
 
+        # copy any associated files
         if isinstance(output, FileOnDiskMixin):
+            # if fullpath ends in filepath_extensions[0]
+            if (
+                    output.filepath_extensions is not None and
+                    output.filepath_extensions[0] is not None and
+                    full_path.endswith(output.filepath_extensions[0])
+            ):
+                full_path = full_path[:-len(output.filepath_extensions[0])]
+
             for i, target_f in enumerate(output.get_fullpath(as_list=True)):
                 if target_f is None:
                     continue

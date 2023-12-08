@@ -388,7 +388,7 @@ class DataStore:
                 upstreams=upstreams,
             )
             prov.update_id()
-            prov = session.merge( prov )
+            prov = prov.recursive_merge(session)
 
         return prov
 

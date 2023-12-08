@@ -166,9 +166,10 @@ def datastore_factory(
                         process='preprocessing',
                         upstreams=upstreams,
                         parameters=preprocessor.pars.to_dict(),
+                        is_testing=True,
                     )
                     prov.update_id()
-                    prov = session.merge(prov)
+                    prov = prov.recursive_merge(session)
 
                     # if Image already exists on the database, use that instead of this one
                     existing = session.scalars(sa.select(Image).where(Image.filepath == ds.image.filepath)).first()
@@ -208,9 +209,10 @@ def datastore_factory(
                         process='extraction',
                         upstreams=[ds.image.provenance],
                         parameters=extractor.pars.to_dict(),
+                        is_testing=True,
                     )
                     prov.update_id()
-                    prov = session.merge(prov)
+                    prov = prov.recursive_merge(session)
 
                     # if SourceList already exists on the database, use that instead of this one
                     existing = session.scalars(
@@ -244,9 +246,10 @@ def datastore_factory(
                         process='extraction',
                         upstreams=[ds.image.provenance],
                         parameters=extractor.pars.to_dict(),
+                        is_testing=True,
                     )
                     prov.update_id()
-                    prov = session.merge(prov)
+                    prov = prov.recursive_merge(session)
 
                     # if PSF already exists on the database, use that instead of this one
                     existing = session.scalars(
@@ -292,9 +295,10 @@ def datastore_factory(
                         process='astro_cal',
                         upstreams=[ds.sources.provenance],
                         parameters=astrometor.pars.to_dict(),
+                        is_testing=True,
                     )
                     prov.update_id()
-                    prov = session.merge(prov)
+                    prov = prov.recursive_merge(session)
 
                     # check if WCS already exists on the database
                     existing = session.scalars(
@@ -338,9 +342,10 @@ def datastore_factory(
                         process='photo_cal',
                         upstreams=[ds.sources.provenance],
                         parameters=photometor.pars.to_dict(),
+                        is_testing=True,
                     )
                     prov.update_id()
-                    prov = session.merge(prov)
+                    prov = prov.recursive_merge(session)
 
                     # check if ZP already exists on the database
                     existing = session.scalars(

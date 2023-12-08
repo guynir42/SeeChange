@@ -72,7 +72,7 @@ def calc_ptf_weight_flags(data):
 
 @pytest.fixture(scope='session')
 def ptf_downloader(provenance_preprocessing, cache_dir):
-    cache_dir = os.path.join(cache_dir, 'PTF_examples')
+    cache_dir = os.path.join(cache_dir, 'PTF')
 
     def download_ptf_function(filename='PTF201104234316_2_o_44887_11.w.fits'):
         os.makedirs(cache_dir, exist_ok=True)
@@ -164,8 +164,8 @@ def ptf_datastore(datastore_factory, ptf_image):
     ds.delete_everything()
 
 
-# def test_get_ptf_image(ptf_image):
-#     print(ptf_image)
+def test_get_ptf_image(ptf_image):
+    print(ptf_image)
 
 
 # def test_get_all_ptf_images(all_ptf_example_images):

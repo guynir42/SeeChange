@@ -39,7 +39,11 @@ def ztf_filepaths_image_sources_psf(data_dir, persistent_dir):
     output = tuple(
         pathlib.Path(os.path.join(data_dir, filepath)) for filepath in output
     )
-    return output
+    yield output
+
+    for filepath in output:
+        if os.path.isfile(filepath):
+            os.remove(filepath)
 
 
 @pytest.fixture

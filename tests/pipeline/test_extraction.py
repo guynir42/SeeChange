@@ -80,7 +80,7 @@ def test_sep_save_source_list(decam_small_image, provenance_base, extractor):
         code_version=provenance_base.code_version,
         parameters=extractor.pars.get_critical_pars(),
         upstreams=[decam_small_image.provenance],
-        is_testing=True
+        is_testing=True,
     )
     prov.update_id()
     sources.provenance = prov
@@ -139,61 +139,66 @@ def run_sextractor( image, extractor ):
 
 
 def test_sextractor_extract_once( decam_datastore, extractor ):
-    extractor.pars.method = 'sextractor'
-    extractor.pars.subtraction = False
-    extractor.pars.apers = [ 5. ]
-    extractor.pars.threshold = 4.5
-    extractor.pars.test_parameter = uuid.uuid4().hex
-    sourcelist, sourcefile = run_sextractor(decam_datastore.image, extractor)
+    try:
+        extractor.pars.method = 'sextractor'
+        extractor.pars.subtraction = False
+        extractor.pars.apers = [ 5. ]
+        extractor.pars.threshold = 4.5
+        extractor.pars.test_parameter = uuid.uuid4().hex
+        sourcelist, sourcefile = run_sextractor(decam_datastore.image, extractor)
 
-    assert sourcelist.num_sources == 5611
-    assert len(sourcelist.data) == sourcelist.num_sources
-    assert sourcelist.aper_rads == [ 5. ]
-    assert sourcelist._inf_aper_num is None
-    assert sourcelist.inf_aper_num == 0
+        assert sourcelist.num_sources == 5611
+        assert len(sourcelist.data) == sourcelist.num_sources
+        assert sourcelist.aper_rads == [ 5. ]
+        assert sourcelist._inf_aper_num is None
+        assert sourcelist.inf_aper_num == 0
 
-    assert sourcelist.info['SEXAPED1'] == 10.0
-    assert sourcelist.info['SEXAPED2'] == 0.
-    assert sourcelist.info['SEXBKGND'] == pytest.approx( 179.8, abs=0.1 )
+        assert sourcelist.info['SEXAPED1'] == 10.0
+        assert sourcelist.info['SEXAPED2'] == 0.
+        assert sourcelist.info['SEXBKGND'] == pytest.approx( 179.8, abs=0.1 )
 
-    assert sourcelist.x.min() == pytest.approx( 16.0, abs=0.1 )
-    assert sourcelist.x.max() == pytest.approx( 2039.6, abs=0.1 )
-    assert sourcelist.y.min() == pytest.approx( 16.3, abs=0.1 )
-    assert sourcelist.y.max() == pytest.approx( 4087.9, abs=0.1 )
-    assert sourcelist.errx.min() == pytest.approx( 0.0005, abs=1e-4 )
-    assert sourcelist.errx.max() == pytest.approx( 1.05, abs=0.01 )
-    assert sourcelist.erry.min() == pytest.approx( 0.001, abs=1e-3 )
-    assert sourcelist.erry.max() == pytest.approx( 0.62, abs=0.01 )
-    assert ( np.sqrt( sourcelist.varx ) == sourcelist.errx ).all()
-    assert ( np.sqrt( sourcelist.vary ) == sourcelist.erry ).all()
-    assert sourcelist.apfluxadu()[0].min() == pytest.approx( -656.8731, rel=1e-5 )
-    assert sourcelist.apfluxadu()[0].max() == pytest.approx( 2850920.0, rel=1e-5 )
-    snr = sourcelist.apfluxadu()[0] / sourcelist.apfluxadu()[1]
-    assert snr.min() == pytest.approx( -9.91, abs=0.1 )
-    assert snr.max() == pytest.approx( 2348.2, abs=1. )
-    assert snr.mean() == pytest.approx( 146.80, abs=0.1 )
-    assert snr.std() == pytest.approx( 285.4, abs=1. )
+        assert sourcelist.x.min() == pytest.approx( 16.0, abs=0.1 )
+        assert sourcelist.x.max() == pytest.approx( 2039.6, abs=0.1 )
+        assert sourcelist.y.min() == pytest.approx( 16.3, abs=0.1 )
+        assert sourcelist.y.max() == pytest.approx( 4087.9, abs=0.1 )
+        assert sourcelist.errx.min() == pytest.approx( 0.0005, abs=1e-4 )
+        assert sourcelist.errx.max() == pytest.approx( 1.05, abs=0.01 )
+        assert sourcelist.erry.min() == pytest.approx( 0.001, abs=1e-3 )
+        assert sourcelist.erry.max() == pytest.approx( 0.62, abs=0.01 )
+        assert ( np.sqrt( sourcelist.varx ) == sourcelist.errx ).all()
+        assert ( np.sqrt( sourcelist.vary ) == sourcelist.erry ).all()
+        assert sourcelist.apfluxadu()[0].min() == pytest.approx( -656.8731, rel=1e-5 )
+        assert sourcelist.apfluxadu()[0].max() == pytest.approx( 2850920.0, rel=1e-5 )
+        snr = sourcelist.apfluxadu()[0] / sourcelist.apfluxadu()[1]
+        assert snr.min() == pytest.approx( -9.91, abs=0.1 )
+        assert snr.max() == pytest.approx( 2348.2, abs=1. )
+        assert snr.mean() == pytest.approx( 146.80, abs=0.1 )
+        assert snr.std() == pytest.approx( 285.4, abs=1. )
 
-    # Test multiple apertures
-    sourcelist = extractor._run_sextractor_once( decam_datastore.image, apers=[2, 5] )
+        # Test multiple apertures
+        sourcelist = extractor._run_sextractor_once( decam_datastore.image, apers=[2, 5] )
 
-    assert sourcelist.num_sources == 5611    # It *finds* the same things
-    assert len(sourcelist.data) == sourcelist.num_sources
-    assert sourcelist.aper_rads == [ 2., 5. ]
-    assert sourcelist._inf_aper_num is None
-    assert sourcelist.inf_aper_num == 1
+        assert sourcelist.num_sources == 5611    # It *finds* the same things
+        assert len(sourcelist.data) == sourcelist.num_sources
+        assert sourcelist.aper_rads == [ 2., 5. ]
+        assert sourcelist._inf_aper_num is None
+        assert sourcelist.inf_aper_num == 1
 
-    assert sourcelist.info['SEXAPED1'] == 4.0
-    assert sourcelist.info['SEXAPED2'] == 10.0
-    assert sourcelist.info['SEXBKGND'] == pytest.approx( 179.8, abs=0.1 )
-    assert sourcelist.x.min() == pytest.approx( 16.0, abs=0.1 )
-    assert sourcelist.x.max() == pytest.approx( 2039.6, abs=0.1 )
-    assert sourcelist.y.min() == pytest.approx( 16.3, abs=0.1 )
-    assert sourcelist.y.max() == pytest.approx( 4087.9, abs=0.1 )
-    assert sourcelist.apfluxadu(apnum=1)[0].min() == pytest.approx( -656.8731, rel=1e-5 )
-    assert sourcelist.apfluxadu(apnum=1)[0].max() == pytest.approx( 2850920.0, rel=1e-5 )
-    assert sourcelist.apfluxadu(apnum=0)[0].min() == pytest.approx( 89.445114, rel=1e-5 )
-    assert sourcelist.apfluxadu(apnum=0)[0].max() == pytest.approx( 557651.8, rel=1e-5 )
+        assert sourcelist.info['SEXAPED1'] == 4.0
+        assert sourcelist.info['SEXAPED2'] == 10.0
+        assert sourcelist.info['SEXBKGND'] == pytest.approx( 179.8, abs=0.1 )
+        assert sourcelist.x.min() == pytest.approx( 16.0, abs=0.1 )
+        assert sourcelist.x.max() == pytest.approx( 2039.6, abs=0.1 )
+        assert sourcelist.y.min() == pytest.approx( 16.3, abs=0.1 )
+        assert sourcelist.y.max() == pytest.approx( 4087.9, abs=0.1 )
+        assert sourcelist.apfluxadu(apnum=1)[0].min() == pytest.approx( -656.8731, rel=1e-5 )
+        assert sourcelist.apfluxadu(apnum=1)[0].max() == pytest.approx( 2850920.0, rel=1e-5 )
+        assert sourcelist.apfluxadu(apnum=0)[0].min() == pytest.approx( 89.445114, rel=1e-5 )
+        assert sourcelist.apfluxadu(apnum=0)[0].max() == pytest.approx( 557651.8, rel=1e-5 )
+
+    finally:  # cleanup temporary file
+        if 'sourcefile' in locals():
+            sourcefile.unlink( missing_ok=True )
 
 
 def test_run_psfex( decam_datastore, extractor ):

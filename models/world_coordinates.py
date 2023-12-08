@@ -53,6 +53,8 @@ class WorldCoordinates(Base, AutoIDMixin, HasBitFlagBadness):
 
     sources = orm.relationship(
         'SourceList',
+        cascade='save-update, merge, refresh-expire, expunge',
+        passive_deletes=True,
         doc="The source list this world coordinate system is associated with. "
     )
 

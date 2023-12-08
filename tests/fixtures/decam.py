@@ -130,7 +130,10 @@ def decam_filename(data_dir, cache_dir):
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         shutil.copy2(cachedfilename, filename)
 
-    return filename
+    yield filename
+
+    if os.path.isfile(filename):
+        os.remove(filename)
 
 
 @pytest.fixture(scope="session")
@@ -287,6 +290,7 @@ def decam_reference(decam_ref_datastore):
                 ds.wcs.provenance,
                 ds.zp.provenance,
             ],
+            is_testing=True,
         )
         prov.update_id()
         prov = session.merge(prov)

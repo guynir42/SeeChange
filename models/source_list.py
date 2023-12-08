@@ -1,8 +1,4 @@
 import os
-import re
-import pathlib
-
-from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -10,18 +6,13 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.sql.functions import coalesce
 
 import astropy.table
-from astropy.io import fits
 
 from models.base import Base, SmartSession, AutoIDMixin, FileOnDiskMixin, SeeChangeBase, HasBitFlagBadness, _logger
 from models.image import Image
 from models.enums_and_bitflags import (
     SourceListFormatConverter,
-    bitflag_to_string,
-    string_to_bitflag,
-    data_badness_dict,
     source_list_badness_inverse,
 )
 from util.util import ensure_file_does_not_exist
@@ -65,7 +56,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         self._format = SourceListFormatConverter.convert(value)
 
     image_id = sa.Column(
-        sa.ForeignKey('images.id', name='source_lists_image_id_fkey'),
+        sa.ForeignKey('images.id', ondelete='CASCADE', name='source_lists_image_id_fkey'),
         nullable=False,
         index=True,
         doc="ID of the image this source list was generated from. "
@@ -74,6 +65,8 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     image = orm.relationship(
         'Image',
         lazy='selectin',
+        cascade='save-update, merge, refresh-expire, expunge',
+        passive_deletes=True,
         doc="The image this source list was generated from. "
     )
 
