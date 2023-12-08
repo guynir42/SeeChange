@@ -100,6 +100,7 @@ class Provenance(Base):
         "CodeVersion",
         back_populates="provenances",
         cascade="save-update, merge, expunge, refresh-expire",
+        passive_deletes=True,
         lazy='selectin',
     )
 
@@ -128,14 +129,6 @@ class Provenance(Base):
         passive_deletes=True,
         cascade="save-update, merge, expunge, refresh-expire, delete",
         overlaps="upstreams",
-    )
-
-    CodeVersion.provenances = relationship(
-        "Provenance",
-        back_populates="code_version",
-        cascade="save-update, merge, expunge, refresh-expire",
-        foreign_keys="Provenance.code_version_id",
-        passive_deletes=True,
     )
 
     is_bad = sa.Column(
@@ -359,3 +352,10 @@ def insert_new_dataset(mapper, connection, target):
     target.update_id()
 
 
+CodeVersion.provenances = relationship(
+    "Provenance",
+    back_populates="code_version",
+    cascade="save-update, merge, expunge, refresh-expire, delete, delete-orphan",
+    foreign_keys="Provenance.code_version_id",
+    passive_deletes=True,
+)

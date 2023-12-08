@@ -18,9 +18,8 @@ from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.datafile import DataFile
+from models.calibratorfile import CalibratorFile
 from models.reference import Reference
-
-from pipeline.data_store import DataStore
 
 from util.retrydownload import retry_download
 from util.exceptions import SubprocessFailure
@@ -33,56 +32,101 @@ from util.exceptions import SubprocessFailure
 # is called from within another function.
 @pytest.fixture( scope='session' )
 def decam_default_calibrators(cache_dir, data_dir):
-    # try to get the calibrators from the cache folder
-    if os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators')):
-        shutil.copytree(
-            os.path.join(cache_dir, 'DECam_default_calibrators'),
-            os.path.join(data_dir, 'DECam_default_calibrators'),
-            dirs_exist_ok=True,
-        )
-
-    decam = get_instrument_instance( 'DECam' )
-    sections = [ 'N1', 'S1' ]
-    filters = [ 'r', 'i', 'z', 'g']
-    for sec in sections:
-        for calibtype in [ 'flat', 'fringe' ]:
-            for filt in filters:
-                decam._get_default_calibrator( 60000, sec, calibtype=calibtype, filter=filt )
-    decam._get_default_calibrator( 60000, sec, calibtype='linearity' )
-
-    # store the calibration files in the cache folder
-    if not os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators')):
-        os.makedirs(os.path.join(cache_dir, 'DECam_default_calibrators'), exist_ok=True)
-    for folder in os.listdir(os.path.join(data_dir, 'DECam_default_calibrators')):
-        if not os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators', folder)):
-            os.makedirs(os.path.join(cache_dir, 'DECam_default_calibrators', folder), exist_ok=True)
-        for file in os.listdir(os.path.join(data_dir, 'DECam_default_calibrators', folder)):
-            shutil.copy2(
-                os.path.join(data_dir, 'DECam_default_calibrators', folder, file),
-                os.path.join(cache_dir, 'DECam_default_calibrators', folder, file)
+    try:
+        # try to get the calibrators from the cache folder
+        if os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators')):
+            shutil.copytree(
+                os.path.join(cache_dir, 'DECam_default_calibrators'),
+                os.path.join(data_dir, 'DECam_default_calibrators'),
+                dirs_exist_ok=True,
             )
 
-    yield sections, filters
+        decam = get_instrument_instance( 'DECam' )
+        sections = [ 'N1', 'S1' ]
+        filters = [ 'r', 'i', 'z', 'g']
+        for sec in sections:
+            for calibtype in [ 'flat', 'fringe' ]:
+                for filt in filters:
+                    decam._get_default_calibrator( 60000, sec, calibtype=calibtype, filter=filt )
+        decam._get_default_calibrator( 60000, sec, calibtype='linearity' )
 
-    imagestonuke = set()
-    datafilestonuke = set()
+        # store the calibration files in the cache folder
+        if not os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators')):
+            os.makedirs(os.path.join(cache_dir, 'DECam_default_calibrators'), exist_ok=True)
+        for folder in os.listdir(os.path.join(data_dir, 'DECam_default_calibrators')):
+            if not os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators', folder)):
+                os.makedirs(os.path.join(cache_dir, 'DECam_default_calibrators', folder), exist_ok=True)
+            for file in os.listdir(os.path.join(data_dir, 'DECam_default_calibrators', folder)):
+                shutil.copy2(
+                    os.path.join(data_dir, 'DECam_default_calibrators', folder, file),
+                    os.path.join(cache_dir, 'DECam_default_calibrators', folder, file)
+                )
+
+        yield sections, filters
+
+    finally:
+        # print('tear down of decam_default_calibrators')
+        imagestonuke = set()
+        datafilestonuke = set()
+        with SmartSession() as session:
+            for sec in [ 'N1', 'S1' ]:
+                for filt in [ 'r', 'i', 'z', 'g' ]:
+                    info = decam.preprocessing_calibrator_files( 'externally_supplied', 'externally_supplied',
+                                                                 sec, filt, 60000, nofetch=True, session=session )
+                    for filetype in [ 'zero', 'flat', 'dark', 'fringe', 'illumination', 'linearity' ]:
+                        if ( f'{filetype}_fileid' in info ) and ( info[ f'{filetype}_fileid' ] is not None ):
+                            if info[ f'{filetype}_isimage' ]:
+                                imagestonuke.add( info[ f'{filetype}_fileid' ] )
+                            else:
+                                datafilestonuke.add( info[ f'{filetype}_fileid' ] )
+            for imid in imagestonuke:
+                im = session.scalars( sa.select(Image).where(Image.id == imid )).first()
+                im.delete_from_disk_and_database( session=session, commit=False )
+
+            for dfid in datafilestonuke:
+                df = session.scalars( sa.select(DataFile).where(DataFile.id == dfid )).first()
+                df.delete_from_disk_and_database( session=session, commit=False )
+
+            session.commit()
+
+            provs = session.scalars(
+                sa.select(Provenance).where(Provenance.process == 'DECam Default Calibrator')
+            ).all()
+            for prov in provs:
+                datafiles = session.scalars(sa.select(DataFile).where(DataFile.provenance_id == prov.id)).all()
+                images = session.scalars(sa.select(Image).where(Image.provenance_id == prov.id)).all()
+                if len(datafiles) == 0 and len(images) == 0:
+                    session.delete(prov)
+            session.commit()
+
+
+@pytest.fixture(scope='session')
+def provenance_decam_prep(code_version):
+    p = Provenance(
+        process="preprocessing",
+        code_version=code_version,
+        parameters={
+            'steps': None,
+            'calibset': None,
+            'flattype': None,
+            'test_parameter': 'test_value',
+            'preprocessing_steps': ['overscan', 'linearity', 'flat', 'fringe'],
+            'use_sky_subtraction': False,
+        },
+        upstreams=[],
+        is_testing=True,
+    )
+
     with SmartSession() as session:
-        for sec in [ 'N1', 'S1' ]:
-            for filt in [ 'r', 'i', 'z', 'g' ]:
-                info = decam.preprocessing_calibrator_files( 'externally_supplied', 'externally_supplied',
-                                                             sec, filt, 60000, nofetch=True, session=session )
-                for filetype in [ 'zero', 'flat', 'dark', 'fringe', 'illumination', 'linearity' ]:
-                    if ( f'{filetype}_fileid' in info ) and ( info[ f'{filetype}_fileid' ] is not None ):
-                        if info[ f'{filetype}_isimage' ]:
-                            imagestonuke.add( info[ f'{filetype}_fileid' ] )
-                        else:
-                            datafilestonuke.add( info[ f'{filetype}_fileid' ] )
-        for imid in imagestonuke:
-            im = session.get( Image, imid )
-            im.delete_from_disk_and_database( session=session, commit=False )
-        for dfid in datafilestonuke:
-            df = session.get( DataFile, dfid )
-            df.delete_from_disk_and_database( session=session, commit=False )
+        p.code_version = session.merge(code_version)
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+
+    yield p
+
+    with SmartSession() as session:
+        session.delete(p)
         session.commit()
 
 

@@ -154,7 +154,7 @@ def get_all_database_objects(display=False, session=None):
     with SmartSession(session) as session:
         for model in models:
             object_ids = session.scalars(sa.select(model.id)).all()
-            output[model.__name__] = object_ids
+            output[model] = object_ids
 
             if display:
                 print(f"{model.__name__:16s}: ", end='')
@@ -1304,12 +1304,19 @@ class FileOnDiskMixin:
         self.filepath = None
 
         with SmartSession(session) as session:
-            if sa.inspect(self).persistent:
+            info = sa.inspect(self)
+            need_commit = False
+            if info.persistent:
                 session.delete(self)
-                if commit:
-                    session.commit()
-            elif self in session:
-                session.expunge(self)
+                need_commit = True
+            elif info.detached:
+                session.execute(sa.delete(self.__class__).where(self.__class__.id == self.id))
+                need_commit = True
+
+            if commit and need_commit:
+                session.commit()
+            # if self in session:
+            #     session.expunge(self)
 
 
 # load the default paths from the config

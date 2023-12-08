@@ -128,3 +128,14 @@ class CalibratorFile(Base, AutoIDMixin):
               ' which this calibrator file is no longer.  If None, this '
               ' calibrator is valid to the end of time.' )
     )
+
+    def __repr__(self):
+        return (
+            f'<CalibratorFile('
+            f'id={self.id}, '
+            f'type={self.type}, '
+            # f'set={self.calibrator_set}, '
+            f'image_id={self.image_id}, '
+            f'datafile_id={self.datafile_id}, '
+            f'>'
+        )

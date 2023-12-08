@@ -2,18 +2,17 @@ import pytest
 import pathlib
 
 import numpy as np
+import sqlalchemy as sa
 from astropy.io import fits
 
 from models.base import FileOnDiskMixin, SmartSession
 from models.image import Image
-from pipeline.preprocessing import Preprocessor
 
 
-def test_preprocessing( decam_exposure, test_config, preprocessor, decam_default_calibrators ):
+def test_preprocessing(provenance_decam_prep, decam_exposure, test_config, preprocessor, decam_default_calibrators):
     # The decam_default_calibrators fixture is included so that
     # _get_default_calibrators won't be called as a side effect of calls
     # to Preprocessor.run().  (To avoid committing.)
-
     ds = preprocessor.run( decam_exposure, 'N1' )
     assert preprocessor.has_recalculated
 
@@ -102,5 +101,4 @@ def test_preprocessing( decam_exposure, test_config, preprocessor, decam_default
     assert preprocessor._ds.exposure.filter[:1] == 'g'
     assert preprocessor._ds.section_id == 'N1'
     assert set( preprocessor.stepfiles.keys() ) == { 'linearity' }
-
 
