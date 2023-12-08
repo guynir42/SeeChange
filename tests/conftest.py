@@ -188,13 +188,12 @@ def provenance_base(code_version):
         upstreams=[],
         is_testing=True,
     )
+    p.update_id()
 
     with SmartSession() as session:
-        p.code_version = session.merge(code_version)
-        session.add(p)
+        p = p.recursive_merge(session)
+
         session.commit()
-        session.refresh(p)
-        pid = p.id
 
     yield p
 
@@ -215,10 +214,8 @@ def provenance_extra( provenance_base ):
     p.update_id()
 
     with SmartSession() as session:
-        session.add(p)
+        p = p.recursive_merge(session)
         session.commit()
-        session.refresh(p)
-        pid = p.id
 
     yield p
 
@@ -237,12 +234,11 @@ def provenance_preprocessing(code_version):
         upstreams=[],
         is_testing=True,
     )
+    p.update_id()
 
     with SmartSession() as session:
-        p.code_version = session.merge(code_version)
-        session.add(p)
+        p = p.recursive_merge(session)
         session.commit()
-        session.refresh(p)
 
     yield p
 

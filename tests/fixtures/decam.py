@@ -18,7 +18,6 @@ from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.datafile import DataFile
-from models.calibratorfile import CalibratorFile
 from models.reference import Reference
 
 from util.retrydownload import retry_download
@@ -116,12 +115,11 @@ def provenance_decam_prep(code_version):
         upstreams=[],
         is_testing=True,
     )
+    p.update_id()
 
     with SmartSession() as session:
-        p.code_version = session.merge(code_version)
-        session.add(p)
+        p = p.recursive_merge(session)
         session.commit()
-        session.refresh(p)
 
     yield p
 

@@ -20,7 +20,7 @@ from models.decam import DECam
 from tests.conftest import rnd_str
 
 
-def test_exposure_instrument_provenance(sim_exposure1, decam_exposure):
+def test_exposure_instrument_provenance(sim_exposure1):
     with SmartSession() as session:
         sim_exposure1.recursive_merge( session )
         assert sim_exposure1.id is not None

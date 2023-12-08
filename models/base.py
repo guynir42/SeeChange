@@ -423,7 +423,7 @@ class SeeChangeBase:
         will be copied to the cache directory with their original names,
         unless filepath is specified, in which case the cached files will
         have a different name than the files in the data folder (and the database filepath).
-        The filepath (without extensions) will be used to create a JSON file
+        The filepath (with optional first extension) will be used to create a JSON file
         which holds the object's column attributes (i.e., only those that are
         database persistent).
 
