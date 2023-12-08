@@ -10,7 +10,7 @@ import numpy as np
 import sqlalchemy as sa
 
 from util.config import Config
-from models.base import FileOnDiskMixin, SmartSession, CODE_ROOT
+from models.base import FileOnDiskMixin, SmartSession, CODE_ROOT, get_all_database_objects
 from models.provenance import CodeVersion, Provenance
 from models.catalog_excerpt import CatalogExcerpt
 
@@ -42,17 +42,27 @@ def tests_setup_and_teardown():
     # print('Final teardown fixture executed! ')
 
     with SmartSession() as session:
-        # Tests are leaving behind (at least) exposures and provenances.
-        # Ideally, they should all clean up after themselves.  Finding
-        # all of this is a worthwhile TODO, but recursive_merge probably
-        # means that finding all of them is going to be a challenge.
-        # So, make sure that the database is wiped.  Deleting just
-        # provenances and codeversions should do it, because most things
-        # have a cascading foreign key into provenances.
-        # session.execute( sa.text( "DELETE FROM provenances" ) )
-        # session.execute( sa.text( "DELETE FROM code_versions" ) )
-        # session.commit()
-        pass
+        objects = get_all_database_objects(session=session)
+        any_objects = False
+        for Class, ids in objects.items():
+            if Class.__name__ in ['SensorSection', 'CatalogExcerpt']:
+                print(f'There are {len(ids)} {Class.__name__} objects in the database. These are OK to stay.')
+            else:
+                print(f'There are {len(ids)} {Class.__name__} objects in the database. Please make sure to cleanup!')
+                for id in ids:
+                    obj = session.scalars(sa.select(Class).where(Class.id == id)).first()
+                    print(f'  {obj}')
+                    any_objects = True
+
+        # comment this line out if you just want tests to pass quietly
+        if any_objects:
+            raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
+
+        # delete the CodeVersion object (this should remove all provenances as well)
+        session.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
+
+        session.commit()
+
 
 # data that is included in the repo and should be available for tests
 @pytest.fixture(scope="session")
