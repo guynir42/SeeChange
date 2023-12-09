@@ -182,8 +182,8 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
 
     with SmartSession() as session:
         try:
-            session.add(provenance_base)
-            session.add(provenance_extra)
+            provenance_base = session.merge(provenance_base)
+            provenance_extra = session.merge(provenance_extra)
             fixture_ids = [provenance_base.id, provenance_extra.id]
             p1 = Provenance(
                 process="test_downstream_process",
@@ -239,9 +239,9 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
             assert p3_recovered is not None
 
             # check that the downstreams of our fixture provenances have been updated too
-            # base_downstream_ids = [p.id for p in provenance_base.downstreams]
-            # assert all([pid in base_downstream_ids for pid in [pid1, pid2]])
-            # assert pid2 in [p.id for p in provenance_extra.downstreams]
+            base_downstream_ids = [p.id for p in provenance_base.downstreams]
+            assert all([pid in base_downstream_ids for pid in [pid1, pid2]])
+            assert pid2 in [p.id for p in provenance_extra.downstreams]
 
         finally:
             session.execute(sa.delete(Provenance).where(Provenance.id.in_(new_ids)))

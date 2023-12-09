@@ -181,16 +181,16 @@ def code_version():
 
 @pytest.fixture
 def provenance_base(code_version):
-    p = Provenance(
-        process="test_base_process",
-        code_version=code_version,
-        parameters={"test_parameter": uuid.uuid4().hex},
-        upstreams=[],
-        is_testing=True,
-    )
-    p.update_id()
-
     with SmartSession() as session:
+        code_version = session.merge(code_version)
+        p = Provenance(
+            process="test_base_process",
+            code_version=code_version,
+            parameters={"test_parameter": uuid.uuid4().hex},
+            upstreams=[],
+            is_testing=True,
+        )
+        p.update_id()
         p = p.recursive_merge(session)
 
         session.commit()
@@ -204,16 +204,16 @@ def provenance_base(code_version):
 
 @pytest.fixture
 def provenance_extra( provenance_base ):
-    p = Provenance(
-        process="test_base_process",
-        code_version=provenance_base.code_version,
-        parameters={"test_parameter": uuid.uuid4().hex},
-        upstreams=[provenance_base],
-        is_testing=True,
-    )
-    p.update_id()
-
     with SmartSession() as session:
+        provenance_base = provenance_base.recursive_merge(session)
+        p = Provenance(
+            process="test_base_process",
+            code_version=provenance_base.code_version,
+            parameters={"test_parameter": uuid.uuid4().hex},
+            upstreams=[provenance_base],
+            is_testing=True,
+        )
+        p.update_id()
         p = p.recursive_merge(session)
         session.commit()
 
@@ -227,16 +227,17 @@ def provenance_extra( provenance_base ):
 # use this to make all the pre-committed Image fixtures
 @pytest.fixture(scope="session")
 def provenance_preprocessing(code_version):
-    p = Provenance(
-        process="preprocessing",
-        code_version=code_version,
-        parameters={"test_parameter": "test_value"},
-        upstreams=[],
-        is_testing=True,
-    )
-    p.update_id()
-
     with SmartSession() as session:
+        code_version = session.merge(code_version)
+        p = Provenance(
+            process="preprocessing",
+            code_version=code_version,
+            parameters={"test_parameter": "test_value"},
+            upstreams=[],
+            is_testing=True,
+        )
+        p.update_id()
+
         p = p.recursive_merge(session)
         session.commit()
 

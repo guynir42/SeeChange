@@ -101,23 +101,23 @@ def decam_default_calibrators(cache_dir, data_dir):
 
 @pytest.fixture(scope='session')
 def provenance_decam_prep(code_version):
-    p = Provenance(
-        process="preprocessing",
-        code_version=code_version,
-        parameters={
-            'steps': None,
-            'calibset': None,
-            'flattype': None,
-            'test_parameter': 'test_value',
-            'preprocessing_steps': ['overscan', 'linearity', 'flat', 'fringe'],
-            'use_sky_subtraction': False,
-        },
-        upstreams=[],
-        is_testing=True,
-    )
-    p.update_id()
-
     with SmartSession() as session:
+        code_version = session.merge(code_version)
+        p = Provenance(
+            process="preprocessing",
+            code_version=code_version,
+            parameters={
+                'steps': None,
+                'calibset': None,
+                'flattype': None,
+                'test_parameter': 'test_value',
+                'preprocessing_steps': ['overscan', 'linearity', 'flat', 'fringe'],
+                'use_sky_subtraction': False,
+            },
+            upstreams=[],
+            is_testing=True,
+        )
+        p.update_id()
         p = p.recursive_merge(session)
         session.commit()
 
