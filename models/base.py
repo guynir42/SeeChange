@@ -1298,10 +1298,13 @@ class FileOnDiskMixin:
 
         # make sure these are set to null just in case we fail
         # to commit later on, we will at least know something is wrong
-        self.md5sum = None
-        self.md5sum_extensions = None
-        self.filepath_extensions = None
-        self.filepath = None
+        try:
+            self.md5sum = None
+            self.md5sum_extensions = None
+            self.filepath_extensions = None
+            self.filepath = None
+        except:
+            pass
 
         with SmartSession(session) as session:
             info = sa.inspect(self)

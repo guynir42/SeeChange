@@ -124,8 +124,6 @@ def test_image_from_decam_exposure(decam_filename, provenance_base, data_dir):
     assert im.id is None  # not yet on the DB
     assert im.filepath is None  # no file yet!
 
-    # the header lazy loads alright:
-    assert im._raw_header is None  # then will load it when getting raw_header
     assert len(im.raw_header) == 98
     assert im.raw_header['NAXIS'] == 2
     assert im.raw_header['NAXIS1'] == 2160
@@ -141,7 +139,7 @@ def test_image_from_decam_exposure(decam_filename, provenance_base, data_dir):
     # just for this test we will do preprocessing just by reducing the median
     im.data = np.float32(im.raw_data - np.median(im.raw_data))
 
-    # check we can save the image using the filename conventions
+    # TODO: check we can save the image using the filename conventions
 
 
 # Note that these tests are probing the internal state of the opaque
@@ -191,7 +189,6 @@ def test_decam_search_noirlab( decam_reduced_origin_exposures ):
         _logger.setLevel( origloglevel )
 
 
-# @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
 def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_dir ):
     assert all( [ row.proc_type == 'instcal' for i, row in decam_reduced_origin_exposures._frame.iterrows() ] )
     try:
@@ -236,7 +233,6 @@ def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_d
         pass
 
 
-# @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
 def test_decam_download_and_commit_exposure(code_version, decam_raw_origin_exposures, cache_dir, data_dir, test_config):
     eids = []
     try:

@@ -26,10 +26,8 @@ pytest_plugins = [
 ]
 
 
-# idea taken from: https://shay-palachy.medium.com/temp-environment-variables-for-pytest-7253230bd777
 # this fixture should be the first thing loaded by the test suite
-@pytest.fixture(scope="session", autouse=True)
-def tests_setup_and_teardown():
+def pytest_sessionstart(pytest_session):
     # Will be executed before the first test
     # print('Initial setup fixture loaded! ')
 
@@ -38,9 +36,10 @@ def tests_setup_and_teardown():
     Config.get(configfile=test_config_file, setdefault=True)
     FileOnDiskMixin.configure_paths()
 
-    yield
-    # Will be executed after the last test
-    # print('Final teardown fixture executed! ')
+
+# This will be executed after the last test
+def pytest_sessionfinish(pytest_session, exitstatus):
+    print('Final teardown fixture executed! ')
     with SmartSession() as session:
         # first get rid of any Exposure loading Provenances, if they have no Exposures attached
         provs = session.scalars(sa.select(Provenance).where(Provenance.process == 'load_exposure'))
@@ -68,11 +67,11 @@ def tests_setup_and_teardown():
         # delete the CodeVersion object (this should remove all provenances as well)
         session.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
 
+        session.commit()
+
         # comment this line out if you just want tests to pass quietly
         if any_objects:
             raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
-
-        session.commit()
 
 
 # data that is included in the repo and should be available for tests

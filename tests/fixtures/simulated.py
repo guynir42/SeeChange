@@ -64,6 +64,7 @@ def generate_exposure_fixture():
         e = make_sim_exposure()
         add_file_to_exposure(e)
         commit_exposure(e)
+
         yield e
 
         with SmartSession() as session:
@@ -71,6 +72,7 @@ def generate_exposure_fixture():
             if sa.inspect( e ).persistent:
                 session.delete(e)
                 session.commit()
+
     return new_exposure
 
 
@@ -86,7 +88,15 @@ def sim_exposure_filter_array():
     e.filter_array = ['r', 'g', 'r', 'i']
     add_file_to_exposure(e)
     commit_exposure(e)
+
     yield e
+
+    if 'e' in locals():
+        with SmartSession() as session:
+            e = e.recursive_merge(session)
+            if sa.inspect( e ).persistent:
+                session.delete(e)
+                session.commit()
 
 
 # tools for making Image fixtures
@@ -179,9 +189,17 @@ def generate_image_fixture(commit=True):
 
         with SmartSession() as session:
             im = session.merge(im)
+            exp = im.exposure
             im.delete_from_disk_and_database(session=session, commit=True)
             if sa.inspect( im ).persistent:
-                session.execute(sa.delete(Image).where(Image.id == im.id))
+                session.delete(im)
+                session.commit()
+
+            if im in session:
+                session.expunge(im)
+
+            if exp is not None and sa.inspect( exp ).persistent:
+                session.delete(exp)
                 session.commit()
 
     return new_image
@@ -301,9 +319,6 @@ def sim_sources(sim_image1):
 
     yield s
 
-    try:
-        with SmartSession() as session:
-            s = s.recursive_merge(session)
-            s.delete_from_disk_and_database(session=session, commit=True)
-    except Exception as e:
-        warnings.warn(str(e))
+    with SmartSession() as session:
+        s = s.recursive_merge(session)
+        s.delete_from_disk_and_database(session=session, commit=True)

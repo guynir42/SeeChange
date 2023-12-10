@@ -98,25 +98,36 @@ def test_image_no_null_values(provenance_base):
 
 
 def test_image_must_have_md5(sim_image_uncommitted, provenance_base):
-    im = sim_image_uncommitted
-    assert im.md5sum is None
-    assert im.md5sum_extensions is None
+    try:
+        im = sim_image_uncommitted
+        assert im.md5sum is None
+        assert im.md5sum_extensions is None
 
-    im.provenance = provenance_base
-    _ = ImageCleanup.save_image(im, archive=False)
+        im.provenance = provenance_base
+        _ = ImageCleanup.save_image(im, archive=False)
 
-    im.md5sum = None
-    with SmartSession() as session:
-        im.recursive_merge(session)
-        with pytest.raises(IntegrityError, match='violates check constraint'):
+        im.md5sum = None
+        with SmartSession() as session:
+            im.recursive_merge(session)
+            with pytest.raises(IntegrityError, match='violates check constraint'):
+                session.add(im)
+                session.commit()
+            session.rollback()
+
+            # adding md5sums should fix this problem
+            _2 = ImageCleanup.save_image(im, archive=True)
             session.add(im)
             session.commit()
-        session.rollback()
 
-        # adding md5sums should fix this problem
-        _2 = ImageCleanup.save_image(im, archive=True)
-        session.add(im)
-        session.commit()
+    finally:
+        with SmartSession() as session:
+            im = im.recursive_merge(session)
+            exp = im.exposure
+            im.delete_from_disk_and_database(session)
+
+            if sa.inspect(exp).persistent:
+                session.delete(exp)
+                session.commit()
 
 
 def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archive, test_config):
@@ -180,6 +191,12 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             assert im.md5sum is None
 
     finally:
+        with SmartSession() as session:
+            exp = session.merge(im.exposure)
+
+            if sa.inspect(exp).persistent:
+                session.delete(exp)
+                session.commit()
         test_config.set_value('storage.images.single_file', single_fileness)
 
 
@@ -260,49 +277,65 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
                     assert localmd5s[fullpath].hexdigest() == md5sum.hex
 
     finally:
+        with SmartSession() as session:
+            im = im.recursive_merge(session)
+            exp = im.exposure
+            im.delete_from_disk_and_database(session)
+
+            if sa.inspect(exp).persistent:
+                session.delete(exp)
+                session.commit()
         test_config.set_value('storage.images.single_file', single_fileness)
 
 
 def test_image_save_justheader( sim_image1 ):
-    sim_image1.data = np.full( (64, 32), 0.125, dtype=np.float32 )
-    sim_image1.flags = np.random.randint(0, 100, size=sim_image1.data.shape, dtype=np.uint16)
-    sim_image1.weight = np.full( (64, 32), 4., dtype=np.float32 )
+    try:
+        sim_image1.data = np.full( (64, 32), 0.125, dtype=np.float32 )
+        sim_image1.flags = np.random.randint(0, 100, size=sim_image1.data.shape, dtype=np.uint16)
+        sim_image1.weight = np.full( (64, 32), 4., dtype=np.float32 )
 
-    archive = sim_image1.archive
+        archive = sim_image1.archive
 
-    icl = ImageCleanup.save_image( sim_image1, archive=True )
-    names = sim_image1.get_fullpath( download=False )
-    assert names[0].endswith('.image.fits')
-    assert names[1].endswith('.flags.fits')
-    assert names[2].endswith('.weight.fits')
+        icl = ImageCleanup.save_image( sim_image1, archive=True )
+        names = sim_image1.get_fullpath( download=False )
+        assert names[0].endswith('.image.fits')
+        assert names[1].endswith('.flags.fits')
+        assert names[2].endswith('.weight.fits')
 
-    # This is tested elsewhere, but for completeness make sure the
-    # md5sum of the file on the archive is what's expected
-    info = archive.get_info( pathlib.Path( names[0] ).relative_to( FileOnDiskMixin.local_path ) )
-    assert uuid.UUID( info['md5sum'] ) == sim_image1.md5sum_extensions[0]
+        # This is tested elsewhere, but for completeness make sure the
+        # md5sum of the file on the archive is what's expected
+        info = archive.get_info( pathlib.Path( names[0] ).relative_to( FileOnDiskMixin.local_path ) )
+        assert uuid.UUID( info['md5sum'] ) == sim_image1.md5sum_extensions[0]
 
-    sim_image1._raw_header['ADDEDKW'] = 'This keyword was added'
-    sim_image1.data = np.full( (64, 32), 0.5, dtype=np.float32 )
-    sim_image1.weight = np.full( (64, 32), 2., dtype=np.float32 )
+        sim_image1._raw_header['ADDEDKW'] = 'This keyword was added'
+        sim_image1.data = np.full( (64, 32), 0.5, dtype=np.float32 )
+        sim_image1.weight = np.full( (64, 32), 2., dtype=np.float32 )
 
-    origimmd5sum = sim_image1.md5sum_extensions[0]
-    origwtmd5sum = sim_image1.md5sum_extensions[1]
-    sim_image1.save( only_image=True, just_update_header=True )
+        origimmd5sum = sim_image1.md5sum_extensions[0]
+        origwtmd5sum = sim_image1.md5sum_extensions[1]
+        sim_image1.save( only_image=True, just_update_header=True )
 
-    # Make sure the md5sum is different since the image is different, but that the weight is the same
-    assert sim_image1.md5sum_extensions[0] != origimmd5sum
-    assert sim_image1.md5sum_extensions[1] == origwtmd5sum
+        # Make sure the md5sum is different since the image is different, but that the weight is the same
+        assert sim_image1.md5sum_extensions[0] != origimmd5sum
+        assert sim_image1.md5sum_extensions[1] == origwtmd5sum
 
-    # Make sure the archive has the new image
-    info = archive.get_info( pathlib.Path( names[0] ).relative_to( FileOnDiskMixin.local_path ) )
-    assert uuid.UUID( info['md5sum'] ) == sim_image1.md5sum_extensions[0]
+        # Make sure the archive has the new image
+        info = archive.get_info( pathlib.Path( names[0] ).relative_to( FileOnDiskMixin.local_path ) )
+        assert uuid.UUID( info['md5sum'] ) == sim_image1.md5sum_extensions[0]
 
-    with fits.open( names[0] ) as hdul:
-        assert hdul[0].header['ADDEDKW'] == 'This keyword was added'
-        assert ( hdul[0].data == np.full( (64, 32), 0.125, dtype=np.float32 ) ).all()
+        with fits.open( names[0] ) as hdul:
+            assert hdul[0].header['ADDEDKW'] == 'This keyword was added'
+            assert ( hdul[0].data == np.full( (64, 32), 0.125, dtype=np.float32 ) ).all()
 
-    with fits.open( names[2] ) as hdul:
-        assert ( hdul[0].data == np.full( (64, 32), 4., dtype=np.float32 ) ).all()
+        with fits.open( names[2] ) as hdul:
+            assert ( hdul[0].data == np.full( (64, 32), 4., dtype=np.float32 ) ).all()
+
+    finally:
+        with SmartSession() as session:
+            exp = session.merge(sim_image1.exposure)
+            if sa.inspect(exp).persistent:
+                session.delete(exp)
+                session.commit()
 
 
 def test_image_save_onlyimage( sim_image1 ):
@@ -698,7 +731,11 @@ def test_multiple_images_badness(
             session.autoflush = False
             for im in images:
                 im = im.recursive_merge(session)
+                exp = im.exposure
                 im.delete_from_disk_and_database(session=session, commit=False)
+
+                if exp is not None and sa.inspect(exp).persistent:
+                    session.delete(exp)
 
             session.commit()
 
@@ -1251,6 +1288,16 @@ def test_image_multifile(sim_image_uncommitted, provenance_base, test_config):
             assert np.array_equal(hdul[0].data, im.flags)
 
     finally:
+        with SmartSession() as session:
+            im = im.recursive_merge(session)
+            exp = im.exposure
+            im.delete_from_disk_and_database(session=session, commit=False)
+
+            if exp is not None and sa.inspect(exp).persistent:
+                session.delete(exp)
+
+            session.commit()
+
         test_config.set_value('storage.images.single_file', single_fileness)
 
 
