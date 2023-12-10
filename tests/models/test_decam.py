@@ -125,6 +125,7 @@ def test_image_from_decam_exposure(decam_filename, provenance_base, data_dir):
     assert im.filepath is None  # no file yet!
 
     # the header lazy loads alright:
+    assert im._raw_header is None  # then will load it when getting raw_header
     assert len(im.raw_header) == 98
     assert im.raw_header['NAXIS'] == 2
     assert im.raw_header['NAXIS1'] == 2160
@@ -190,7 +191,7 @@ def test_decam_search_noirlab( decam_reduced_origin_exposures ):
         _logger.setLevel( origloglevel )
 
 
-@pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
+# @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
 def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_dir ):
     assert all( [ row.proc_type == 'instcal' for i, row in decam_reduced_origin_exposures._frame.iterrows() ] )
     try:
@@ -235,7 +236,7 @@ def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_d
         pass
 
 
-@pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
+# @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
 def test_decam_download_and_commit_exposure(code_version, decam_raw_origin_exposures, cache_dir, data_dir, test_config):
     eids = []
     try:
@@ -261,7 +262,6 @@ def test_decam_download_and_commit_exposure(code_version, decam_raw_origin_expos
             for i, exposure in zip( expdexes, exposures ):
                 eids.append( exposure.id )
                 fname = pathlib.Path( decam_raw_origin_exposures._frame.iloc[i].archive_filename ).name
-                print(fname)
 
                 # cache the files
                 os.makedirs( os.path.join( cache_dir, 'DECam' ), exist_ok=True )

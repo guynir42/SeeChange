@@ -130,6 +130,9 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     def header( self, value ):
         self._header = value
 
+    # Right now, this may be PSF specific, in that it assumes
+    # there's a header and data from a FITS file, and a votable
+    # from the xml file
     @property
     def info( self ):
         """Associated info for this PSF; something opaque.
@@ -147,9 +150,6 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     def info( self, value ):
         self._info = value
 
-    # Right now, this may be PSF specific, in that it assumes
-    # there's a header and data from a FITS file, and a votable
-    # from the xml file
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object"""
         return psf_badness_inverse

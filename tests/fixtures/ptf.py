@@ -98,6 +98,8 @@ def ptf_downloader(provenance_preprocessing, cache_dir):
             image.data = read_ptf_data(cachedpath)
             image.weight, image.flags = calc_ptf_weight_flags(image.data)
             image.provenance = provenance_preprocessing
+            image.set_corners_from_header_wcs()
+            image.calculate_coordinates()
             # image.invent_filepath()
             image.save()
             # os.makedirs(os.path.dirname(image.get_fullpath()), exist_ok=True)

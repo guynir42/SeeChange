@@ -5,13 +5,10 @@ import sqlalchemy as sa
 
 from models.base import SmartSession, FileOnDiskMixin
 from models.provenance import Provenance
-from models.exposure import Exposure
 from models.image import Image, image_upstreams_association_table
 from models.source_list import SourceList
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
-from models.cutouts import Cutouts
-from models.measurements import Measurements
 
 from pipeline.top_level import Pipeline
 
@@ -58,9 +55,6 @@ def check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session
     assert zp is not None
     assert ds.zp.id == zp.id
 
-    # sub = session.scalars(
-    #     sa.select(Image).where(Image.new_image_id == im.id, Image.ref_image_id == ref_id)
-    # ).first()
     aliased_table = sa.orm.aliased(image_upstreams_association_table)
     sub = session.scalars(
         sa.select(Image).join(

@@ -41,7 +41,6 @@ def tests_setup_and_teardown():
     yield
     # Will be executed after the last test
     # print('Final teardown fixture executed! ')
-    # print('tear down of first fixture')
     with SmartSession() as session:
         # first get rid of any Exposure loading Provenances, if they have no Exposures attached
         provs = session.scalars(sa.select(Provenance).where(Provenance.process == 'load_exposure'))
@@ -70,8 +69,8 @@ def tests_setup_and_teardown():
         session.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
 
         # comment this line out if you just want tests to pass quietly
-        # if any_objects:
-        #     raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
+        if any_objects:
+            raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
 
         session.commit()
 
@@ -170,13 +169,6 @@ def code_version():
         cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.id == 'test_v1.0.0')).first()
 
     yield cv
-
-    # try:
-    #     with SmartSession() as session:
-    #         session.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
-    #         session.commit()
-    # except Exception as e:
-    #     warnings.warn(str(e))
 
 
 @pytest.fixture

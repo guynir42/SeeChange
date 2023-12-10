@@ -184,7 +184,7 @@ class ImageAligner:
                               filter=image.filter, section_id=image.section_id,
                               project=image.project, target=image.target,
                               preproc_bitflag=image.preproc_bitflag,
-                              astro_cal_done=True, _bitflag=0,
+                              astro_cal_done=True, _bitflag=0,  # external scope will set _upstream_bitflag
                               ra=target.ra, dec=target.dec,
                               gallat=target.gallat, gallon=target.gallon,
                               ecllat=target.ecllat, ecllon=target.ecllon,

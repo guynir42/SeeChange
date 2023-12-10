@@ -180,6 +180,20 @@ class Provenance(Base):
     def upstream_hashes(self):
         return self.upstream_ids  # hash and ID are the same now
 
+    @property
+    def downstream_ids(self):
+        if self.downstreams is None:
+            return []
+        else:
+            ids = set([u.id for u in self.downstreams])
+            ids = list(ids)
+            ids.sort()
+            return ids
+
+    @property
+    def downstream_hashes(self):
+        return self.downstream_ids  # hash and ID are the same now
+
     def __init__(self, **kwargs):
         """
         Create a provenance object.
@@ -243,12 +257,12 @@ class Provenance(Base):
         )
 
     def __setattr__(self, key, value):
-        if key == 'upstreams':
+        if key in ['upstreams', 'downstreams']:
             if value is None:
                 super().__setattr__(key, [])
             elif isinstance(value, list):
                 if not all([isinstance(u, Provenance) for u in value]):
-                    raise ValueError('upstreams must be a list of Provenance objects')
+                    raise ValueError(f'{key} must be a list of Provenance objects')
 
                 # make sure no duplicate upstreams are added
                 hashes = set([u.id for u in value])
@@ -260,7 +274,7 @@ class Provenance(Base):
 
                 super().__setattr__(key, new_list)
             else:
-                raise ValueError('upstreams must be a list of Provenance objects')
+                raise ValueError(f'{key} must be a list of Provenance objects')
         else:
             super().__setattr__(key, value)
 

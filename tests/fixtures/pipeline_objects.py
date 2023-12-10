@@ -146,7 +146,7 @@ def datastore_factory(
         code_version = args[0].provenance.code_version
         ds = DataStore(*args)  # make a new datastore
 
-        with (SmartSession(session) as session):
+        with SmartSession(session) as session:
             code_version = session.merge(code_version)
             if ds.image is not None:  # if starting from an externally provided Image, must merge it first
                 ds.image = ds.image.recursive_merge(session)

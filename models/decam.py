@@ -421,8 +421,6 @@ class DECam(Instrument):
         filepath = reldatadir / calibtype / rempath.name
         fileabspath = datadir / calibtype / rempath.name
 
-        if not fileabspath.is_file():
-            print(f'downloading: {fileabspath}')
         retry_download( url, fileabspath )
 
         with SmartSession( session ) as dbsess:

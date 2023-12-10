@@ -1125,17 +1125,18 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         This happens when the objects are used to produce, e.g., a coadd or
         a subtraction image, but they would not necessarily be loaded automatically from the DB.
         To load those products (assuming all were previously committed with their own provenances)
-        use the load_upstream_products() method.
+        use the load_upstream_products() method on each of the upstream images.
 
         IMPORTANT RESTRICTION: to maintain the ability of a downstream to recover its upstreams
         using the provenance (which is the definition of why we need a provenance) it is not
-        allowed for images with the same provenance to have related products (e.g., a SourceList)
-        that have different provenances.  This is because the downstream would not know which
-        SourceList to use.  Images from different instruments, or a coadded reference vs.
-        a new image, would have different provenances, so their products could (and indeed must)
-        have different provenances. But images from the same instrument with the same provenance
-        should all be produced using the same code and parameters, otherwise it will be impossible
-        to know which product was processed in which way.
+        allowed for different images with the same provenance to have related products
+        (e.g., a SourceList) that have different provenances.  This is because the downstream
+        would not know which SourceList to use.  Images from different instruments, or a
+        coadded reference vs. a new image, would have different provenances,
+        so their products could (and indeed must) have different provenances.
+        But images from the same instrument with the same provenance  should all
+        be produced using the same code and parameters, otherwise it will be
+        impossible to know which product was processed in which way.
 
         Returns
         -------
@@ -1377,6 +1378,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     sa.select(ZeroPoint).where(ZeroPoint.sources_id == s.id)
                 ).all()
 
+            # TODO: replace with a relationship to downstream_images (see issue #151)
             # now look for other images that were created based on this one
             # ref: https://docs.sqlalchemy.org/en/20/orm/join_conditions.html#self-referential-many-to-many
             images = session.scalars(

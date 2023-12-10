@@ -134,7 +134,7 @@ class CalibratorFile(Base, AutoIDMixin):
             f'<CalibratorFile('
             f'id={self.id}, '
             f'type={self.type}, '
-            # f'set={self.calibrator_set}, '
+            # f'set={self.calibrator_set}, '  # TODO: there's some issue loading the calibrator_set
             f'image_id={self.image_id}, '
             f'datafile_id={self.datafile_id}, '
             f'>'

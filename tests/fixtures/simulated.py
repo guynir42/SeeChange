@@ -74,13 +74,9 @@ def generate_exposure_fixture():
     return new_exposure
 
 
-def inject_exposure_fixture(name):
-    globals()[name] = generate_exposure_fixture()
-
-
 # this will inject 10 exposures named sim_exposure1, sim_exposure2, etc.
 for i in range(1, 10):
-    inject_exposure_fixture(f'sim_exposure{i}')
+    globals()[f'sim_exposure{i}'] = generate_exposure_fixture()
 
 
 @pytest.fixture
@@ -191,13 +187,9 @@ def generate_image_fixture(commit=True):
     return new_image
 
 
-def inject_sim_image_fixture(image_name):
-    globals()[image_name] = generate_image_fixture()
-
-
 # this will inject 10 images named sim_image1, sim_image2, etc.
 for i in range(1, 10):
-    inject_sim_image_fixture(f'sim_image{i}')
+    globals()[f'sim_image{i}'] = generate_image_fixture()
 
 
 # use this Image if you want the test to do the saving
@@ -278,7 +270,7 @@ def sim_reference(provenance_preprocessing, provenance_extra):
 
 
 @pytest.fixture
-def sim_sources(sim_image1, provenance_extra):
+def sim_sources(sim_image1):
     num = 100
     x = np.random.uniform(0, sim_image1.raw_data.shape[1], num)
     y = np.random.uniform(0, sim_image1.raw_data.shape[0], num)
@@ -292,8 +284,16 @@ def sim_sources(sim_image1, provenance_extra):
     )
     s = SourceList(image=sim_image1, data=data, format='sepnpy')
 
+    prov = Provenance(
+        code_version=sim_image1.provenance.code_version,
+        process='extraction',
+        parameters={'test_parameter': 'test_value'},
+        upstreams=[sim_image1.provenance],
+        is_testing=True,
+    )
+
     with SmartSession() as session:
-        s.provenance = provenance_extra
+        s.provenance = prov
         s = s.recursive_merge(session)
         s.save()
         session.add(s)
