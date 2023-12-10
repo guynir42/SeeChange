@@ -27,7 +27,8 @@ pytest_plugins = [
 
 
 # this fixture should be the first thing loaded by the test suite
-def pytest_sessionstart(pytest_session):
+# (session is the pytest session, not the SQLAlchemy session)
+def pytest_sessionstart(session):
     # Will be executed before the first test
     # print('Initial setup fixture loaded! ')
 
@@ -37,8 +38,8 @@ def pytest_sessionstart(pytest_session):
     FileOnDiskMixin.configure_paths()
 
 
-# This will be executed after the last test
-def pytest_sessionfinish(pytest_session, exitstatus):
+# This will be executed after the last test (session is the pytest session, not the SQLAlchemy session)
+def pytest_sessionfinish(session, exitstatus):
     print('Final teardown fixture executed! ')
     with SmartSession() as session:
         # first get rid of any Exposure loading Provenances, if they have no Exposures attached
