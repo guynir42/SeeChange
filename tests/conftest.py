@@ -40,7 +40,7 @@ def pytest_sessionstart(session):
 
 # This will be executed after the last test (session is the pytest session, not the SQLAlchemy session)
 def pytest_sessionfinish(session, exitstatus):
-    print('Final teardown fixture executed! ')
+    # print('Final teardown fixture executed! ')
     with SmartSession() as session:
         # first get rid of any Exposure loading Provenances, if they have no Exposures attached
         provs = session.scalars(sa.select(Provenance).where(Provenance.process == 'load_exposure'))
