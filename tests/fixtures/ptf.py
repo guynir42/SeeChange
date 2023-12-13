@@ -3,120 +3,20 @@ import os
 import shutil
 import requests
 
-import scipy
-import numpy as np
 import sqlalchemy as sa
 from bs4 import BeautifulSoup
-from astropy.io import fits
+from datetime import datetime
 
-from models.base import SmartSession, FileOnDiskMixin, _logger
-from models.enums_and_bitflags import BitFlagConverter
+from models.base import SmartSession, _logger
 from models.ptf import PTF  # need this import to make sure PTF is added to the Instrument list
 from models.exposure import Exposure
-from models.image import Image
 from util.retrydownload import retry_download
-
-
-# TODO: replace this by a proper PTF Instrument class
-def read_ptf_data(filepath):
-    """Read a PTF image file and return the data
-    """
-    with fits.open(filepath) as hdu:
-        data = hdu[0].data
-        return data
-
-
-# TODO: replace this by a proper PTF Instrument class
-def read_ptf_header(filepath):
-    """Read a PTF image file and read some header keywords
-    """
-    output = {}
-    with fits.open(filepath) as hdu:
-        header = hdu[0].header
-        output['raw_header'] = header
-        output['ra'] = header['TELRA']  # in degrees
-        output['dec'] = header['TELDEC']  # in degrees
-        output['exp_time'] = header['AEXPTIME']  # actual exposure time
-        output['filter'] = header['FILTER']  # filter name
-        output['mjd'] = header['OBSMJD']  # MJD of the observation
-        output['end_mjd'] = header['OBSMJD'] + header['AEXPTIME'] / 86400.  # MJD of the end of the observation
-        output['project'] = 'PTF'
-        output['target'] = header['OBJECT']  # target name
-        output['section_id'] = header['CCDID']
-        output['telescope'] = 'Palomar 48 inch'
-        output['instrument'] = 'PTF'
-        output['bkg_mean_estimate'] = header['MEDSKY']
-        output['bkg_rms_estimate'] = header['SKYSIG']
-        output['type'] = 'Sci'
-        output['format'] = 'fits'
-
-        # preproc_bitflag??
-
-        return output
-
-
-# TODO: replace this by a proper PTF Instrument class
-def calc_ptf_weight_flags(data, gain=1.0, read_noise=0.0, saturation_limit=50000):
-    """Calculate the weight and flags for a PTF image
-
-    Parameters
-    ----------
-    data : numpy.ndarray
-        The data array of the image.
-    gain : float
-        The gain of the detector (in e-/ADU). Default: 1.0
-        This is needed to calculate the noise from the background/sources.
-    read_noise : float
-        The read noise of the detector (in e-). Default: 0.0
-        This is needed to added to the Poisson noise from the background/sources.
-        If the dark current's noise is substantial, it should be included in this value,
-        after applying the exposure time.
-    saturation_limit : float
-        The saturation limit of the detector (in ADU). Default: 50000
-    """
-    try:
-        gain = float(gain)
-    except ValueError:
-        raise ValueError(f"gain should be a float, not {gain}")
-
-    try:
-        read_noise = float(read_noise)
-    except ValueError:
-        raise ValueError(f"read_noise should be a float, not {read_noise}")
-
-    try:
-        saturation_limit = float(saturation_limit)
-    except ValueError:
-        raise ValueError(f"saturation_limit should be a float, not {saturation_limit}")
-
-    # the following lines can be used to estimate the noise using a 3x3 filter,
-    # but this is not accurate around stars, so I think we should just trust the gain/Poisson noise
-    # sz = 3  # size of the box for the background calculation (should this be a tunable parameter?)
-    # m = scipy.signal.convolve2d(data, np.ones((sz, sz)), mode="same") / sz ** 2
-    # m2 = scipy.signal.convolve2d( (data - m) ** 2, np.ones((sz, sz)), mode="same") / sz ** 2
-    # noise_rms = np.sqrt(m2)
-
-    # # smooth the noise to avoid unusually high or low values
-    # noise_rms = scipy.ndimage.median_filter(noise_rms, size=3)
-
-    # assume Poisson noise + read noise
-    noise_rms = read_noise / gain + np.sqrt(data / gain)
-    weight = 1 / noise_rms ** 2
-
-    flags = np.zeros_like(data, dtype=np.int32)
-    flags[data > saturation_limit] = BitFlagConverter.convert('saturated')
-    flags[np.isnan(data)] = BitFlagConverter.convert('bad pixel')
-    flags[np.isnan(weight) | (weight == 0)] = BitFlagConverter.convert('zero weight')
-    weight[np.isnan(weight)] = 0
-
-    return weight, flags
 
 
 @pytest.fixture(scope='session')
 def ptf_downloader(provenance_preprocessing, data_dir, cache_dir):
     cache_dir = os.path.join(cache_dir, 'PTF')
 
-    # def download_ptf_function(filename='PTF201104234316_2_o_44887_11.w.fits'):
     def download_ptf_function(filename='PTF201104291667_2_o_45737_11.w.fits'):
 
         os.makedirs(cache_dir, exist_ok=True)
@@ -140,28 +40,6 @@ def ptf_downloader(provenance_preprocessing, data_dir, cache_dir):
             shutil.copy(cachedpath, destination)
 
         exposure = Exposure(filepath=filename)
-
-        # # can we load the Image object from the cache?
-        # if os.path.isfile(cachedpath + '.json'):
-        #     image = Image.copy_from_cache(cache_dir, filename)
-        #     image.provenance = provenance_preprocessing
-        # else:
-        #     hdr_dict = read_ptf_header(cachedpath)
-        #     image = Image(**hdr_dict)
-        #     image.data = read_ptf_data(cachedpath)
-        #
-        #     image.weight, image.flags = calc_ptf_weight_flags(
-        #         image.data,
-        #         image.raw_header['GAIN'],
-        #         image.raw_header['READNOI'],  # TODO: do we need the dark current also??
-        #     )
-        #     image.provenance = provenance_preprocessing
-        #     image.set_corners_from_header_wcs()
-        #     image.calculate_coordinates()
-        #     image.save()
-        #
-        #     result = image.copy_to_cache(cache_dir, filename)
-        #     assert result == cachedpath + '.json'
 
         return exposure
 
@@ -196,26 +74,6 @@ def ptf_exposure(ptf_downloader):
     exposure.delete_from_disk_and_database()
 
 
-@pytest.fixture(scope='session')
-def all_ptf_expsoures(ptf_downloader):
-    url = f'https://portal.nersc.gov/project/m2218/pipeline/test_images/'
-    r = requests.get(url)
-    soup = BeautifulSoup(r.text, 'html.parser')
-    links = soup.find_all('a')
-    filenames = [link.get('href') for link in links if link.get('href').endswith('.fits')]
-    exposures = []
-    for filename in filenames:
-        new_image = ptf_downloader(filename=filename)
-        exposures.append(new_image)
-
-    yield exposures
-
-    with SmartSession() as session:
-        for exposure in exposures:
-            exposure.delete_from_disk_and_database(session=session, commit=False)
-        session.commit()
-
-
 @pytest.fixture
 def ptf_datastore(datastore_factory, ptf_exposure, cache_dir):
     cache_dir = os.path.join(cache_dir, 'PTF')
@@ -230,14 +88,78 @@ def ptf_datastore(datastore_factory, ptf_exposure, cache_dir):
     ds.delete_everything()
 
 
+@pytest.fixture
+def ptf_urls():
+    base_url = f'https://portal.nersc.gov/project/m2218/pipeline/test_images/'
+    r = requests.get(base_url)
+    soup = BeautifulSoup(r.text, 'html.parser')
+    links = soup.find_all('a')
+    filenames = [link.get('href') for link in links if link.get('href').endswith('.fits')]
+
+    yield filenames
+
+
+@pytest.fixture
+def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
+    cache_dir = os.path.join(cache_dir, 'PTF')
+
+    def factory(start_date='2009-04-04', end_date='2013-03-03'):
+        start_time = datetime.strptime(start_date, '%Y-%m-%d') if start_date is not None else datetime(1, 1, 1)
+        end_time = datetime.strptime(end_date, '%Y-%m-%d') if end_date is not None else datetime(3000, 1, 1)
+
+        urls = []
+        for url in ptf_urls:
+            obstime = datetime.strptime(url[3:11], '%Y%m%d')
+            if start_time <= obstime <= end_time:
+                urls.append(url)
+
+        images = []
+        for url in urls:
+            exp = ptf_downloader(url)
+            exp.instrument_object.fetch_sections()
+            try:
+                ds = datastore_factory(
+                    exp,
+                    11,
+                    cache_dir=cache_dir,
+                    overrides={'extraction': {'threshold': 5}},
+                )
+            except Exception as e:
+                # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
+                continue  # I think we should fix this along with issue #150
+            images.append(ds.image)
+
+        return images
+
+    return factory
+
+
+@pytest.fixture
+def ptf_reference_images(ptf_images_factory):
+    images = ptf_images_factory('2009-04-04', '2009-04-05')
+
+    yield images
+
+    with SmartSession() as session:
+        for image in images:
+            image = image.recursive_merge(session)
+            image.exposure.delete_from_disk_and_database(session=session, commit=False)
+            image.sources.delete_from_disk_and_database(session=session, commit=False)
+            image.delete_from_disk_and_database()
+        session.commit()
+
+
 def test_get_ptf_exposure(ptf_exposure):
     print(ptf_exposure)
 
 
-# def test_get_all_ptf_images(all_ptf_example_images):
-#     print(all_ptf_example_images)
-
-
-# TODO: need more work to make the PTF datastore work (sextractor fails)
 def test_ptf_datastore(ptf_datastore):
     print(ptf_datastore.sources)
+
+
+def test_ptf_urls(ptf_urls):
+    print(ptf_urls)
+
+
+def test_ptf_images(ptf_reference_images):
+    print(ptf_reference_images)

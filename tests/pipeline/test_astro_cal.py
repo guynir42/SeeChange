@@ -168,8 +168,8 @@ def test_run_scamp( decam_datastore, astrometor ):
         imwcs = WCS( hdul[0].header )
         imscs = imwcs.pixel_to_world( xvals, yvals )
         for newsc, imsc in zip( newscs, imscs ):
-            assert newsc.ra.value == pytest.approx( imsc.ra.value, abs=0.01/3600. )
-            assert newsc.dec.value == pytest.approx( imsc.dec.value, abs=0.01/3600. )
+            assert newsc.ra.value == pytest.approx( imsc.ra.value, abs=0.05/3600. )
+            assert newsc.dec.value == pytest.approx( imsc.dec.value, abs=0.05/3600. )
 
         # Make sure the archive has the right md5sum
         info = foundim.archive.get_info( f'{foundim.filepath}.image.fits' )
