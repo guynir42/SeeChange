@@ -113,8 +113,8 @@ def test_run_scamp( decam_datastore, astrometor ):
     origscs = origwcs.pixel_to_world( xvals, yvals )
     newscs = ds.wcs.wcs.pixel_to_world( xvals, yvals )
     for origsc, newsc in zip( origscs, newscs ):
-        assert not origsc.ra.value == pytest.approx( newsc.ra.value, abs=1./3600. )
-        assert not origsc.dec.value == pytest.approx( newsc.dec.value, abs=1./3600. )
+        assert not origsc.ra.value == pytest.approx( newsc.ra.value, abs=2./3600. )
+        assert not origsc.dec.value == pytest.approx( newsc.dec.value, abs=2./3600. )
         assert origsc.ra.value == pytest.approx( newsc.ra.value, abs=40./3600. )   # cos(dec)...
         assert origsc.dec.value == pytest.approx( newsc.dec.value, abs=40./3600. )
 
