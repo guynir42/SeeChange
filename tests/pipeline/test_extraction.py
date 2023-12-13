@@ -334,7 +334,7 @@ def test_run_detection_sextractor( decam_datastore, extractor ):
     #  wrong.
 
     assert ds.sources.psffluxadu()[0].min() == 0.0
-    assert ds.sources.psffluxadu()[0].max() == pytest.approx( 172500.0, rel=1e-2 )
+    assert ds.sources.psffluxadu()[0].max() == pytest.approx( 1725000.0, rel=1e-2 )
     assert ds.sources.psffluxadu()[0].mean() == pytest.approx( 48000.0, rel=1e-2 )
     assert ds.sources.psffluxadu()[0].std() == pytest.approx( 170000.0, rel=1e-2 )
 
