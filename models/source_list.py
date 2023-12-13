@@ -141,6 +141,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         self._data = None
         self._bitflag = 0
         self._info = None
+        self._is_star = None
 
         # manually set all properties (columns or not)
         self.set_attributes_from_dict(kwargs)
@@ -158,6 +159,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         FileOnDiskMixin.init_on_load(self)
         self._data = None
         self._info = None
+        self._is_star = None
 
     def __repr__(self):
         output = (
@@ -321,7 +323,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
         """
 
-        if hasattr( self, '_is_star' ) and ( self._is_star is not None ):
+        if self._is_star is not None:
             return self._is_star
 
         if self.format != 'sextrfits':
@@ -337,14 +339,13 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         return self._is_star
 
     def apfluxadu( self, apnum=0, ap=None ):
-
         """Return two numpy arrays with aperture flux values and errors
 
         Parameters
         ----------
           apnum : int, default 0
             The number of the aperture in the list of apertures in
-            aper_rads to use.  Ignroed if ap is not None.
+            aper_rads to use.  Ignored if ap is not None.
 
           ap: float, default None
             If not None, look for an aperture that's within 0.01 pixels
@@ -430,7 +431,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
         bigflux, bigfluxerr = self.apfluxadu( apnum=inf_aper_num )
         smallflux, smallfluxerr = self.apfluxadu( apnum=aper_num )
-        wgood = self.is_star & self.good & ( bigflux > 5.*bigfluxerr ) & ( smallflux > 5.*smallfluxerr )
+        wgood = self.good & ( bigflux > 5.*bigfluxerr ) & ( smallflux > 5.*smallfluxerr )
 
         if wgood.sum() < min_stars:
             raise RuntimeError( f'Only {wgood.sum()} stars, less than the minimum of {min_stars} '

@@ -126,6 +126,7 @@ def datastore_factory(
         extractor,
         astrometor,
         photometor,
+        subtractor,
         detector,
         cutter,
         measurer,
@@ -142,9 +143,27 @@ def datastore_factory(
     extractor.run(datastore)
     assert extractor.has_recalculated is True
     """
-    def make_datastore(*args, cache_dir=None, cache_base_name=None, session=None):
+    def make_datastore(*args, cache_dir=None, cache_base_name=None, session=None, overrides={}, augments={}):
         code_version = args[0].provenance.code_version
         ds = DataStore(*args)  # make a new datastore
+
+        # allow calling scope to override/augment parameters for any of the processing steps
+        preprocessor.pars.override(overrides.get('preprocessing', {}))
+        preprocessor.pars.augment(augments.get('preprocessing', {}))
+        extractor.pars.override(overrides.get('extraction', {}))
+        extractor.pars.augment(augments.get('extraction', {}))
+        astrometor.pars.override(overrides.get('astro_cal', {}))
+        astrometor.pars.augment(augments.get('astro_cal', {}))
+        photometor.pars.override(overrides.get('photo_cal', {}))
+        photometor.pars.augment(augments.get('photo_cal', {}))
+        subtractor.pars.override(overrides.get('subtraction', {}))
+        subtractor.pars.augment(augments.get('subtraction', {}))
+        detector.pars.override(overrides.get('detection', {}))
+        detector.pars.augment(augments.get('detection', {}))
+        cutter.pars.override(overrides.get('cutting', {}))
+        cutter.pars.augment(augments.get('cutting', {}))
+        measurer.pars.override(overrides.get('measurement', {}))
+        measurer.pars.augment(augments.get('measurement', {}))
 
         with SmartSession(session) as session:
             code_version = session.merge(code_version)

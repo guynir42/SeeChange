@@ -64,7 +64,7 @@ def decam_default_calibrators(cache_dir, data_dir):
         yield sections, filters
 
     finally:
-        print('tear down of decam_default_calibrators')
+        # print('tear down of decam_default_calibrators')
         imagestonuke = set()
         datafilestonuke = set()
         with SmartSession() as session:
