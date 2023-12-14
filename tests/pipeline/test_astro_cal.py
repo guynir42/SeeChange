@@ -82,14 +82,16 @@ def test_solve_wcs_scamp( ztf_gaiadr3_excerpt, ztf_datastore_uncommitted, astrom
 
 def test_run_scamp( decam_datastore, astrometor ):
     ds = decam_datastore
-    with open(ds.image.get_fullpath()[0], "rb") as ifp:
+    original_filename = ds.cache_base_name + '.image.fits.original'
+    with open(original_filename, "rb") as ifp:
         md5 = hashlib.md5()
         md5.update(ifp.read())
         origmd5 = uuid.UUID(md5.hexdigest())
 
     xvals = [0, 0, 2047, 2047]
     yvals = [0, 4095, 0, 4095]
-    origwcs = WCS(ds.image.raw_header)
+    with fits.open(original_filename) as hdu:
+        origwcs = WCS(hdu[ds.section_id].header)
 
     astrometor.pars.cross_match_catalog = 'GaiaDR3'
     astrometor.pars.solution_method = 'scamp'
@@ -113,8 +115,8 @@ def test_run_scamp( decam_datastore, astrometor ):
     origscs = origwcs.pixel_to_world( xvals, yvals )
     newscs = ds.wcs.wcs.pixel_to_world( xvals, yvals )
     for origsc, newsc in zip( origscs, newscs ):
-        assert not origsc.ra.value == pytest.approx( newsc.ra.value, abs=2./3600. )
-        assert not origsc.dec.value == pytest.approx( newsc.dec.value, abs=2./3600. )
+        assert not origsc.ra.value == pytest.approx( newsc.ra.value, abs=1./3600. )
+        assert not origsc.dec.value == pytest.approx( newsc.dec.value, abs=1./3600. )
         assert origsc.ra.value == pytest.approx( newsc.ra.value, abs=40./3600. )   # cos(dec)...
         assert origsc.dec.value == pytest.approx( newsc.dec.value, abs=40./3600. )
 

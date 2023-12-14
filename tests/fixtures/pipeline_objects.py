@@ -1,6 +1,6 @@
 import os
 import warnings
-
+import shutil
 import pytest
 
 import sqlalchemy as sa
@@ -147,6 +147,9 @@ def datastore_factory(
         code_version = args[0].provenance.code_version
         ds = DataStore(*args)  # make a new datastore
 
+        if cache_dir is not None and cache_base_name is not None:
+            ds.cache_base_name = os.path.join(cache_dir, cache_base_name)  # save this for testing purposes
+
         # allow calling scope to override/augment parameters for any of the processing steps
         preprocessor.pars.override(overrides.get('preprocessing', {}))
         preprocessor.pars.augment(augments.get('preprocessing', {}))
@@ -212,8 +215,16 @@ def datastore_factory(
                 ds = preprocessor.run(ds)
                 ds.image.save()
                 output_path = ds.image.copy_to_cache(cache_dir)
+                # also save the original image to the cache as a separate file
+                shutil.copy2(
+                    ds.image.get_fullpath()[0],
+                    os.path.join(cache_dir, ds.image.filepath + '.image.fits.original')
+                )
+
                 if cache_dir is not None and cache_base_name is not None and output_path != cache_path:
                     warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
+                elif cache_dir is not None and cache_base_name is None:
+                    print(f'Saving image to cache at: {output_path}')
 
             ############# extraction to create sources #############
             if cache_dir is not None and cache_base_name is not None:
@@ -344,7 +355,8 @@ def datastore_factory(
                 _logger.debug('Running astrometric calibration')
                 ds = astrometor.run(ds)
                 if cache_dir is not None and cache_base_name is not None:
-                    output_path = ds.wcs.copy_to_cache(cache_dir, cache_name)  # must provide a name because this one isn't a FileOnDiskMixin
+                    # must provide a name because this one isn't a FileOnDiskMixin
+                    output_path = ds.wcs.copy_to_cache(cache_dir, cache_name)
                     if output_path != cache_path:
                         warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
 

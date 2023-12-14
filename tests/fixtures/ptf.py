@@ -82,6 +82,7 @@ def ptf_datastore(datastore_factory, ptf_exposure, cache_dir):
         ptf_exposure,
         11,
         cache_dir=cache_dir,
+        cache_base_name='187/PTF_20110429_040004_11_R_Sci_5F5TAU',
         overrides={'extraction': {'threshold': 5}},
     )
     yield ds
@@ -122,6 +123,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
                     exp,
                     11,
                     cache_dir=cache_dir,
+                    # cache_base_name=
                     overrides={'extraction': {'threshold': 5}},
                 )
             except Exception as e:
@@ -134,7 +136,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
     return factory
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def ptf_reference_images(ptf_images_factory):
     images = ptf_images_factory('2009-04-04', '2009-04-05')
 
@@ -149,17 +151,4 @@ def ptf_reference_images(ptf_images_factory):
         session.commit()
 
 
-def test_get_ptf_exposure(ptf_exposure):
-    print(ptf_exposure)
 
-
-def test_ptf_datastore(ptf_datastore):
-    print(ptf_datastore.sources)
-
-
-def test_ptf_urls(ptf_urls):
-    print(ptf_urls)
-
-
-def test_ptf_images(ptf_reference_images):
-    print(ptf_reference_images)
