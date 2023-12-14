@@ -182,6 +182,8 @@ def datastore_factory(
                 if os.path.isfile(cache_path):
                     _logger.debug('loading image from cache. ')
                     ds.image = Image.copy_from_cache(cache_dir, cache_name)
+                    if ds.exposure_id is not None:
+                        ds.image.exposure_id = ds.exposure_id
                     upstreams = [ds.exposure.provenance] if ds.exposure is not None else []  # images without exposure
                     prov = Provenance(
                         code_version=code_version,
@@ -224,6 +226,7 @@ def datastore_factory(
                 if cache_dir is not None and cache_base_name is not None and output_path != cache_path:
                     warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
                 elif cache_dir is not None and cache_base_name is None:
+                    ds.cache_base_name = output_path
                     print(f'Saving image to cache at: {output_path}')
 
             ############# extraction to create sources #############

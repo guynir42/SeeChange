@@ -302,6 +302,10 @@ class SeeChangeBase:
             'upstream_images',
         ]
 
+        from models.provenance import CodeVersion
+        if isinstance(self, CodeVersion):
+            print('CodeVersion recursive merge! ')
+
         # recursively call this on the provenance and other parent objects
         for att in attributes:
             try:

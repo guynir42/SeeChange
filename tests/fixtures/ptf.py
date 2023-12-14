@@ -104,6 +104,14 @@ def ptf_urls():
 def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
     cache_dir = os.path.join(cache_dir, 'PTF')
 
+    cache_names = {}
+    if os.path.isfile(os.path.join(cache_dir, 'manifest.txt')):
+        with open(os.path.join(cache_dir, 'manifest.txt')) as f:
+            text = f.read().splitlines()
+        for line in text:
+            filename, cache_name = line.split()
+            cache_names[filename] = cache_name
+
     def factory(start_date='2009-04-04', end_date='2013-03-03'):
         start_time = datetime.strptime(start_date, '%Y-%m-%d') if start_date is not None else datetime(1, 1, 1)
         end_time = datetime.strptime(end_date, '%Y-%m-%d') if end_date is not None else datetime(3000, 1, 1)
@@ -123,13 +131,20 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
                     exp,
                     11,
                     cache_dir=cache_dir,
-                    # cache_base_name=
+                    cache_base_name=cache_names.get(url, None),
                     overrides={'extraction': {'threshold': 5}},
                 )
+                if hasattr(ds, 'cache_base_name') and ds.cache_base_name is not None:
+                    cache_names[url] = ds.cache_base_name
             except Exception as e:
                 # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
                 continue  # I think we should fix this along with issue #150
             images.append(ds.image)
+
+        # save the manifest file
+        with open(os.path.join(cache_dir, 'manifest.txt'), 'w') as f:
+            for key, value in cache_names.items():
+                f.write(f'{key} {value}\n')
 
         return images
 
