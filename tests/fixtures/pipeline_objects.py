@@ -58,6 +58,7 @@ def extractor_factory(test_config):
 
     return make_extractor
 
+
 @pytest.fixture
 def extractor(extractor_factory):
     return extractor_factory()
@@ -80,7 +81,7 @@ def astrometor_factory(test_config):
 
 
 @pytest.fixture
-def astrometor(test_config):
+def astrometor(astrometor_factory):
     return astrometor_factory()
 
 
@@ -99,8 +100,9 @@ def photometor_factory(test_config):
 
     return make_photometor
 
+
 @pytest.fixture
-def photometor(test_config):
+def photometor(photometor_factory):
     return photometor_factory()
 
 
@@ -121,7 +123,7 @@ def subtractor_factory(test_config):
 
 
 @pytest.fixture
-def subtractor(test_config):
+def subtractor(subtractor_factory):
     return subtractor_factory()
 
 
@@ -142,7 +144,7 @@ def detector_factory(test_config):
 
 
 @pytest.fixture
-def detector(test_config):
+def detector(detector_factory):
     return detector_factory()
 
 
@@ -163,7 +165,7 @@ def cutter_factory(test_config):
 
 
 @pytest.fixture
-def cutter(test_config):
+def cutter(cutter_factory):
     return cutter_factory()
 
 
@@ -184,7 +186,7 @@ def measurer_factory(test_config):
 
 
 @pytest.fixture
-def measurer(test_config):
+def measurer(measurer_factory):
     return measurer_factory()
 
 
