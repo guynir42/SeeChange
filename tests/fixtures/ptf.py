@@ -65,6 +65,7 @@ def ptf_exposure(ptf_downloader):
                     setattr(existing, key, value)
             exposure = existing  # replace with the existing row
         else:
+            exposure = session.merge(exposure)
             exposure.save()  # make sure it is up on the archive as well
             session.add(exposure)
             session.commit()
