@@ -89,7 +89,7 @@ def ptf_datastore(datastore_factory, ptf_exposure, cache_dir):
     ds.delete_everything()
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def ptf_urls():
     base_url = f'https://portal.nersc.gov/project/m2218/pipeline/test_images/'
     r = requests.get(base_url)
@@ -97,31 +97,41 @@ def ptf_urls():
     links = soup.find_all('a')
     filenames = [link.get('href') for link in links if link.get('href').endswith('.fits')]
 
+    bad_files = ['PTF200904053266_2_o_19609_11.w.fits']
+    for file in bad_files:
+        if file in filenames:
+            filenames.pop(filenames.index(file))
     yield filenames
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
     cache_dir = os.path.join(cache_dir, 'PTF')
 
-    cache_names = {}
-    if os.path.isfile(os.path.join(cache_dir, 'manifest.txt')):
-        with open(os.path.join(cache_dir, 'manifest.txt')) as f:
-            text = f.read().splitlines()
-        for line in text:
-            filename, cache_name = line.split()
-            cache_names[filename] = cache_name
+    def factory(start_date='2009-04-04', end_date='2013-03-03', max_images=None):
+        # see if any of the cache names were saved to a manifest file
+        cache_names = {}
+        if os.path.isfile(os.path.join(cache_dir, 'manifest.txt')):
+            with open(os.path.join(cache_dir, 'manifest.txt')) as f:
+                text = f.read().splitlines()
+            for line in text:
+                filename, cache_name = line.split()
+                cache_names[filename] = cache_name
 
-    def factory(start_date='2009-04-04', end_date='2013-03-03'):
+        # translate the strings into datetime objects
         start_time = datetime.strptime(start_date, '%Y-%m-%d') if start_date is not None else datetime(1, 1, 1)
         end_time = datetime.strptime(end_date, '%Y-%m-%d') if end_date is not None else datetime(3000, 1, 1)
 
+        # choose only the urls that are within the date range (and no more than max_images)
         urls = []
         for url in ptf_urls:
             obstime = datetime.strptime(url[3:11], '%Y%m%d')
             if start_time <= obstime <= end_time:
                 urls.append(url)
+            if max_images is not None and len(urls) >= max_images:
+                break
 
+        # download the images and make a datastore for each one
         images = []
         for url in urls:
             exp = ptf_downloader(url)
@@ -135,16 +145,22 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
                     overrides={'extraction': {'threshold': 5}},
                 )
                 if hasattr(ds, 'cache_base_name') and ds.cache_base_name is not None:
-                    cache_names[url] = ds.cache_base_name
+                    cache_name = ds.cache_base_name
+                    if cache_name.startswith(cache_dir):
+                        cache_name = cache_name[len(cache_dir) + 1:]
+                    if cache_name.endswith('.image.fits.json'):
+                        cache_name = cache_name[:-len('.image.fits.json')]
+                    cache_names[url] = cache_name
+
+                    # save the manifest file (save each iteration in case of failure)
+                    with open(os.path.join(cache_dir, 'manifest.txt'), 'w') as f:
+                        for key, value in cache_names.items():
+                            f.write(f'{key} {value}\n')
+
             except Exception as e:
                 # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
                 continue  # I think we should fix this along with issue #150
             images.append(ds.image)
-
-        # save the manifest file
-        with open(os.path.join(cache_dir, 'manifest.txt'), 'w') as f:
-            for key, value in cache_names.items():
-                f.write(f'{key} {value}\n')
 
         return images
 
@@ -153,7 +169,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
 
 @pytest.fixture(scope='session')
 def ptf_reference_images(ptf_images_factory):
-    images = ptf_images_factory('2009-04-04', '2009-04-05')
+    images = ptf_images_factory('2009-04-05', '2009-05-01', max_images=10)
 
     yield images
 
@@ -162,7 +178,7 @@ def ptf_reference_images(ptf_images_factory):
             image = image.recursive_merge(session)
             image.exposure.delete_from_disk_and_database(session=session, commit=False)
             image.sources.delete_from_disk_and_database(session=session, commit=False)
-            image.delete_from_disk_and_database()
+            image.delete_from_disk_and_database(session=session, commit=False)
         session.commit()
 
 

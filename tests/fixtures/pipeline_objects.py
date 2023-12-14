@@ -23,113 +23,182 @@ from pipeline.cutting import Cutter
 from pipeline.measurement import Measurer
 
 
+@pytest.fixture(scope='session')
+def preprocessor_factory(test_config):
+
+    def make_preprocessor():
+        prep = Preprocessor(**test_config.value('preprocessing'))
+        prep.pars._enforce_no_new_attrs = False
+        prep.pars.test_parameter = prep.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        prep.pars._enforce_no_new_attrs = True
+
+        return prep
+
+    return make_preprocessor
+
 @pytest.fixture
-def preprocessor(test_config):
-    prep = Preprocessor(**test_config.value('preprocessing'))
-    prep.pars._enforce_no_new_attrs = False
-    prep.pars.test_parameter = prep.pars.add_par(
-        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
-    )
-    prep.pars._enforce_no_new_attrs = True
+def preprocessor(preprocessor_factory):
+    return preprocessor_factory()
 
-    return prep
 
+@pytest.fixture(scope='session')
+def extractor_factory(test_config):
+
+    def make_extractor():
+        extr = Detector(**test_config.value('extraction'))
+        extr.pars._enforce_no_new_attrs = False
+        extr.pars.test_parameter = extr.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        extr.pars._enforce_no_new_attrs = True
+
+        return extr
+
+    return make_extractor
 
 @pytest.fixture
-def extractor(test_config):
-    extr = Detector(**test_config.value('extraction'))
-    extr.pars._enforce_no_new_attrs = False
-    extr.pars.test_parameter = extr.pars.add_par(
-        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
-    )
-    extr.pars._enforce_no_new_attrs = True
+def extractor(extractor_factory):
+    return extractor_factory()
 
-    return extr
+
+@pytest.fixture(scope='session')
+def astrometor_factory(test_config):
+
+    def make_astrometor():
+        astrom = AstroCalibrator(**test_config.value('astro_cal'))
+        astrom.pars._enforce_no_new_attrs = False
+        astrom.pars.test_parameter = astrom.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        astrom.pars._enforce_no_new_attrs = True
+
+        return astrom
+
+    return make_astrometor
 
 
 @pytest.fixture
 def astrometor(test_config):
-    astrom = AstroCalibrator(**test_config.value('astro_cal'))
-    astrom.pars._enforce_no_new_attrs = False
-    astrom.pars.test_parameter = astrom.pars.add_par(
-        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
-    )
-    astrom.pars._enforce_no_new_attrs = True
+    return astrometor_factory()
 
-    return astrom
 
+@pytest.fixture(scope='session')
+def photometor_factory(test_config):
+
+    def make_photometor():
+        photom = PhotCalibrator(**test_config.value('photo_cal'))
+        photom.pars._enforce_no_new_attrs = False
+        photom.pars.test_parameter = photom.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        photom.pars._enforce_no_new_attrs = True
+
+        return photom
+
+    return make_photometor
 
 @pytest.fixture
 def photometor(test_config):
-    photom = PhotCalibrator(**test_config.value('photo_cal'))
-    photom.pars._enforce_no_new_attrs = False
-    photom.pars.test_parameter = photom.pars.add_par(
-        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
-    )
-    photom.pars._enforce_no_new_attrs = True
+    return photometor_factory()
 
-    return photom
+
+@pytest.fixture(scope='session')
+def subtractor_factory(test_config):
+
+    def make_subtractor():
+        sub = Subtractor(**test_config.value('subtraction'))
+        sub.pars._enforce_no_new_attrs = False
+        sub.pars.test_parameter = sub.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        sub.pars._enforce_no_new_attrs = True
+
+        return sub
+
+    return make_subtractor
 
 
 @pytest.fixture
 def subtractor(test_config):
-    sub = Subtractor(**test_config.value('subtraction'))
-    sub.pars._enforce_no_new_attrs = False
-    sub.pars.test_parameter = sub.pars.add_par(
-        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
-    )
-    sub.pars._enforce_no_new_attrs = True
+    return subtractor_factory()
 
-    return sub
+
+@pytest.fixture(scope='session')
+def detector_factory(test_config):
+
+    def make_detector():
+        det = Detector(**test_config.value('detection'))
+        det.pars._enforce_no_new_attrs = False
+        det.pars.test_parameter = det.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        det.pars._enforce_no_new_attrs = False
+
+        return det
+
+    return make_detector
 
 
 @pytest.fixture
 def detector(test_config):
-    det = Detector(**test_config.value('detection'))
-    det.pars._enforce_no_new_attrs = False
-    det.pars.test_parameter = det.pars.add_par(
-        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
-    )
-    det.pars._enforce_no_new_attrs = False
+    return detector_factory()
 
-    return det
+
+@pytest.fixture(scope='session')
+def cutter_factory(test_config):
+
+    def make_cutter():
+        cut = Cutter(**test_config.value('cutting'))
+        cut.pars._enforce_no_new_attrs = False
+        cut.pars.test_parameter = cut.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        cut.pars._enforce_no_new_attrs = False
+
+        return cut
+
+    return make_cutter
 
 
 @pytest.fixture
 def cutter(test_config):
-    cut = Cutter(**test_config.value('cutting'))
-    cut.pars._enforce_no_new_attrs = False
-    cut.pars.test_parameter = cut.pars.add_par(
-        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
-    )
-    cut.pars._enforce_no_new_attrs = False
+    return cutter_factory()
 
-    return cut
+
+@pytest.fixture(scope='session')
+def measurer_factory(test_config):
+
+    def make_measurer():
+        meas = Measurer(**test_config.value('measurement'))
+        meas.pars._enforce_no_new_attrs = False
+        meas.pars.test_parameter = meas.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        meas.pars._enforce_no_new_attrs = False
+
+        return meas
+
+    return make_measurer
 
 
 @pytest.fixture
 def measurer(test_config):
-    meas = Measurer(**test_config.value('measurement'))
-    meas.pars._enforce_no_new_attrs = False
-    meas.pars.test_parameter = meas.pars.add_par(
-        'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
-    )
-    meas.pars._enforce_no_new_attrs = False
-
-    return meas
+    return measurer_factory()
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def datastore_factory(
         data_dir,
-        preprocessor,
-        extractor,
-        astrometor,
-        photometor,
-        subtractor,
-        detector,
-        cutter,
-        measurer,
+        preprocessor_factory,
+        extractor_factory,
+        astrometor_factory,
+        photometor_factory,
+        subtractor_factory,
+        detector_factory,
+        cutter_factory,
+        measurer_factory,
 ):
     """Provide a function that returns a datastore with all the products based on the given exposure and section ID.
 
@@ -151,20 +220,35 @@ def datastore_factory(
             ds.cache_base_name = os.path.join(cache_dir, cache_base_name)  # save this for testing purposes
 
         # allow calling scope to override/augment parameters for any of the processing steps
+        preprocessor = preprocessor_factory()
         preprocessor.pars.override(overrides.get('preprocessing', {}))
         preprocessor.pars.augment(augments.get('preprocessing', {}))
+
+        extractor = extractor_factory()
         extractor.pars.override(overrides.get('extraction', {}))
         extractor.pars.augment(augments.get('extraction', {}))
+
+        astrometor = astrometor_factory()
         astrometor.pars.override(overrides.get('astro_cal', {}))
         astrometor.pars.augment(augments.get('astro_cal', {}))
+
+        photometor = photometor_factory()
         photometor.pars.override(overrides.get('photo_cal', {}))
         photometor.pars.augment(augments.get('photo_cal', {}))
+
+        subtractor = subtractor_factory()
         subtractor.pars.override(overrides.get('subtraction', {}))
         subtractor.pars.augment(augments.get('subtraction', {}))
+
+        detector = detector_factory()
         detector.pars.override(overrides.get('detection', {}))
         detector.pars.augment(augments.get('detection', {}))
+
+        cutter = cutter_factory()
         cutter.pars.override(overrides.get('cutting', {}))
         cutter.pars.augment(augments.get('cutting', {}))
+
+        measurer = measurer_factory()
         measurer.pars.override(overrides.get('measurement', {}))
         measurer.pars.augment(augments.get('measurement', {}))
 
@@ -182,8 +266,13 @@ def datastore_factory(
                 if os.path.isfile(cache_path):
                     _logger.debug('loading image from cache. ')
                     ds.image = Image.copy_from_cache(cache_dir, cache_name)
+
+                    # assign the correct exposure to the object loaded from cache
                     if ds.exposure_id is not None:
                         ds.image.exposure_id = ds.exposure_id
+                    if ds.exposure is not None:
+                        ds.image.exposure = ds.exposure
+
                     upstreams = [ds.exposure.provenance] if ds.exposure is not None else []  # images without exposure
                     prov = Provenance(
                         code_version=code_version,

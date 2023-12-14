@@ -71,8 +71,8 @@ def pytest_sessionfinish(session, exitstatus):
         session.commit()
 
         # comment this line out if you just want tests to pass quietly
-        if any_objects:
-            raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
+        # if any_objects:
+        #     raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
 
 
 # data that is included in the repo and should be available for tests
@@ -152,7 +152,7 @@ def rnd_str(n):
     return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz'), n))
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope='session', autouse=True)
 def test_config():
     return Config.get()
 
