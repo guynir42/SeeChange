@@ -1412,21 +1412,22 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     elif len(psfs) == 1:
                         im.psf = psfs[0]
 
-                    wcses = [w for w in wcs_results if w.image_id == im.id]  # only get the wcses for this image
-                    if len(wcses) > 1:
-                        raise ValueError(
-                            f"Image {im.id} has more than one WCS matching upstream provenance."
-                        )
-                    elif len(wcses) == 1:
-                        im.wcs = wcses[0]
+                    if im.sources is not None:
+                        wcses = [w for w in wcs_results if w.sources_id == im.sources.id]  # the wcses for this image
+                        if len(wcses) > 1:
+                            raise ValueError(
+                                f"SourceList {im.sources.id} has more than one WCS matching upstream provenance."
+                            )
+                        elif len(wcses) == 1:
+                            im.wcs = wcses[0]
 
-                    zps = [z for z in zp_results if z.image_id == im.id]  # only get the zps for this image
-                    if len(zps) > 1:
-                        raise ValueError(
-                            f"Image {im.id} has more than one ZeroPoint matching upstream provenance."
-                        )
-                    elif len(zps) == 1:
-                        im.zp = zps[0]
+                        zps = [z for z in zp_results if z.sources_id == im.sources.id]  # the zps for this image
+                        if len(zps) > 1:
+                            raise ValueError(
+                                f"SourceList {im.sources.id} has more than one ZeroPoint matching upstream provenance."
+                            )
+                        elif len(zps) == 1:
+                            im.zp = zps[0]
 
     def get_upstreams(self, session=None):
         """

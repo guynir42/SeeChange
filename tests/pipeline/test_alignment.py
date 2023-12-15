@@ -4,6 +4,9 @@ import random
 import numpy as np
 import astropy.wcs
 
+import sqlalchemy as sa
+
+from models.base import SmartSession
 from models.provenance import Provenance
 from models.image import Image
 
@@ -47,34 +50,57 @@ def test_warp_decam( decam_datastore, decam_reference ):
 
 
 def test_alignment_in_image( ptf_reference_images, code_version ):
-    images_to_align = ptf_reference_images[:4]  # speed things up using less images
-    new_image = Image.from_images( images_to_align )
-    new_image.ref_image_index = len(images_to_align) - 1
-    new_image.new_image = None
-    new_image.provenance = Provenance(
-        code_version=code_version,
-        parameters={'alignment': {'method': 'swarp'}, 'test_parameter': 'test_value'},
-        upstreams=new_image.get_upstream_provenances(),
-        process='coaddition',
-        is_testing=True,
-    )
-    aligned = new_image.aligned_images
+    try:  # cleanup at the end
+        images_to_align = ptf_reference_images[:4]  # speed things up using less images
+        new_image = Image.from_images( images_to_align )
+        new_image.ref_image_index = len(images_to_align) - 1
+        new_image.new_image = None
+        new_image.provenance = Provenance(
+            code_version=code_version,
+            parameters={'alignment': {'method': 'swarp'}, 'test_parameter': 'test_value'},
+            upstreams=new_image.get_upstream_provenances(),
+            process='coaddition',
+            is_testing=True,
+        )
+        new_image.data = np.sum([image.data for image in new_image.aligned_images], axis=0)
+        new_image.save()
+        aligned = new_image.aligned_images
 
-    assert new_image.upstream_images == images_to_align
-    assert len(aligned) == len(images_to_align)
-    assert np.array_equal(aligned[-1].data, images_to_align[-1].data)
-    ref = images_to_align[-1]
+        assert new_image.upstream_images == images_to_align
+        assert len(aligned) == len(images_to_align)
+        assert np.array_equal(aligned[-1].data, images_to_align[-1].data)
+        ref = images_to_align[-1]
 
-    # check that images are aligned properly
-    for image in new_image.aligned_images:
-        check_aligned(image, ref)
-
-    # check that unaligned images do not pass the check
-    for image in new_image.upstream_images:
-        if image == ref:
-            continue
-        with pytest.raises(AssertionError):
+        # check that images are aligned properly
+        for image in new_image.aligned_images:
             check_aligned(image, ref)
+
+        # check that unaligned images do not pass the check
+        for image in new_image.upstream_images:
+            if image == ref:
+                continue
+            with pytest.raises(AssertionError):
+                check_aligned(image, ref)
+
+        # add new image to database
+        with SmartSession() as session:
+            new_image = session.merge(new_image)
+            session.commit()
+
+        # should be able to recreate aligned images from scratch
+        with SmartSession() as session:
+            loaded_image = session.scalars(sa.select(Image).where(Image.id == new_image.id)).first()
+            assert loaded_image is not None
+            assert len(loaded_image.aligned_images) == len(images_to_align)
+            assert np.array_equal(loaded_image.aligned_images[-1].data, images_to_align[-1].data)
+
+            # check that images are aligned properly
+            for image in loaded_image.aligned_images:
+                check_aligned(image, ref)
+
+    finally:
+        ImageAligner.cleanup_temp_images()
+        new_image.delete_from_disk_and_database()
 
 
 def check_aligned(image1, image2):

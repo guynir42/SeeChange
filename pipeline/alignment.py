@@ -50,7 +50,7 @@ class ImageAligner:
         for im in cls.temp_images:
             im.remove_data_from_disk()
             for file in im.get_fullpath(as_list=True):
-                if os.path.isfile( file ):
+                if file is not None and os.path.isfile( file ):
                     raise RuntimeError( f'Failed to clean up {file}' )
 
         cls.temp_images = []
