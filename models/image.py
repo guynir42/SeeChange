@@ -4,6 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.schema import CheckConstraint
 
 from astropy.time import Time
@@ -107,7 +108,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     ref_image_index = sa.Column(
-        sa.Integer,
+        sa.SMALLINT,
         nullable=True,
         doc=(
             "Index of the reference image used to produce this image, in the upstream_images list. "
@@ -137,7 +138,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             self.ref_image_index = self.upstream_images.index(value)
 
     new_image_index = sa.Column(
-        sa.Integer,
+        sa.SMALLINT,
         nullable=True,
         doc=(
             "Index of the new image used to produce a difference image, in the upstream_images list. "
@@ -435,6 +436,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self.wcs = None  # the WorldCoordinates object (optionally loaded)
         self.zp = None  # the zero-point object (optionally loaded)
 
+        self._aligner = None  # an ImageAligner object (lazy loaded using the provenance parameters)
+        self._aligned_images = None  # a list of Images that are aligned to one image (lazy calculated, not committed)
+
         self._instrument_object = None
         self._bitflag = 0
 
@@ -468,6 +472,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self.psf = None
         self.wcs = None
         self.zp = None
+
+        self._aligner = None
+        self._aligned_images = None
 
         self._instrument_object = None
         this_object_session = orm.Session.object_session(self)
@@ -632,6 +639,67 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # going to check to see if exposure.id matches image.exposure.id
         new.exposure_id = exposure.id
         new.exposure = exposure
+
+        return new
+
+    @classmethod
+    def copy_image(cls, image):
+        """Make a new Image object with the same data as an existing Image object.
+
+        This new object does not have a provenance or any relationships to other objects.
+        It should be used only as a working copy, not to be saved back into the database.
+        The filepath should also be set to a new (unique) value so as not to overwrite the original.
+        """
+        copy_attributes = [
+            'data',
+            'weight',
+            'flags',
+            'score',
+            'background',
+            'header',
+
+        ]
+        simple_attributes = [
+            'ra',
+            'dec',
+            'mjd',
+            'end_mjd',
+            'exp_time',
+            'instrument',
+            'telescope',
+            'filter',
+            'section_id',
+            'project',
+            'target',
+            'preproc_bitflag',
+            'astro_cal_done',
+            'sky_sub_done',
+            'fwhm_estimate',
+            'zero_point_estimate',
+            'lim_mag_estimate',
+            'bkg_mean_estimate',
+            'bkg_rms_estimate',
+            'ref_image_index',
+            'new_image_index',
+            'is_coadd',
+            'is_sub',
+            '_bitflag',
+            '_upstream_bitflag',
+            '_format',
+            '_type',
+        ]
+        new = cls()
+        for att in copy_attributes:
+            setattr(new, att, getattr(image, att).copy())
+
+        for att in simple_attributes:
+            setattr(new, att, getattr(image, att))
+
+        for axis in ['ra', 'dec']:
+            for corner in ['00', '01', '10', '11']:
+                setattr(new, f'{axis}_corner_{corner}', getattr(image, f'{axis}_corner_{corner}'))
+
+        new.calculate_coordinates()
 
         return new
 
@@ -813,6 +881,56 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
+
+    def align_images(self, image_index=None):
+        """Align the upstream_images to one of the images pointed to by image_index.
+
+        The parameters of the alignment must be given in the parameters attribute
+        of this Image's Provenance.
+        The resulting images are saved in _aligned_images, which are not saved
+        to the database. Note that each aligned image is also referred to by
+        a global variable under the ImageAligner.temp_images list.
+
+        Parameters
+        ----------
+        image_index: int (optional)
+            The index of the image in upstream_images to which all other
+            images are aligned. If not given, will use the new_image_index,
+            unless it is None, in which case will use the ref_image_index,
+            unless that is also None, in which case will use the first
+            (least recent) Image in the list.
+
+        """
+        from pipeline.alignment import ImageAligner  # avoid circular import
+        if self.provenance is None or self.provenance.parameters is None:
+            raise RuntimeError('Cannot align images without a Provenace with legal parameters!')
+        if 'alignment' not in self.provenance.parameters:
+            raise RuntimeError('Cannot align images without an "alignment" dictionary in the Provenance parameters!')
+
+        if image_index is None:
+            image_index = self.new_image_index
+        if image_index is None:
+            image_index = self.ref_image_index
+        if image_index is None:
+            image_index = 0
+
+        if image_index < 0 or image_index >= len(self.upstream_images):
+            raise RuntimeError(f'Image index {image_index} is out of range for upstream_images!')
+
+        if self._aligner is None:
+            self._aligner = ImageAligner(**self.provenance.parameters['alignment'])
+        else:
+            self._aligner.pars.override(**self.provenance.parameters['alignment'])
+
+        # verify all products are loaded
+        for im in self.upstream_images:
+            if im.sources is None or im.wcs is None or im.zp is None:
+                raise RuntimeError('Some images are missing data products. Try running load_upstream_products().')
+
+
+
+
+
 
     @property
     def instrument_object(self):
