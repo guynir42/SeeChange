@@ -690,7 +690,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         ]
         new = cls()
         for att in copy_attributes:
-            setattr(new, att, getattr(image, att).copy())
+            value = getattr(image, att)
+            if value is not None:
+                setattr(new, att, value.copy())
 
         for att in simple_attributes:
             setattr(new, att, getattr(image, att))
@@ -927,9 +929,19 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             if im.sources is None or im.wcs is None or im.zp is None:
                 raise RuntimeError('Some images are missing data products. Try running load_upstream_products().')
 
+        aligned = []
+        for i, image in enumerate(self.upstream_images):
+            new_image = self._aligner.run(image, self.upstream_images[image_index])
+            aligned.append(new_image)
+            ImageAligner.temp_images.append(new_image)  # keep track of all these images for cleanup purposes
 
+        self._aligned_images = aligned
 
-
+    @property
+    def aligned_images(self):
+        if self._aligned_images is None:
+            self.align_images()
+        return self._aligned_images
 
 
     @property
