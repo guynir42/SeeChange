@@ -249,7 +249,7 @@ def decam_datastore(
 
 @pytest.fixture
 def decam_ref_datastore( provenance_base, persistent_dir, cache_dir, data_dir, datastore_factory ):
-    persistent_dir = os.path.join(persistent_dir, 'test_data/DECam_examples')
+    persistent_dir = os.path.join(persistent_dir, 'test_data/DECam_examples')  # for the YAML file
     cache_dir = os.path.join(cache_dir, 'DECam')
     filebase = 'DECaPS-West_20220112.g.32'
 
@@ -298,6 +298,15 @@ def decam_ref_datastore( provenance_base, persistent_dir, cache_dir, data_dir, d
         image.provenance = prov
         image.filepath = f'115/{filebase}'
         image.is_coadd = True
+
+        # if image.data.shape[0] < image.data.shape[1]:  # need to flip!
+        #     image.data = np.flip(image.data, axis=1)
+        #     image.data = np.rot90(image.data, k=3)
+        #     image.weight = np.flip(image.weight, axis=1)
+        #     image.weight = np.rot90(image.weight, k=3)
+        #     image.flags = np.flip(image.flags, axis=1)
+        #     image.flags = np.rot90(image.flags, k=3)
+
         image.save(verify_md5=False)  # make sure to upload to archive as well
 
         image.copy_to_cache( cache_dir )

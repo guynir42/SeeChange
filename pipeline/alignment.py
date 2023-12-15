@@ -8,6 +8,8 @@ import numpy as np
 
 import astropy.table
 import astropy.wcs.utils
+from astropy.table.table import Table
+from spalipy import Spalipy
 
 from util import ldac
 from util.exceptions import SubprocessFailure
@@ -18,7 +20,6 @@ from models.base import FileOnDiskMixin, _logger
 from models.provenance import Provenance
 from models.image import Image
 
-from pipeline.data_store import DataStore
 from pipeline.parameters import Parameters
 from pipeline.utils import read_fits_image
 
@@ -57,6 +58,42 @@ class ImageAligner:
 
     def __init__( self, **kwargs ):
         self.pars = ParsImageAligner( **kwargs )
+
+    def image_from_source_and_target(self, image, target):
+        """Create a new Image object from the source and target images.
+        Most image attributes are from the source image, but the coordinates
+        (and corners) are taken from the target image.
+
+        The image type is Warped and the bitflag is 0, with the upstream bitflag
+        set to the bitflags of the source and target.
+
+        Parameters
+        ----------
+        image: Image
+            The source image to be warped.
+        target: Image
+            The target image to which the source image will be warped.
+
+        Returns
+        -------
+        warpedim: Image
+            A new Image object with the warped image data.
+        """
+        warpedim = Image.copy_image(image)
+        for att in ['ra', 'dec']:
+            setattr(warpedim, att, getattr(target, att))
+            for corner in ['00', '01', '10', '11']:
+                setattr(warpedim, f'{att}_corner_{corner}', getattr(target, f'{att}_corner_{corner}'))
+
+        warpedim.calculate_coordinates()
+
+        warpedim.type = 'Warped'
+        warpedim.bitflag = 0
+        warpedim._upstream_bitflag = 0
+        warpedim._upstream_bitflag |= image.bitflag
+        warpedim._upstream_bitflag |= target.bitflag
+
+        return warpedim
 
     def _align_swarp( self, image, target, sources, target_sources ):
         """Use scamp and swarp to align image to target.
@@ -190,22 +227,8 @@ class ImageAligner:
             if res.returncode != 0:
                 raise SubprocessFailure( res )
 
-            warpedim = Image( format='fits', upstream_images=[image, target],
-                              type='Warped', mjd=target.mjd,
-                              end_mjd=image.end_mjd, exp_time=image.exp_time,
-                              instrument=image.instrument, telescope=image.telescope,
-                              filter=image.filter, section_id=image.section_id,
-                              project=image.project, target=image.target,
-                              preproc_bitflag=image.preproc_bitflag,
-                              astro_cal_done=True, _bitflag=0,  # external scope will set _upstream_bitflag
-                              ra=target.ra, dec=target.dec,
-                              gallat=target.gallat, gallon=target.gallon,
-                              ecllat=target.ecllat, ecllon=target.ecllon,
-                              ra_corner_00=target.ra_corner_00, ra_corner_01=target.ra_corner_01,
-                              ra_corner_10=target.ra_corner_10, ra_corner_11=target.ra_corner_11,
-                              dec_corner_00=target.dec_corner_00, dec_corner_01=target.dec_corner_01,
-                              dec_corner_10=target.dec_corner_10, dec_corner_11=target.dec_corner_11
-                             )
+            warpedim = self.image_from_source_and_target(image, target)
+
             warpedim.data, warpedim.raw_header = read_fits_image( outim, output="both" )
             warpedim.weight = read_fits_image( outwt )
             warpedim.flags = np.zeros( warpedim.weight.shape, dtype=np.uint16 )  # Do I want int16 or uint16?
@@ -223,6 +246,44 @@ class ImageAligner:
             outim.unlink( missing_ok=True )
             outwt.unlink( missing_ok=True )
             outimhead.unlink( missing_ok=True )
+
+    def _align_spalipy( self, image, target, sources, target_sources ):
+
+        warpedim = self.image_from_source_and_target(image, target)
+
+        s = Table(sources.data)
+        s.rename_columns(
+            ['X_IMAGE', 'Y_IMAGE', 'FLUX_PSF', 'FLUXERR_PSF', 'FWHM_IMAGE', 'FLAGS'],
+            ['x', 'y', 'flux', 'fluxerr', 'fwhm', 'flag']
+        )
+        s = s[(s['flux'] / s['fluxerr'] > 5.0) & (s['CLASS_STAR'] > 0.8)]
+
+        t = Table(target_sources.data)
+        t.rename_columns(
+            ['X_IMAGE', 'Y_IMAGE', 'FLUX_PSF', 'FLUXERR_PSF', 'FWHM_IMAGE', 'FLAGS'],
+            ['x', 'y', 'flux', 'fluxerr', 'fwhm', 'flag']
+        )
+        t = t[(t['flux'] / t['fluxerr'] > 5.0) & (t['CLASS_STAR'] > 0.8)]
+
+        # warp each of these in turn
+        for att in ['data', 'weight', 'flags']:
+            data = getattr(image, att)
+            sp = Spalipy(data, source_det=s, template_det=t)
+            try:
+                sp.align()
+            except RuntimeError as e:
+                if 'No source entries sucessfully found an affine transform' in e.args[0]:  # typo in successfully!
+                    _logger.info('Attempting to flip the source image to align with Spalipy')
+                    data = np.flip(data, axis=1)
+                    s['x'] = data.shape[1] - s['x']
+                    sp = Spalipy(data, source_det=s, template_det=t)
+                    sp.align()
+                else:
+                    raise e
+
+            setattr(warpedim, att, sp.aligned_data)
+
+        warpedim.flags[warpedim.weight < 1e-10] = 1
 
     def run( self, source_image, target_image ):
         """Warp source image so that it is aligned with target image.
@@ -245,11 +306,8 @@ class ImageAligner:
 
         Returns
         -------
-          DataStore
-            A new DataStore (that is not either of the input DataStores)
-            whose image field holds the aligned image.  Extraction, etc.
-            has not been run.
-
+          warped_image: Image
+            A new aligned Image.  Extraction, etc. has not been run.
         """
         # Make sure we have what we need
         source_sources = source_image.sources
@@ -309,6 +367,8 @@ class ImageAligner:
             # target_sources.data = datatab.as_array()
 
             warped_image = self._align_swarp(source_image, target_image, source_sources, target_sources)
+        elif self.pars.method == 'spalipy':
+            warped_image = self._align_spalipy(source_image, target_image, source_sources, target_sources)
         else:
             raise ValueError( f'alignment method {self.pars.method} is unknown' )
 

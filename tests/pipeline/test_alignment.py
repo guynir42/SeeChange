@@ -13,12 +13,13 @@ from models.image import Image
 from pipeline.alignment import ImageAligner
 
 
-def test_warp_decam( decam_datastore, decam_reference ):
+@pytest.mark.parametrize('method', ['spalipy'])
+def test_warp_decam( method, decam_datastore, decam_reference ):
     ds = decam_datastore
 
     try:
         ds.get_reference()
-        aligner = ImageAligner()
+        aligner = ImageAligner(method=method)
         warped = aligner.run( ds.reference.image, ds.image )
         warped.filepath = f'warp_test_{"".join(random.choices("abcdefghijklmnopqrstuvwxyz",k=10))}'
 
@@ -44,20 +45,24 @@ def test_warp_decam( decam_datastore, decam_reference ):
         assert all( [ i.ra.deg == pytest.approx(w.ra.deg, abs=0.1/3600.) for i, w in zip( imsc, warpsc ) ] )
         assert all( [ i.dec.deg == pytest.approx(w.dec.deg, abs=0.1/3600.) for i, w in zip( imsc, warpsc ) ] )
 
+        # check alignment using row/column sums
+        check_aligned(warped, ds.reference.image)
+
     finally:
         if 'warped' in locals():
             warped.delete_from_disk_and_database()
 
 
-def test_alignment_in_image( ptf_reference_images, code_version ):
+@pytest.mark.parametrize('method', ['swarp', 'spalipy'])
+def test_alignment_in_image( method, ptf_reference_images, code_version ):
     try:  # cleanup at the end
-        images_to_align = ptf_reference_images[:4]  # speed things up using less images
+        images_to_align = ptf_reference_images[:4]  # speed things up using fewer images
         new_image = Image.from_images( images_to_align )
         new_image.ref_image_index = len(images_to_align) - 1
         new_image.new_image = None
         new_image.provenance = Provenance(
             code_version=code_version,
-            parameters={'alignment': {'method': 'swarp'}, 'test_parameter': 'test_value'},
+            parameters={'alignment': {'method': method}, 'test_parameter': 'test_value'},
             upstreams=new_image.get_upstream_provenances(),
             process='coaddition',
             is_testing=True,
