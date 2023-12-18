@@ -16,7 +16,7 @@ class ParsCoadd(Parameters):
             'method',
             'zogy',
             str,
-            'Coaddition method.  Currently only zogy is supported. ',
+            'Coaddition method.  Currently only "naive" and "zogy" are supported. ',
             critical=True
         )
 
@@ -77,20 +77,25 @@ class Coadder:
             The coadded image.
         """
         images.sort(key=lambda image: image.mjd)
-
-        output = Image.from_images(images)
+        if self.pars.alignment['to_index'] == 'last':
+            index = len(images) - 1
+        elif self.pars.alignment['to_index'] == 'first':
+            index = 0
+        else:  # TODO: consider allowing a specific index as integer?
+            raise ValueError(f"Unknown alignment reference index: {self.pars.alignment['to_index']}")
+        output = Image.from_images(images, index=index)
         output.provenance = Provenance(
             code_version=images[0].provenance.code_version,
             parameters=self.pars.get_critical_pars(),
             upstreams=output.get_upstream_provenances(),
             process='coaddition',
         )
-        if output.provenance.parameters['alignment']['to_index'] == 'last':
-            output.ref_image_index = len(images) - 1
-        elif output.provenance.parameters['alignment']['to_index'] == 'first':
-            output.ref_image_index = 0
-        else:
-            raise ValueError(
-                f"Unknown alignment reference index: {output.provenance.parameters['alignment']['to_index']}"
-            )
+        output.is_coadd = True
         output.new_image = None
+
+        if self.pars.method == 'naive':
+            self._coadd_naive(output)
+        elif self.pars.method == 'zogy':
+            self._coadd_zogy(output)
+        else:
+            raise ValueError(f'Unknown coaddition method: {self.pars.method}. Use "naive" or "zogy".')

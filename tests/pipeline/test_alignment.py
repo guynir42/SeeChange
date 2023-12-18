@@ -52,22 +52,22 @@ def test_warp_decam( decam_datastore, decam_reference ):
 def test_alignment_in_image( ptf_reference_images, code_version ):
     try:  # cleanup at the end
         images_to_align = ptf_reference_images[:4]  # speed things up using fewer images
-        new_image = Image.from_images( images_to_align )
-        new_image.provenance = Provenance(
+        prov = Provenance(
             code_version=code_version,
             parameters={'alignment': {'method': 'swarp', 'to_index': 'last'}, 'test_parameter': 'test_value'},
-            upstreams=new_image.get_upstream_provenances(),
+            upstreams=[],
             process='coaddition',
             is_testing=True,
         )
-        if new_image.provenance.parameters['alignment']['to_index'] == 'last':
-            new_image.ref_image_index = len(images_to_align) - 1
-        elif new_image.provenance.parameters['alignment']['to_index'] == 'first':
-            new_image.ref_image_index = 0
+        if prov.parameters['alignment']['to_index'] == 'last':
+            index = -1
+        elif prov.parameters['alignment']['to_index'] == 'first':
+            index = 0
         else:
-            raise ValueError(
-                f"Unknown alignment reference index: {new_image.provenance.parameters['alignment']['to_index']}"
-            )
+            raise ValueError(f"Unknown alignment reference index: {prov.parameters['alignment']['to_index']}")
+        new_image = Image.from_images(images_to_align, index=index)
+        new_image.provenance = prov
+        new_image.provenance.upstreams = new_image.get_upstream_provenances()
         new_image.new_image = None
         new_image.data = np.sum([image.data for image in new_image.aligned_images], axis=0)
         new_image.save()

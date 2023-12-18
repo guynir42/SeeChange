@@ -706,7 +706,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         return new
 
     @classmethod
-    def from_images(cls, images):
+    def from_images(cls, images, index=0):
         """
         Create a new Image object from a list of other Image objects.
         This is the first step in making a multi-image (usually a coadd).
@@ -729,6 +729,12 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         ----------
         images: list of Image objects
             The images to combine into a new Image object.
+        index: int
+            The image index in the (mjd sorted) list of upstream images
+            that is used to set several attributes of the output image.
+            Notably this includes the RA/Dec (and corners) of the output image,
+            which implies that the indexed source image should be the one that
+            all other images are aligned to (when running alignment).
 
         Returns
         -------
@@ -754,19 +760,19 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 values = set([str(getattr(image, att)) for image in images])
                 if len(values) != 1:
                     raise ValueError(f"Cannot combine images with different {att} values: {values}")
-            setattr(output, att, getattr(images[0], att))
+            setattr(output, att, getattr(images[index], att))
 
         # TODO: should RA and Dec also be exactly the same??
-        output.ra = images[0].ra
-        output.dec = images[0].dec
-        output.ra_corner_00 = images[0].ra_corner_00
-        output.ra_corner_01 = images[0].ra_corner_01
-        output.ra_corner_10 = images[0].ra_corner_10
-        output.ra_corner_11 = images[0].ra_corner_11
-        output.dec_corner_00 = images[0].dec_corner_00
-        output.dec_corner_01 = images[0].dec_corner_01
-        output.dec_corner_10 = images[0].dec_corner_10
-        output.dec_corner_11 = images[0].dec_corner_11
+        output.ra = images[index].ra
+        output.dec = images[index].dec
+        output.ra_corner_00 = images[index].ra_corner_00
+        output.ra_corner_01 = images[index].ra_corner_01
+        output.ra_corner_10 = images[index].ra_corner_10
+        output.ra_corner_11 = images[index].ra_corner_11
+        output.dec_corner_00 = images[index].dec_corner_00
+        output.dec_corner_01 = images[index].dec_corner_01
+        output.dec_corner_10 = images[index].dec_corner_10
+        output.dec_corner_11 = images[index].dec_corner_11
 
         # exposure time is usually added together
         output.exp_time = sum([image.exp_time for image in images])
@@ -776,17 +782,17 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         output.end_mjd = max([image.end_mjd for image in images])  # exposure ends are not necessarily sorted
 
         # TODO: what about the header? should we combine them somehow?
-        output.header = images[0].header
-        output.raw_header = images[0].raw_header
+        output.header = images[index].header
+        output.raw_header = images[index].raw_header
 
-        base_type = images[0].type
+        base_type = images[index].type
         if not base_type.startswith('Com'):
             output.type = 'Com' + base_type
 
         output.upstream_images = images
 
-        # mark the first image as the reference (this can be overriden later when actually warping into one image)
-        output.ref_image_index = 0
+        # mark as the reference the image used for alignment
+        output.ref_image_index = index
 
         output._upstream_bitflag = 0
         for im in images:
