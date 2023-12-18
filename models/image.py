@@ -884,24 +884,18 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
 
-    def align_images(self, image_index=None):
+    def align_images(self):
         """Align the upstream_images to one of the images pointed to by image_index.
 
         The parameters of the alignment must be given in the parameters attribute
         of this Image's Provenance.
+
+        The index to which the images are aligned is given by the parameters, using
+        the "to_index" key, which can be "first" or "last".
+
         The resulting images are saved in _aligned_images, which are not saved
         to the database. Note that each aligned image is also referred to by
         a global variable under the ImageAligner.temp_images list.
-
-        Parameters
-        ----------
-        image_index: int (optional)
-            The index of the image in upstream_images to which all other
-            images are aligned. If not given, will use the new_image_index,
-            unless it is None, in which case will use the ref_image_index,
-            unless that is also None, in which case will use the first
-            (least recent) Image in the list.
-
         """
         from pipeline.alignment import ImageAligner  # avoid circular import
         if self.provenance is None or self.provenance.parameters is None:
@@ -909,15 +903,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if 'alignment' not in self.provenance.parameters:
             raise RuntimeError('Cannot align images without an "alignment" dictionary in the Provenance parameters!')
 
-        if image_index is None:
-            image_index = self.new_image_index
-        if image_index is None:
-            image_index = self.ref_image_index
-        if image_index is None:
+        if self.provenance.parameters['alignment']['to_index'] == 'first':
             image_index = 0
-
-        if image_index < 0 or image_index >= len(self.upstream_images):
-            raise RuntimeError(f'Image index {image_index} is out of range for upstream_images!')
+        elif self.provenance.parameters['alignment']['to_index'] == 'last':
+            image_index = -1
 
         if self._aligner is None:
             self._aligner = ImageAligner(**self.provenance.parameters['alignment'])
@@ -942,7 +931,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if self._aligned_images is None:
             self.align_images()
         return self._aligned_images
-
 
     @property
     def instrument_object(self):

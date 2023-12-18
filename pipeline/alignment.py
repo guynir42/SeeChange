@@ -35,6 +35,14 @@ class ParsImageAligner(Parameters):
             critical=True
         )
 
+        self.to_index = self.add_par(
+            'to_index',
+            'last',
+            str,
+            'How to choose the index of image to align to. Can choose "first" or "last" (default). ',
+            critical=True
+        )
+
         self.enforce_no_new_attrs = True
         self.override( kwargs )
 

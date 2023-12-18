@@ -1382,8 +1382,8 @@ class DataStore:
             autoflush_state = session.autoflush
             try:
                 obj_list = self.get_all_data_products(output='list', omit_exposure=True)
-                for obj in obj_list:  # first make sure all are merged
-                    obj = obj.recursive_merge(session)
+                for i, obj in enumerate(obj_list):  # first make sure all are merged
+                    obj_list[i] = obj.recursive_merge(session)
                 # no flush to prevent some foreign keys from being voided before all objects are deleted
                 session.autoflush = False
                 for obj in obj_list:  # now do the deleting without flushing
