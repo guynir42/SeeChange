@@ -1,5 +1,6 @@
 import pytest
 import random
+import re
 
 import numpy as np
 import astropy.wcs
@@ -59,6 +60,7 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
             process='coaddition',
             is_testing=True,
         )
+        prov.update_id()
         if prov.parameters['alignment']['to_index'] == 'last':
             index = -1
         elif prov.parameters['alignment']['to_index'] == 'first':
@@ -71,8 +73,13 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
         new_image.new_image = None
         new_image.data = np.sum([image.data for image in new_image.aligned_images], axis=0)
         new_image.save()
-        aligned = new_image.aligned_images
 
+        # check that the filename is correct
+        # e.g.: /path/to/data/PTF_<YYYYMMDD>_<HHMMSS>_<sec_ID>_<filt>_ComSci_<prov hash>_u-<coadd hash>.image.fits
+        match = re.match(r'/.*/.*_\d{8}_\d{6}_.*_.*_ComSci_.{6}_u-.{6}\.image\.fits', new_image.get_fullpath()[0])
+        assert match is not None
+
+        aligned = new_image.aligned_images
         assert new_image.upstream_images == images_to_align
         assert len(aligned) == len(images_to_align)
         assert np.array_equal(aligned[-1].data, images_to_align[-1].data)

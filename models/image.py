@@ -1,10 +1,13 @@
 import os
-import math
+import base64
+import hashlib
+
+import numpy as np
+
 import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.schema import CheckConstraint
 
 from astropy.time import Time
@@ -438,6 +441,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         self._aligner = None  # an ImageAligner object (lazy loaded using the provenance parameters)
         self._aligned_images = None  # a list of Images that are aligned to one image (lazy calculated, not committed)
+        self._combined_filepath = None  # a filepath built from invent_filepath and a hash of the upstream images
 
         self._instrument_object = None
         self._bitflag = 0
@@ -475,6 +479,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         self._aligner = None
         self._aligned_images = None
+        self._combined_filepath = None
 
         self._instrument_object = None
         this_object_session = orm.Session.object_session(self)
@@ -618,7 +623,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # (Can be done after the decam_pull PR is merged)
 
         if not gotcorners:
-            halfwid = new.instrument_object.pixel_scale * width / 2. / math.cos( new.dec * math.pi / 180. ) / 3600.
+            halfwid = new.instrument_object.pixel_scale * width / 2. / np.cos( new.dec * np.pi / 180. ) / 3600.
             halfhei = new.instrument_object.pixel_scale * height / 2. / 3600.
             ra0 = new.ra - halfwid
             ra1 = new.ra + halfwid
@@ -932,6 +937,18 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         self._aligned_images = aligned
 
+        # also suggest a filepath for an image created from the aligned upstream images:
+        self._combined_filepath = None  # if we don't clear this, it gets loaded in invent filepath!
+        path = self.invent_filepath()
+        utag = hashlib.sha256()
+        for image in self.upstream_images:
+            utag.update(image.filepath.encode('utf-8'))
+        utag = base64.b32encode(utag.digest()).decode().lower()
+        utag = '_u-' + utag[:6]
+        path += utag
+
+        self._combined_filepath = path
+
     @property
     def aligned_images(self):
         if self._aligned_images is None:
@@ -983,6 +1000,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         filename.
 
         """
+        if self._combined_filepath is not None:
+            return self._combined_filepath
+
         prov_hash = inst_name = im_type = date = time = filter = ra = dec = dec_int_pm = ''
         section_id = section_id_int = ra_int = ra_int_h = ra_frac = dec_int = dec_frac = 0
 
@@ -1049,7 +1069,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         # TODO: which elements of the naming convention are really necessary?
         #  and what is a good way to make sure the filename actually depends on them?
-        self.filepath = filename
 
         return filename
 
@@ -1113,7 +1132,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if filename is not None:
             self.filepath = filename
         if self.filepath is None:
-            self.invent_filepath()
+            self.filepath = self.invent_filepath()
 
         cfg = config.Config.get()
         single_file = cfg.value('storage.images.single_file', default=False)
