@@ -1372,7 +1372,7 @@ class Instrument:
         load it without checking first.  That other method searches the
         database first.
 
-        WILL NEED TO BE OVERRIDEEN FOR EVERY SUBCLASS, unless the
+        WILL NEED TO BE OVERRIDDEN FOR EVERY SUBCLASS, unless the
         instrument doesn't use any calibrator images, or doesn't have
         any default externally supplied calibrator images.
 
@@ -1444,7 +1444,7 @@ class Instrument:
         -------
         dict with up to 12 keys:
            (zero|flat|dark|fringe|illumination|linearity)_isimage: bool
-               True if the calibrator id is an image (other wise is none, or a miscellaneous data file)
+               True if the calibrator id is an image (otherwise is none, or a miscellaneous data file)
            (zero|flat|dark|fringe|illumination|linearity)_fileid: int
                Either the image_id or datafile_id of the calibrator file, or None if not found
 

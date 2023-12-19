@@ -91,6 +91,9 @@ class PTF(Instrument):
         return SensorSection(section_id, self.name, size_x=2048, size_y=4096,
                              offset_x=dx, offset_y=dy, defective=defective)
 
+    def _get_default_calibrator(self, mjd, section, calibtype='dark', filter=None, session=None):
+        pass
+
     @classmethod
     def GaiaDR3_to_instrument_mag(cls, filter, catdata):
         """Transform Gaia DR3 magnitudes to instrument magnitudes.
