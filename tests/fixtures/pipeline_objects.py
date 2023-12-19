@@ -214,7 +214,15 @@ def datastore_factory(
     extractor.run(datastore)
     assert extractor.has_recalculated is True
     """
-    def make_datastore(*args, cache_dir=None, cache_base_name=None, session=None, overrides={}, augments={}):
+    def make_datastore(
+            *args,
+            cache_dir=None,
+            cache_base_name=None,
+            session=None,
+            overrides={},
+            augments={},
+            bad_pixel_map=None,
+    ):
         code_version = args[0].provenance.code_version
         ds = DataStore(*args)  # make a new datastore
 
@@ -306,6 +314,12 @@ def datastore_factory(
             if ds.image is None:  # make the preprocessed image
                 _logger.debug('making preprocessed image. ')
                 ds = preprocessor.run(ds)
+
+                if bad_pixel_map is not None:
+                    ds.image.flags |= bad_pixel_map
+                    if ds.image.weight is not None:
+                        ds.image.weight[bad_pixel_map.astype(bool)] = 0.0
+
                 ds.image.save()
                 output_path = ds.image.copy_to_cache(cache_dir)
                 # also save the original image to the cache as a separate file
