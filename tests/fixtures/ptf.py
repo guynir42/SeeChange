@@ -6,11 +6,41 @@ import requests
 import sqlalchemy as sa
 from bs4 import BeautifulSoup
 from datetime import datetime
+from astropy.io import fits
 
 from models.base import SmartSession, _logger
 from models.ptf import PTF  # need this import to make sure PTF is added to the Instrument list
 from models.exposure import Exposure
 from util.retrydownload import retry_download
+
+
+@pytest.fixture(scope='session')
+def ptf_bad_pixel_map(data_dir, cache_dir):
+    cache_dir = os.path.join(cache_dir, 'PTF')
+    filename = 'C11/masktot.fits'  # TODO: add more CCDs if needed
+    url = 'https://portal.nersc.gov/project/m2218/pipeline/test_images/2012021x/'
+
+    # is this file already on the cache? if not, download it
+    cache_path = os.path.join(cache_dir, filename)
+    if not os.path.isfile(cache_path):
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        retry_download(url + filename, cache_path)
+
+    if not os.path.isfile(cache_path):
+        raise FileNotFoundError(f"Can't read {cache_path}. It should have been downloaded!")
+
+    data_dir = os.path.join(data_dir, 'PTF_calibrators')
+    data_path = os.path.join(data_dir, filename)
+    if not os.path.isfile(data_path):
+        os.makedirs(os.path.dirname(data_path), exist_ok=True)
+        shutil.copy2(cache_path, data_path)
+
+    with fits.open(data_path) as hdul:
+        data = (hdul[0].data == 0).astype('uint16')  # invert the mask (good is False, bad is True)
+
+    yield data
+
+    os.remove(data_path)
 
 
 @pytest.fixture(scope='session')
@@ -76,7 +106,7 @@ def ptf_exposure(ptf_downloader):
 
 
 @pytest.fixture
-def ptf_datastore(datastore_factory, ptf_exposure, cache_dir):
+def ptf_datastore(datastore_factory, ptf_exposure, cache_dir, ptf_bad_pixel_map):
     cache_dir = os.path.join(cache_dir, 'PTF')
     ptf_exposure.instrument_object.fetch_sections()
     ds = datastore_factory(
@@ -85,6 +115,7 @@ def ptf_datastore(datastore_factory, ptf_exposure, cache_dir):
         cache_dir=cache_dir,
         cache_base_name='187/PTF_20110429_040004_11_R_Sci_5F5TAU',
         overrides={'extraction': {'threshold': 5}},
+        bad_pixel_map=ptf_bad_pixel_map,
     )
     yield ds
     ds.delete_everything()
@@ -106,7 +137,7 @@ def ptf_urls():
 
 
 @pytest.fixture(scope='session')
-def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
+def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, ptf_bad_pixel_map):
     cache_dir = os.path.join(cache_dir, 'PTF')
 
     def factory(start_date='2009-04-04', end_date='2013-03-03', max_images=None):
@@ -138,13 +169,16 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir):
             exp = ptf_downloader(url)
             exp.instrument_object.fetch_sections()
             try:
+                # produce an image
                 ds = datastore_factory(
                     exp,
                     11,
                     cache_dir=cache_dir,
                     cache_base_name=cache_names.get(url, None),
                     overrides={'extraction': {'threshold': 5}},
+                    bad_pixel_map=ptf_bad_pixel_map,
                 )
+
                 if hasattr(ds, 'cache_base_name') and ds.cache_base_name is not None:
                     cache_name = ds.cache_base_name
                     if cache_name.startswith(cache_dir):
@@ -181,6 +215,3 @@ def ptf_reference_images(ptf_images_factory):
             image.sources.delete_from_disk_and_database(session=session, commit=False)
             image.delete_from_disk_and_database(session=session, commit=False)
         session.commit()
-
-
-
