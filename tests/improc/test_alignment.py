@@ -11,7 +11,7 @@ from models.base import SmartSession
 from models.provenance import Provenance
 from models.image import Image
 
-from pipeline.alignment import ImageAligner
+from improc.alignment import ImageAligner
 
 
 def test_warp_decam( decam_datastore, decam_reference ):
@@ -82,8 +82,8 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
         aligned = new_image.aligned_images
         assert new_image.upstream_images == images_to_align
         assert len(aligned) == len(images_to_align)
-        assert np.array_equal(aligned[-1].data, images_to_align[-1].data)
-        ref = images_to_align[-1]
+        assert np.array_equal(aligned[index].data, images_to_align[index].data)
+        ref = images_to_align[index]
 
         # check that images are aligned properly
         for image in new_image.aligned_images:

@@ -3,6 +3,8 @@ import os
 import shutil
 import requests
 
+import numpy as np
+
 import sqlalchemy as sa
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -10,7 +12,9 @@ from astropy.io import fits
 
 from models.base import SmartSession, _logger
 from models.ptf import PTF  # need this import to make sure PTF is added to the Instrument list
+from models.provenance import Provenance
 from models.exposure import Exposure
+from models.image import Image
 from util.retrydownload import retry_download
 
 
@@ -37,6 +41,11 @@ def ptf_bad_pixel_map(data_dir, cache_dir):
 
     with fits.open(data_path) as hdul:
         data = (hdul[0].data == 0).astype('uint16')  # invert the mask (good is False, bad is True)
+
+    data = np.roll(data, -1, axis=0)  # shift the mask by one pixel (to match the PTF data)
+    data[-1, :] = 0  # the last row that got rolled seems to be wrong
+    data = np.roll(data, 1, axis=1)  # shift the mask by one pixel (to match the PTF data)
+    data[:, 0] = 0  # the last column that got rolled seems to be wrong
 
     yield data
 
@@ -193,8 +202,10 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
                             f.write(f'{key} {value}\n')
 
             except Exception as e:
+                # I think we should fix this along with issue #150
+                print(f'Error processing {url}')  # this will also leave behind exposure and image data on disk only
                 # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
-                continue  # I think we should fix this along with issue #150
+                continue
             images.append(ds.image)
 
         return images
@@ -214,3 +225,54 @@ def ptf_reference_images(ptf_images_factory):
             image.exposure.delete_from_disk_and_database(session=session, commit=False)
             image.delete_from_disk_and_database(session=session, commit=False, remove_downstream_data=True)
         session.commit()
+
+
+# conditionally call the ptf_reference_images fixture if cache is not there:
+# ref: https://stackoverflow.com/a/75337251
+@pytest.fixture(scope='session')
+def ptf_aligned_images(request, cache_dir, data_dir, code_version):
+    cache_dir = os.path.join(cache_dir, 'PTF/aligned_images')
+
+    # try to load from cache
+    if os.path.isfile(os.path.join(cache_dir, 'manifest.txt')):
+        with open(os.path.join(cache_dir, 'manifest.txt')) as f:
+            filenames = f.read().splitlines()
+        output_images = []
+        for filename in filenames:
+            output_images.append(Image.copy_from_cache(cache_dir, filename + '.image.fits'))
+
+    else:  # no cache available
+        ptf_reference_images = request.getfixturevalue('ptf_reference_images')
+        images_to_align = ptf_reference_images[:4]  # speed things up using fewer images
+        prov = Provenance(
+            code_version=code_version,
+            parameters={'alignment': {'method': 'swarp', 'to_index': 'last'}, 'test_parameter': 'test_value'},
+            upstreams=[],
+            process='coaddition',
+            is_testing=True,
+        )
+        prov.update_id()
+        new_image = Image.from_images(images_to_align, index=-1)
+        new_image.provenance = prov
+        new_image.provenance.upstreams = new_image.get_upstream_provenances()
+
+        filenames = []
+        for image in new_image.aligned_images:
+            image.save()
+            image.copy_to_cache(cache_dir)
+            filenames.append(image.filepath)
+
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(os.path.join(cache_dir, 'manifest.txt'), 'w') as f:
+            for filename in filenames:
+                f.write(f'{filename}\n')
+        output_images = new_image.aligned_images
+
+    yield output_images
+
+    if 'output_images' in locals():
+        for image in output_images:
+            image.delete_from_disk_and_database()
+
+    if 'new_image' in locals():
+        new_image.delete_from_disk_and_database()

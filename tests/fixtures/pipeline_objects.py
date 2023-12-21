@@ -3,10 +3,13 @@ import warnings
 import shutil
 import pytest
 
+import numpy as np
+
 import sqlalchemy as sa
 
 from models.base import SmartSession, _logger
 from models.provenance import Provenance
+from models.enums_and_bitflags import BitFlagConverter
 from models.image import Image
 from models.source_list import SourceList
 from models.psf import PSF
@@ -22,6 +25,7 @@ from pipeline.subtraction import Subtractor
 from pipeline.cutting import Cutter
 from pipeline.measurement import Measurer
 
+from improc.bitmask_tools import make_saturated_mask
 
 @pytest.fixture(scope='session')
 def preprocessor_factory(test_config):
@@ -319,6 +323,10 @@ def datastore_factory(
                     ds.image.flags |= bad_pixel_map
                     if ds.image.weight is not None:
                         ds.image.weight[bad_pixel_map.astype(bool)] = 0.0
+
+                # flag saturated pixels, too (TODO: is there a better way to get the saturation limit? )
+                mask = make_saturated_mask(ds.image.data, ds.image.instrument_object.saturation_limit, iterations=2)
+                ds.image.flags |= (mask * 2 ** BitFlagConverter.convert('saturated')).astype(np.uint16)
 
                 ds.image.save()
                 output_path = ds.image.copy_to_cache(cache_dir)

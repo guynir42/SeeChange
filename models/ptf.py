@@ -19,7 +19,7 @@ class PTF(Instrument):
         self.read_noise = 4.5
         self.dark_current = 0.1
         self.gain = 1.5
-        self.saturation_limit = 50000
+        self.saturation_limit = 20000
         self.non_linearity_limit = 50000
         self.allowed_filters = ["R", "V", "I"]
 

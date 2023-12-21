@@ -662,7 +662,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             'score',
             'background',
             'header',
-
+            'raw_header',
         ]
         simple_attributes = [
             'ra',
@@ -908,9 +908,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         to the database. Note that each aligned image is also referred to by
         a global variable under the ImageAligner.temp_images list.
         """
-        from pipeline.alignment import ImageAligner  # avoid circular import
+        from improc.alignment import ImageAligner  # avoid circular import
         if self.provenance is None or self.provenance.parameters is None:
-            raise RuntimeError('Cannot align images without a Provenace with legal parameters!')
+            raise RuntimeError('Cannot align images without a Provenance with legal parameters!')
         if 'alignment' not in self.provenance.parameters:
             raise RuntimeError('Cannot align images without an "alignment" dictionary in the Provenance parameters!')
 
