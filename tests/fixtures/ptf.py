@@ -169,8 +169,6 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
             obstime = datetime.strptime(url[3:11], '%Y%m%d')
             if start_time <= obstime <= end_time:
                 urls.append(url)
-            if max_images is not None and len(urls) >= max_images:
-                break
 
         # download the images and make a datastore for each one
         images = []
@@ -207,6 +205,8 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
                 # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
                 continue
             images.append(ds.image)
+            if max_images is not None and len(images) >= max_images:
+                break
 
         return images
 
