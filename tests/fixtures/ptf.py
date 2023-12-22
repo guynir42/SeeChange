@@ -15,6 +15,8 @@ from models.ptf import PTF  # need this import to make sure PTF is added to the 
 from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
+from models.psf import PSF
+
 from util.retrydownload import retry_download
 
 
@@ -50,6 +52,13 @@ def ptf_bad_pixel_map(data_dir, cache_dir):
     yield data
 
     os.remove(data_path)
+
+    # remove (sub)folder if empty
+    dirname = os.path.dirname(data_path)
+    for i in range(2):
+        if os.path.isdir(dirname) and len(os.listdir(dirname)) == 0:
+            os.removedirs(dirname)
+            dirname = os.path.dirname(dirname)
 
 
 @pytest.fixture(scope='session')
@@ -240,7 +249,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
         output_images = []
         for filename in filenames:
             output_images.append(Image.copy_from_cache(cache_dir, filename + '.image.fits'))
-
+            output_images[-1].psf = PSF.copy_from_cache(cache_dir, filename + '.psf')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
         images_to_align = ptf_reference_images[:4]  # speed things up using fewer images
@@ -259,7 +268,8 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
         filenames = []
         for image in new_image.aligned_images:
             image.save()
-            image.copy_to_cache(cache_dir)
+            filepath = image.copy_to_cache(cache_dir)
+            image.psf.copy_to_cache(cache_dir, filepath=filepath[:-len('.image.fits.json')])
             filenames.append(image.filepath)
 
         os.makedirs(cache_dir, exist_ok=True)

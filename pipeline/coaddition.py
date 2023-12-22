@@ -2,10 +2,14 @@
 import numpy as np
 from scipy.signal import correlate
 
+
 from models.provenance import Provenance
 from models.image import Image
 
 from pipeline.parameters import Parameters
+
+from improc.bitmask_tools import dilate_bitmask
+from improc.inpainting import Inpainter
 
 
 class ParsCoadd(Parameters):
@@ -25,6 +29,14 @@ class ParsCoadd(Parameters):
             {},
             dict,
             'Alignment parameters. ',
+            critical=True
+        )
+
+        self.inpainting = self.add_par(
+            'inpainting',
+            {},
+            dict,
+            'Inpainting parameters. ',
             critical=True
         )
 
@@ -59,6 +71,60 @@ class Coadder:
 
     def __init__( self, **kwargs ):
         self.pars = ParsCoadd(**kwargs)
+        self.inpainter = Inpainter(**self.pars.inpainting)
+        # the aligner object is created in the image object
+
+    def _coadd_naive(self, output):
+        """Simply sum the values in each image on top of each other.
+
+        Parameters
+        ----------
+        output: Image
+            This image is the one that will be returned from the coaddition process.
+            Must contain a list of upstream_images from which the aligned_images can
+            be calculated.
+        """
+        imcube = np.array([image.data for image in output.aligned_images])
+        output.data = np.sum(imcube, axis=0)
+        wtcube = np.array([image.weight for image in output.aligned_images])
+        output.weight = np.sum(wtcube, axis=0)
+
+        flags = np.zeros(output.data.shape, dtype='uint16')
+        for image in output.aligned_images:
+            flags |= image.flags
+        output.flags = flags
+
+    def _coadd_zogy(self, output):
+        """Use Zackay & Ofek proper image coaddition to add the images together.
+
+        This method uses the PSF of each image to
+
+        Parameters
+        ----------
+        output: Image
+            This image is the one that will be returned from the coaddition process.
+            Must contain a list of upstream_images from which the aligned_images can
+            be calculated.
+
+        """
+        imcube = np.array([image.data for image in output.aligned_images])
+        psfs = []
+        for image in output.upstream_images:
+            psf_clip = image.psf.get_clip()
+            padsize_x = (imcube.shape[2] - psf_clip.shape[1]) // 2
+            padsize_y = (imcube.shape[1] - psf_clip.shape[0]) // 2
+            psf_pad = np.pad(psf_clip, ((padsize_y, padsize_y), (padsize_x, padsize_x)))
+            psfs.append(psf_pad)
+        psfcube = np.array(psfs)
+
+        flags = np.zeros(output.data.shape, dtype='uint16')
+        for image in output.aligned_images:
+            splash_pixels = 2  # TODO: should adjust by the PSF FWHM
+            flags |= dilate_bitmask(image.flags, iterations=splash_pixels)
+        output.flags = flags
+
+        # TODO: is there a better way to get the weight image?
+        wt = 0
 
     def run(self, images):
         """Run coaddition on the given list of images, and return the coadded image.
@@ -99,3 +165,5 @@ class Coadder:
             self._coadd_zogy(output)
         else:
             raise ValueError(f'Unknown coaddition method: {self.pars.method}. Use "naive" or "zogy".')
+
+        return output

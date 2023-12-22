@@ -2,7 +2,7 @@ import pytest
 
 import numpy as np
 
-from improc.inpaint import Inpainter
+from improc.inpainting import Inpainter
 
 
 def test_trivial_inpaint():

@@ -23,6 +23,7 @@ from pipeline.parameters import Parameters
 from pipeline.utils import read_fits_image
 from improc.bitmask_tools import dilate_bitmask
 
+
 class ParsImageAligner(Parameters):
     def __init__(self, **kwargs):
         super().__init__()
@@ -94,6 +95,7 @@ class ImageAligner:
                 setattr(warpedim, f'{att}_corner_{corner}', getattr(target, f'{att}_corner_{corner}'))
 
         warpedim.calculate_coordinates()
+        warpedim.psf = image.psf  # psf not available when loading from DB (psf.image_id doesn't point to warpedim)
 
         warpedim.type = 'Warped'
         warpedim.bitflag = 0
@@ -331,6 +333,7 @@ class ImageAligner:
         if target_image == source_image:
             warped_image = Image.copy_image( source_image )
             warped_image.type = 'Warped'
+            warped_image.psf = source_image.psf
         else:  # Do the warp
 
             if self.pars.method == 'swarp':

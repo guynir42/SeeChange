@@ -895,7 +895,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
 
-    def align_images(self):
+    def _make_aligned_images(self):
         """Align the upstream_images to one of the images pointed to by image_index.
 
         The parameters of the alignment must be given in the parameters attribute
@@ -949,10 +949,17 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         self._combined_filepath = path
 
+    def _check_aligned_images(self):
+        pass # TODO: finish this!
+
     @property
     def aligned_images(self):
+        if self._aligned_images is not None:
+            self._check_aligned_images()  # possibly destroy the old aligned images
+
         if self._aligned_images is None:
-            self.align_images()
+            self._make_aligned_images()
+
         return self._aligned_images
 
     @property

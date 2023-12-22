@@ -21,6 +21,7 @@ from pipeline.preprocessing import Preprocessor
 from pipeline.detection import Detector
 from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
+from pipeline.coaddition import Coadder
 from pipeline.subtraction import Subtractor
 from pipeline.cutting import Cutter
 from pipeline.measurement import Measurer
@@ -108,6 +109,27 @@ def photometor_factory(test_config):
 @pytest.fixture
 def photometor(photometor_factory):
     return photometor_factory()
+
+
+@pytest.fixture(scope='session')
+def coadder_factory(test_config):
+
+    def make_coadder():
+        coadd = Coadder(**test_config.value('coaddition'))
+        coadd.pars._enforce_no_new_attrs = False
+        coadd.pars.test_parameter = coadd.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        coadd.pars._enforce_no_new_attrs = True
+
+        return coadd
+
+    return make_coadder
+
+
+@pytest.fixture
+def coadder(coadder_factory):
+    return coadder_factory()
 
 
 @pytest.fixture(scope='session')

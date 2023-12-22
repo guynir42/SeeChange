@@ -61,7 +61,7 @@ class ParsInpainter(Parameters):
         self.override( kwargs )
 
     def get_process_name(self):
-        return 'inpaint'
+        return 'inpainting'
 
 
 class Inpainter:
