@@ -1,7 +1,6 @@
 
 import numpy as np
-from scipy.signal import correlate
-
+from sep import Background
 
 from models.provenance import Provenance
 from models.image import Image
@@ -10,6 +9,7 @@ from pipeline.parameters import Parameters
 
 from improc.bitmask_tools import dilate_bitmask
 from improc.inpainting import Inpainter
+from improc.tools import sigma_clipping
 
 
 class ParsCoadd(Parameters):
@@ -38,6 +38,16 @@ class ParsCoadd(Parameters):
             dict,
             'Inpainting parameters. ',
             critical=True
+        )
+
+        self.noise_estimator = self.add_par(
+            'noise_estimator',
+            'sep',
+            str,
+            'Method to estimate noise (sigma) in the image.  '
+            'Use "sep" or "sigma_clipping" or "bkg_rms", '
+            'which will rely on the Image object to have a bkg_rms_estimate. ',
+            critical=True,
         )
 
         self.enforce_no_new_attrs = True
@@ -74,57 +84,146 @@ class Coadder:
         self.inpainter = Inpainter(**self.pars.inpainting)
         # the aligner object is created in the image object
 
-    def _coadd_naive(self, output):
+    def estimate_noise(self, image):
+        """Get the noise RMS of the background of the given image.
+
+        Parameters
+        ----------
+        image: Image
+            The image for which background should be estimated.
+
+        Returns
+        -------
+        sigma: float
+            The RMS of the background in the image.
+        """
+        if image is None or image.data is None:
+            raise ValueError('The image must be loaded before estimating the noise. ')
+
+        if self.pars.noise_estimator == 'sep':
+            bkg = Background(image.data)
+            sigma = bkg.globalrms
+        elif self.pars.noise_estimator == 'sigma_clipping':
+            _, sigma = sigma_clipping(image.data)
+        elif self.pars.noise_estimator == 'bkg_rms':
+            if image.bkg_rms_estimate is None:
+                raise ValueError('The image must have a bkg_rms_estimate before estimating the noise. ')
+            sigma = image.bkg_rms_estimate
+        else:
+            raise ValueError(
+                f'Unknown noise estimator: {self.pars.noise_estimator}.  Use "sep" or "sigma_clipping" or "bkg_rms". '
+            )
+
+        return sigma
+
+    def _coadd_naive(self, aligned_images):
         """Simply sum the values in each image on top of each other.
 
         Parameters
         ----------
-        output: Image
-            This image is the one that will be returned from the coaddition process.
-            Must contain a list of upstream_images from which the aligned_images can
-            be calculated.
+        aligned_images: list of Image
+            Images that have been aligned to each other.
+            Each image must also have a PSF object attached.
+
+        Returns
+        -------
+        outim: ndarray
+            The image data after coaddition.
+        outwt: ndarray
+            The weight image after coaddition.
+        outfl: ndarray
+            The bit flags array after coaddition.
         """
-        imcube = np.array([image.data for image in output.aligned_images])
-        output.data = np.sum(imcube, axis=0)
-        wtcube = np.array([image.weight for image in output.aligned_images])
-        output.weight = np.sum(wtcube, axis=0)
+        imcube = np.array([image.data for image in aligned_images])
+        outim = np.sum(imcube, axis=0)
+        wtcube = np.array([image.weight for image in aligned_images])
+        outwt = np.sum(wtcube, axis=0)
 
-        flags = np.zeros(output.data.shape, dtype='uint16')
-        for image in output.aligned_images:
-            flags |= image.flags
-        output.flags = flags
+        outfl = np.zeros(outim.shape, dtype='uint16')
+        for image in aligned_images:
+            outfl |= image.flags
 
-    def _coadd_zogy(self, output):
+        return outim, outwt, outfl
+
+    def _coadd_zogy(self, aligned_images):
         """Use Zackay & Ofek proper image coaddition to add the images together.
 
         This method uses the PSF of each image to
 
         Parameters
         ----------
-        output: Image
-            This image is the one that will be returned from the coaddition process.
-            Must contain a list of upstream_images from which the aligned_images can
-            be calculated.
+        aligned_images: list of Image
+            Images that have been aligned to each other.
+            Each image must also have a PSF object attached.
 
+        Returns
+        -------
+        outim: ndarray
+            The image data after coaddition.
+        outwt: ndarray
+            The weight image after coaddition.
+        outfl: ndarray
+            The bit flags array after coaddition.
+        psf: ndarray
+            An array with the PSF of the output image.
+        score: ndarray
+            A matched-filtered score image of the coadded image.
         """
-        imcube = np.array([image.data for image in output.aligned_images])
+
+        images = []
         psfs = []
-        for image in output.upstream_images:
+        fwhms = []
+        flags = []
+        weights = []
+        flux_zps = []
+        sigmas = []
+        for image in aligned_images:
+            images.append(image.data)
+            flags.append(image.flags)
+            weights.append(image.weight)
             psf_clip = image.psf.get_clip()
-            padsize_x = (imcube.shape[2] - psf_clip.shape[1]) // 2
-            padsize_y = (imcube.shape[1] - psf_clip.shape[0]) // 2
+            padsize_x = (image.data.shape[1] - psf_clip.shape[1]) // 2
+            padsize_y = (image.data.shape[0] - psf_clip.shape[0]) // 2
             psf_pad = np.pad(psf_clip, ((padsize_y, padsize_y), (padsize_x, padsize_x)))
             psfs.append(psf_pad)
-        psfcube = np.array(psfs)
+            fwhms.append(image.psf.fwhm_pixels)
+            flux_zps.append( 10 ** (0.4 * image.zp.zp) )
+            sigmas.append(self.estimate_noise(image))
 
-        flags = np.zeros(output.data.shape, dtype='uint16')
-        for image in output.aligned_images:
+        imcube = np.array(images)
+        flcube = np.array(flags)
+        wtcube = np.array(weights)
+        psfcube = np.array(psfs)
+        sigmas = np.reshape(np.array(sigmas), (1, 1, len(sigmas)))
+        flux_zps = np.reshape(np.array(flux_zps), (1, 1, len(flux_zps)))
+
+        # make sure to inpaint missing data
+        imcube = self.inpainter.run(imcube, flcube, wtcube)
+
+        if np.sum(np.isnan(imcube)) > 0:
+            raise ValueError('There are still NaNs in the image data after inpainting!')
+
+        # This is where the magic happens
+        imcube_f = np.fft.fft2(imcube)
+        psfcube_f = np.fft.fft2(psfcube)
+        score_f = np.sum(flux_zps / sigmas ** 2 * np.conj(psfcube_f) * imcube_f, axis=0)  # eq 7
+        psf_f = np.sum(flux_zps ** 2 / sigmas ** 2 * np.abs(psfcube_f) ** 2, axis=0)  # eq 10
+        outim_f = score_f / psf_f  # eq 8
+
+        outim = np.fft.ifft2(outim_f).real
+        score = np.fft.ifft2(score_f).real
+        psf = np.fft.ifft2(psf_f).real
+        psf = psf / np.sum(psf)
+
+        outfl = np.zeros(outim.shape, dtype='uint16')
+        for image in aligned_images:
             splash_pixels = 2  # TODO: should adjust by the PSF FWHM
-            flags |= dilate_bitmask(image.flags, iterations=splash_pixels)
-        output.flags = flags
+            outfl |= dilate_bitmask(image.flags, iterations=splash_pixels)
 
         # TODO: is there a better way to get the weight image?
-        wt = 0
+        outwt = 1 / np.sqrt(np.abs(outim))
+
+        return outim, outwt, outfl, psf, score
 
     def run(self, images):
         """Run coaddition on the given list of images, and return the coadded image.

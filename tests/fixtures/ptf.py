@@ -250,6 +250,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
         for filename in filenames:
             output_images.append(Image.copy_from_cache(cache_dir, filename + '.image.fits'))
             output_images[-1].psf = PSF.copy_from_cache(cache_dir, filename + '.psf')
+            output_images[-1].zp = PSF.copy_from_cache(cache_dir, filename + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
         images_to_align = ptf_reference_images[:4]  # speed things up using fewer images
@@ -270,6 +271,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
             image.save()
             filepath = image.copy_to_cache(cache_dir)
             image.psf.copy_to_cache(cache_dir, filepath=filepath[:-len('.image.fits.json')])
+            image.zp.copy_to_cache(cache_dir, filepath=filepath[:-len('.image.fits.json')]+'.zp.json')
             filenames.append(image.filepath)
 
         os.makedirs(cache_dir, exist_ok=True)

@@ -96,6 +96,8 @@ class ImageAligner:
 
         warpedim.calculate_coordinates()
         warpedim.psf = image.psf  # psf not available when loading from DB (psf.image_id doesn't point to warpedim)
+        warpedim.zp = image.zp  # zp not available when loading from DB (zp.image_id doesn't point to warpedim)
+        # TODO: are SourceList and WorldCoordinates also included? Are they valid for the warped image?
 
         warpedim.type = 'Warped'
         warpedim.bitflag = 0
@@ -334,6 +336,8 @@ class ImageAligner:
             warped_image = Image.copy_image( source_image )
             warped_image.type = 'Warped'
             warped_image.psf = source_image.psf
+            warped_image.zp = source_image.zp
+            # TODO: are SourceList and WorldCoordinates also included? Are they valid for the warped image?
         else:  # Do the warp
 
             if self.pars.method == 'swarp':

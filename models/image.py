@@ -950,7 +950,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self._combined_filepath = path
 
     def _check_aligned_images(self):
-        pass # TODO: finish this!
+        pass  # TODO: finish this!
 
     @property
     def aligned_images(self):

@@ -79,6 +79,7 @@ photo_cal:
 
 coaddition:
   method: zogy
+  noise_estimator: sep
   alignment:
     method: swarp
     to_index: last
