@@ -64,7 +64,6 @@ def test_decam_exposure(decam_filename):
     assert e.section_headers['N4']['NAXIS2'] == 4146
 
 
-
 def test_image_from_decam_exposure(decam_filename, provenance_base, data_dir):
     with fits.open( decam_filename, memmap=False ) as ifp:
         hdr = ifp[0].header

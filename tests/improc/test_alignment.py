@@ -67,6 +67,7 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
             index = 0
         else:
             raise ValueError(f"Unknown alignment reference index: {prov.parameters['alignment']['to_index']}")
+
         new_image = Image.from_images(images_to_align, index=index)
         new_image.provenance = prov
         new_image.provenance.upstreams = new_image.get_upstream_provenances()
@@ -119,7 +120,9 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
 
 def check_aligned(image1, image2):
     d1 = image1.data.copy()
+    d1[image1.flags > 0] = np.nan
     d2 = image2.data.copy()
+    d2[image2.flags > 0] = np.nan
 
     row_func1 = np.nansum(d1 - np.nanmedian(d1, axis=1, keepdims=True), axis=1)
     row_func2 = np.nansum(d2 - np.nanmedian(d2, axis=1, keepdims=True), axis=1)
