@@ -27,7 +27,7 @@ def test_ptf_datastore(ptf_datastore):
 
 
 def test_ptf_urls(ptf_urls):
-    assert len(ptf_urls) == 395
+    assert len(ptf_urls) == 394
 
 
 def test_ptf_images(ptf_reference_images):
