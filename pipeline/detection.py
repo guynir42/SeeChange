@@ -646,7 +646,7 @@ class Detector:
                         usepsfsize += 1
 
             psf = PSF(
-                format="psfex", image=image,
+                format="psfex", image=image, image_id=image.id,
                 fwhm_pixels=float(psfstats.array['FWHM_FromFluxRadius_Mean'][0])
             )
             psf.load( psfpath=psffile, psfxmlpath=psfxmlfile )
