@@ -16,6 +16,7 @@ from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.psf import PSF
+from models.zero_point import ZeroPoint
 
 from util.retrydownload import retry_download
 
@@ -209,6 +210,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
                             f.write(f'{key} {value}\n')
 
             except Exception as e:
+                raise e
                 # I think we should fix this along with issue #150
                 print(f'Error processing {url}')  # this will also leave behind exposure and image data on disk only
                 # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
@@ -250,7 +252,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
         for filename in filenames:
             output_images.append(Image.copy_from_cache(cache_dir, filename + '.image.fits'))
             output_images[-1].psf = PSF.copy_from_cache(cache_dir, filename + '.psf')
-            output_images[-1].zp = PSF.copy_from_cache(cache_dir, filename + '.zp')
+            output_images[-1].zp = ZeroPoint.copy_from_cache(cache_dir, filename + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
         images_to_align = ptf_reference_images[:4]  # speed things up using fewer images

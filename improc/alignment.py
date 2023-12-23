@@ -392,6 +392,7 @@ class ImageAligner:
             ],  # this does not really matter since we are not going to save this to DB!
         )
         warped_image.provenance.update_id()
+        warped_image.header['original_image_id'] = source_image.id  # add this only for aligned images for verification
 
         upstream_bitflag = source_image.bitflag
         upstream_bitflag |= target_image.bitflag

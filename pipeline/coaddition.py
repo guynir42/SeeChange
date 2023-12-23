@@ -84,7 +84,7 @@ class Coadder:
         self.inpainter = Inpainter(**self.pars.inpainting)
         # the aligner object is created in the image object
 
-    def estimate_noise(self, image):
+    def _estimate_noise(self, image):
         """Get the noise RMS of the background of the given image.
 
         Parameters
@@ -182,20 +182,22 @@ class Coadder:
             flags.append(image.flags)
             weights.append(image.weight)
             psf_clip = image.psf.get_clip()
-            padsize_x = (image.data.shape[1] - psf_clip.shape[1]) // 2
-            padsize_y = (image.data.shape[0] - psf_clip.shape[0]) // 2
-            psf_pad = np.pad(psf_clip, ((padsize_y, padsize_y), (padsize_x, padsize_x)))
+            padsize_x1 = int(np.floor((image.data.shape[1] - psf_clip.shape[1]) / 2))
+            padsize_x2 = int(np.ceil((image.data.shape[1] - psf_clip.shape[1]) / 2))
+            padsize_y1 = int(np.floor((image.data.shape[0] - psf_clip.shape[0]) / 2))
+            padsize_y2 = int(np.ceil((image.data.shape[0] - psf_clip.shape[0]) / 2))
+            psf_pad = np.pad(psf_clip, ((padsize_y1, padsize_y2), (padsize_x1, padsize_x2)))
             psfs.append(psf_pad)
             fwhms.append(image.psf.fwhm_pixels)
             flux_zps.append( 10 ** (0.4 * image.zp.zp) )
-            sigmas.append(self.estimate_noise(image))
+            sigmas.append(self._estimate_noise(image))
 
         imcube = np.array(images)
         flcube = np.array(flags)
         wtcube = np.array(weights)
         psfcube = np.array(psfs)
-        sigmas = np.reshape(np.array(sigmas), (1, 1, len(sigmas)))
-        flux_zps = np.reshape(np.array(flux_zps), (1, 1, len(flux_zps)))
+        sigmas = np.reshape(np.array(sigmas), (len(sigmas), 1, 1))
+        flux_zps = np.reshape(np.array(flux_zps), (len(flux_zps), 1, 1))
 
         # make sure to inpaint missing data
         imcube = self.inpainter.run(imcube, flcube, wtcube)

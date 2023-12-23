@@ -950,12 +950,37 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self._combined_filepath = path
 
     def _check_aligned_images(self):
-        pass  # TODO: finish this!
+        """Check that the aligned_images loaded in this Image are consistent.
+
+        The aligned_images must have the same provenance parameters as the Image,
+        and their "original_image_id" must point to the IDs of the upstream_images.
+
+        """
+        if self._aligned_images is None:
+            return
+
+        if self.provenance is None or self.provenance.parameters is None:
+            raise RuntimeError('Cannot check aligned images without a Provenance with legal parameters!')
+        if 'alignment' not in self.provenance.parameters:
+            raise RuntimeError(
+                'Cannot check aligned images without an "alignment" dictionary in the Provenance parameters!'
+            )
+
+        upstream_images_ids = [image.id for image in self.upstream_images]
+
+        for image in self._aligned_images:
+            if self.provenance.parameters['alignment'] != image.provenance.parameters:
+                self._aligned_images = None
+                return
+
+            if image.header['original_image_id'] not in upstream_images_ids:
+                self._aligned_images = None
+                return
+
 
     @property
     def aligned_images(self):
-        if self._aligned_images is not None:
-            self._check_aligned_images()  # possibly destroy the old aligned images
+        self._check_aligned_images()  # possibly destroy the old aligned images
 
         if self._aligned_images is None:
             self._make_aligned_images()

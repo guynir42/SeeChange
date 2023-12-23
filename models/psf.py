@@ -150,6 +150,11 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     def info( self, value ):
         self._info = value
 
+    @property
+    def image_shape(self):
+        """The shape of the image this PSF is for."""
+        return self.header['NAXIS2'], self.header['NAXIS1']
+
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object"""
         return psf_badness_inverse
@@ -215,7 +220,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         header0 = fits.Header( [ fits.Card( 'SIMPLE', 'T', 'This is a FITS file' ),
                                  fits.Card( 'BITPIX', 8 ),
                                  fits.Card( 'NAXIS', 0 ),
-                                 fits.Card( 'EXTEND', 'T', 'This file may contain FITS extensions' )
+                                 fits.Card( 'EXTEND', 'T', 'This file may contain FITS extensions' ),
                                 ] )
         hdu0 = fits.PrimaryHDU( header=header0 )
         # The PSFEx format is a bit byzantine
@@ -381,6 +386,11 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
         if self.format != 'psfex':
             raise NotImplementedError( "Only know how to get clip for psfex PSF files" )
+
+        if x is None:
+            x = self.image_shape[1] / 2.
+        if y is None:
+            y = self.image_shape[0] / 2.
 
         psfbase = self.get_resampled_psf( x, y, dtype=np.float64 )
 
