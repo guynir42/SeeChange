@@ -388,9 +388,11 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
             raise NotImplementedError( "Only know how to get clip for psfex PSF files" )
 
         if x is None:
-            x = self.image_shape[1] / 2.
+            # x = self.image_shape[1] / 2.
+            x = 0  # I think the x/y are centered on the center of the image
         if y is None:
-            y = self.image_shape[0] / 2.
+            # y = self.image_shape[0] / 2.
+            y = 0  # I think the x/y are centered on the center of the image
 
         psfbase = self.get_resampled_psf( x, y, dtype=np.float64 )
 

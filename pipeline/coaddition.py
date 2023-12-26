@@ -1,5 +1,7 @@
 
 import numpy as np
+from numpy.fft import fft2, ifft2, fftshift
+
 from sep import Background
 
 from models.provenance import Provenance
@@ -211,16 +213,16 @@ class Coadder:
             raise ValueError('There are NaNs values in the data cube! Use inpainting to remove them... ')
 
         # calculations:
-        datacube_f = np.fft.fft2(datacube)
-        psfcube_f = np.fft.fft2(psfcube)
+        datacube_f = fft2(datacube)
+        psfcube_f = fft2(psfcube)
 
         score_f = np.sum(flux_zps / sigmas ** 2 * np.conj(psfcube_f) * datacube_f, axis=0)  # eq 7
         psf_f = np.sqrt(np.sum(flux_zps ** 2 / sigmas ** 2 * np.abs(psfcube_f) ** 2, axis=0))  # eq 10
         outdata_f = score_f / psf_f  # eq 8
 
-        outdata = np.fft.ifftshift(np.fft.ifft2(outdata_f).real)
-        score = np.fft.ifftshift(np.fft.ifft2(score_f).real)
-        psf = np.fft.ifftshift(np.fft.ifft2(psf_f).real)
+        outdata = fftshift(ifft2(outdata_f).real)
+        score = fftshift(ifft2(score_f).real)
+        psf = fftshift(ifft2(psf_f).real)
         psf = psf / np.sum(psf)
 
         return outdata, psf, score

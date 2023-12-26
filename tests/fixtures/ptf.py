@@ -255,7 +255,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
             output_images[-1].zp = ZeroPoint.copy_from_cache(cache_dir, filename + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
-        images_to_align = ptf_reference_images[:4]  # speed things up using fewer images
+        images_to_align = ptf_reference_images[:9]  # speed things up using fewer images
         prov = Provenance(
             code_version=code_version,
             parameters={'alignment': {'method': 'swarp', 'to_index': 'last'}, 'test_parameter': 'test_value'},
