@@ -301,7 +301,3 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
                 image.exposure.delete_from_disk_and_database(commit=False)
                 image.delete_from_disk_and_database(commit=False, remove_downstream_data=True)
             session.commit()
-
-
-def test_images(ptf_aligned_images):
-    print(ptf_aligned_images)
