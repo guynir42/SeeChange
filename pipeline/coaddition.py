@@ -45,8 +45,15 @@ class ParsCoadd(Parameters):
             'sep',
             str,
             'Method to estimate noise (sigma) in the image.  '
-            'Use "sep" or "sigma_clipping" or "bkg_rms", '
-            'which will rely on the Image object to have a bkg_rms_estimate. ',
+            'Use "sep" or "sigma" for sigma clipping. ',
+            critical=True,
+        )
+
+        self.flag_fwhm_factor = self.add_par(
+            'flag_fwhm_factor',
+            1.0,
+            float,
+            'Multiplicative factor for the PSF FWHM (in pixels) to use for dilating the flag maps. ',
             critical=True,
         )
 
@@ -84,46 +91,47 @@ class Coadder:
         self.inpainter = Inpainter(**self.pars.inpainting)
         # the aligner object is created in the image object
 
-    def _estimate_noise(self, image):
-        """Get the noise RMS of the background of the given image.
+    def _estimate_background(self, data):
+        """Get the mean and noise RMS of the background of the given image.
 
         Parameters
         ----------
-        image: Image
+        data: ndarray
             The image for which background should be estimated.
 
         Returns
         -------
+        bkg: float
+            The mean background in the image.
         sigma: float
             The RMS of the background in the image.
         """
-        if image is None or image.data is None:
-            raise ValueError('The image must be loaded before estimating the noise. ')
-
         if self.pars.noise_estimator == 'sep':
-            bkg = Background(image.data)
-            sigma = bkg.globalrms
-        elif self.pars.noise_estimator == 'sigma_clipping':
-            _, sigma = sigma_clipping(image.data)
-        elif self.pars.noise_estimator == 'bkg_rms':
-            if image.bkg_rms_estimate is None:
-                raise ValueError('The image must have a bkg_rms_estimate before estimating the noise. ')
-            sigma = image.bkg_rms_estimate
+            b = Background(data)
+            bkg = b.globalback
+            sigma = b.globalrms
+        elif self.pars.noise_estimator.startswith('sigma'):
+            bkg, sigma = sigma_clipping(data)
         else:
             raise ValueError(
                 f'Unknown noise estimator: {self.pars.noise_estimator}.  Use "sep" or "sigma_clipping" or "bkg_rms". '
             )
 
-        return sigma
+        return bkg, sigma
 
-    def _coadd_naive(self, aligned_images):
+    def _coadd_naive(self, images, weights=None, flags=None):
         """Simply sum the values in each image on top of each other.
 
         Parameters
         ----------
-        aligned_images: list of Image
+        images: list of Image or list of 2D ndarrays
             Images that have been aligned to each other.
-            Each image must also have a PSF object attached.
+        weights: list of 2D ndarrays
+            The weights to use for each image.
+            If images is given as Image objects, can be left as None.
+        flags: list of 2D ndarrays
+            The bit flags to use for each image.
+            If images is given as Image objects, can be left as None.
 
         Returns
         -------
@@ -134,27 +142,134 @@ class Coadder:
         outfl: ndarray
             The bit flags array after coaddition.
         """
-        imcube = np.array([image.data for image in aligned_images])
+        if not all(type(image) == type(images[0]) for image in images):
+            raise ValueError('Not all images are of the same type. ')
+        if isinstance(images[0], Image):
+            data = [image.data for image in images]
+            weights = [image.weight for image in images]
+            flags = [image.flags for image in images]
+        elif isinstance(images[0], np.ndarray):
+            data = images
+        else:
+            raise ValueError('images must be a list of Image objects or 2D arrays. ')
+
+        imcube = np.array(data)
+        wtcube = np.array(weights)
         outim = np.sum(imcube, axis=0)
-        wtcube = np.array([image.weight for image in aligned_images])
-        outwt = np.sum(wtcube, axis=0)
+        outwt = 1 / np.sqrt(np.sum(1 / wtcube ** 2, axis=0))
 
         outfl = np.zeros(outim.shape, dtype='uint16')
-        for image in aligned_images:
-            outfl |= image.flags
+        for f in flags:
+            outfl |= f
 
         return outim, outwt, outfl
 
-    def _coadd_zogy(self, aligned_images):
+    def _zogy_core(self, datacube, psfcube, sigmas, flux_zps):
+        """Perform the core Zackay & Ofek proper image coaddition on the input data cube.
+
+        Parameters
+        ----------
+        datacube: ndarray
+            The data cube to coadd. Can be images or weight maps (or anything else).
+        psfcube: ndarray
+            The PSF cube to use for coaddition.
+        sigmas: ndarray
+            The noise estimate for each image in the data cube.
+            Must be a 1D array with a length equal to the first axis of the data cube.
+            It could have additional dimensions but it will be reshaped to be multiplied
+            with the data cube and psf cube.
+        flux_zps: ndarray
+            The flux zero points for each image in the data cube.
+            Must be a 1D array with a length equal to the first axis of the data cube.
+            It could have additional dimensions but it will be reshaped to be multiplied
+            with the data cube and psf cube.
+
+        Returns
+        -------
+        outdata: ndarray
+            The coadded 2D data array.
+        outpsf: ndarray
+            The coadded 2D PSF cube.
+        score: ndarray
+            The matched-filter result of cross correlating outdata with outpsf.
+        """
+        # data verification:
+        if datacube.shape != psfcube.shape:
+            raise ValueError('The data cube and PSF cube must have the same shape. ')
+        if len(datacube.shape) != 3:
+            raise ValueError('The data cube and PSF cube must have 3 dimensions. ')
+
+        sigmas = np.reshape(np.array(sigmas), (len(sigmas), 1, 1))
+        if sigmas.size != datacube.shape[0]:
+            raise ValueError('The sigmas array must have the same length as the first axis of the data cube. ')
+
+        flux_zps = np.reshape(np.array(flux_zps), (len(flux_zps), 1, 1))
+        if flux_zps.size != datacube.shape[0]:
+            raise ValueError('The flux_zps array must have the same length as the first axis of the data cube. ')
+
+        if np.sum(np.isnan(datacube)) > 0:
+            raise ValueError('There are NaNs values in the data cube! Use inpainting to remove them... ')
+
+        # calculations:
+        datacube_f = np.fft.fft2(datacube)
+        psfcube_f = np.fft.fft2(psfcube)
+
+        score_f = np.sum(flux_zps / sigmas ** 2 * np.conj(psfcube_f) * datacube_f, axis=0)  # eq 7
+        psf_f = np.sqrt(np.sum(flux_zps ** 2 / sigmas ** 2 * np.abs(psfcube_f) ** 2, axis=0))  # eq 10
+        outdata_f = score_f / psf_f  # eq 8
+
+        outdata = np.fft.ifftshift(np.fft.ifft2(outdata_f).real)
+        score = np.fft.ifftshift(np.fft.ifft2(score_f).real)
+        psf = np.fft.ifftshift(np.fft.ifft2(psf_f).real)
+        psf = psf / np.sum(psf)
+
+        return outdata, psf, score
+
+    def _coadd_zogy(
+            self,
+            images,
+            weights=None,
+            flags=None,
+            psf_clips=None,
+            psf_fwhms=None,
+            flux_zps=None,
+            bkg_means=None,
+            bkg_sigmas=None,
+    ):
         """Use Zackay & Ofek proper image coaddition to add the images together.
 
         This method uses the PSF of each image to
 
         Parameters
         ----------
-        aligned_images: list of Image
+        Parameters
+        ----------
+        images: list of Image or list of 2D ndarrays
             Images that have been aligned to each other.
             Each image must also have a PSF object attached.
+        weights: list of 2D ndarrays
+            The weights to use for each image.
+            If images is given as Image objects, can be left as None.
+        flags: list of 2D ndarrays
+            The bit flags to use for each image.
+            If images is given as Image objects, can be left as None.
+        psf_clips: list of 2D ndarrays
+            The PSF images to use for each image.
+            If images is given as Image objects, can be left as None.
+        psf_fwhms: list of floats
+            The FWHM of the PSF for each image.
+            If images is given as Image objects, can be left as None.
+        flux_zps: list of floats
+            The flux zero points for each image.
+            If images is given as Image objects, can be left as None.
+        bkg_means: list of floats
+            The mean background for each image.
+            If images is given as Image objects, can be left as None.
+            This variable can be used to override the background estimation.
+        bkg_sigmas: list of floats
+            The RMS of the background for each image.
+            If images is given as Image objects, can be left as None.
+            This variable can be used to override the background estimation.
 
         Returns
         -------
@@ -169,35 +284,60 @@ class Coadder:
         score: ndarray
             A matched-filtered score image of the coadded image.
         """
+        if not all(type(image) == type(images[0]) for image in images):
+            raise ValueError('Not all images are of the same type. ')
 
-        images = []
+        if isinstance(images[0], Image):
+            data = []
+            flags = []
+            weights = []
+            psf_clips = []
+            psf_fwhms = []
+            flux_zps = []
+            
+            for image in images:
+                data.append(image.data)
+                flags.append(image.flags)
+                weights.append(image.weight)
+                psf_clips.append(image.psf.get_clip())
+                psf_fwhms.append(image.psf.fwhm_pixels)
+                flux_zps.append(10 ** (0.4 * image.zp.zp))
+
+        elif isinstance(images[0], np.ndarray):
+            data = images
+        else:
+            raise ValueError('images must be a list of Image objects or 2D arrays. ')
+
+        # pad the PSFs to the same size as the image data
         psfs = []
-        fwhms = []
-        flags = []
-        weights = []
-        flux_zps = []
-        sigmas = []
-        for image in aligned_images:
-            images.append(image.data)
-            flags.append(image.flags)
-            weights.append(image.weight)
-            psf_clip = image.psf.get_clip()
-            padsize_x1 = int(np.floor((image.data.shape[1] - psf_clip.shape[1]) / 2))
-            padsize_x2 = int(np.ceil((image.data.shape[1] - psf_clip.shape[1]) / 2))
-            padsize_y1 = int(np.floor((image.data.shape[0] - psf_clip.shape[0]) / 2))
-            padsize_y2 = int(np.ceil((image.data.shape[0] - psf_clip.shape[0]) / 2))
-            psf_pad = np.pad(psf_clip, ((padsize_y1, padsize_y2), (padsize_x1, padsize_x2)))
+        for array, psf in zip(data, psf_clips):
+            padsize_x1 = int(np.ceil((array.shape[1] - psf.shape[1]) / 2))
+            padsize_x2 = int(np.floor((array.shape[1] - psf.shape[1]) / 2))
+            padsize_y1 = int(np.ceil((array.shape[0] - psf.shape[0]) / 2))
+            padsize_y2 = int(np.floor((array.shape[0] - psf.shape[0]) / 2))
+            psf_pad = np.pad(psf, ((padsize_y1, padsize_y2), (padsize_x1, padsize_x2)))
+            psf_pad /= np.sum(psf_pad)
             psfs.append(psf_pad)
-            fwhms.append(image.psf.fwhm_pixels)
-            flux_zps.append( 10 ** (0.4 * image.zp.zp) )
-            sigmas.append(self._estimate_noise(image))
 
-        imcube = np.array(images)
+        # estimate the background if not given
+        if bkg_means is None or bkg_sigmas is None:
+            bkg_means = []
+            bkg_sigmas = []
+            for array in data:
+                bkg, sigma = self._estimate_background(array)
+                bkg_means.append(bkg)
+                bkg_sigmas.append(sigma)
+
+        imcube = np.array(data)
         flcube = np.array(flags)
         wtcube = np.array(weights)
         psfcube = np.array(psfs)
-        sigmas = np.reshape(np.array(sigmas), (len(sigmas), 1, 1))
+        bkg_means = np.reshape(np.array(bkg_means), (len(bkg_means), 1, 1))
+        bkg_sigmas = np.reshape(np.array(bkg_sigmas), (len(bkg_sigmas), 1, 1))
         flux_zps = np.reshape(np.array(flux_zps), (len(flux_zps), 1, 1))
+
+        # subtract the background
+        imcube -= bkg_means
 
         # make sure to inpaint missing data
         imcube = self.inpainter.run(imcube, flcube, wtcube)
@@ -206,24 +346,13 @@ class Coadder:
             raise ValueError('There are still NaNs in the image data after inpainting!')
 
         # This is where the magic happens
-        imcube_f = np.fft.fft2(imcube)
-        psfcube_f = np.fft.fft2(psfcube)
-        score_f = np.sum(flux_zps / sigmas ** 2 * np.conj(psfcube_f) * imcube_f, axis=0)  # eq 7
-        psf_f = np.sum(flux_zps ** 2 / sigmas ** 2 * np.abs(psfcube_f) ** 2, axis=0)  # eq 10
-        outim_f = score_f / psf_f  # eq 8
-
-        outim = np.fft.ifft2(outim_f).real
-        score = np.fft.ifft2(score_f).real
-        psf = np.fft.ifft2(psf_f).real
-        psf = psf / np.sum(psf)
+        outim, psf, score = self._zogy_core(imcube, psfcube, bkg_sigmas, flux_zps)
+        outwt, _, _ = self._zogy_core(wtcube, psfcube, bkg_sigmas, flux_zps)
 
         outfl = np.zeros(outim.shape, dtype='uint16')
-        for image in aligned_images:
-            splash_pixels = 2  # TODO: should adjust by the PSF FWHM
-            outfl |= dilate_bitmask(image.flags, iterations=splash_pixels)
-
-        # TODO: is there a better way to get the weight image?
-        outwt = 1 / np.sqrt(np.abs(outim))
+        for f, p in zip(flags, psf_fwhms):
+            splash_pixels = int(np.ceil(p * self.pars.flag_fwhm_factor))
+            outfl = outfl | dilate_bitmask(f, iterations=splash_pixels)
 
         return outim, outwt, outfl, psf, score
 

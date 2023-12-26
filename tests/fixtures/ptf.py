@@ -286,6 +286,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
 
     if 'output_images' in locals():
         for image in output_images:
+            image.psf.delete_from_disk_and_database()
             image.delete_from_disk_and_database()
 
     if 'new_image' in locals():

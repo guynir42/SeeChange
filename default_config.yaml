@@ -80,6 +80,7 @@ photo_cal:
 coaddition:
   method: zogy
   noise_estimator: sep
+  flag_fwhm_factor: 1.0
   alignment:
     method: swarp
     to_index: last
