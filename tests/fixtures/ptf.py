@@ -296,8 +296,11 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
 
     # must delete these here, as the cleanup for the getfixturevalue() happens after pytest_sessionfinish!
     if 'ptf_reference_images' in locals():
-        for image in ptf_reference_images:
-            image.delete_from_disk_and_database()
+        with SmartSession() as session:
+            for image in ptf_reference_images:
+                image.exposure.delete_from_disk_and_database(commit=False)
+                image.delete_from_disk_and_database(commit=False, remove_downstream_data=True)
+            session.commit()
 
 
 def test_images(ptf_aligned_images):
