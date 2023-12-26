@@ -231,6 +231,8 @@ def ptf_reference_images(ptf_images_factory):
     yield images
 
     with SmartSession() as session:
+        session.autoflush = False
+
         for image in images:
             image = image.recursive_merge(session)
             image.exposure.delete_from_disk_and_database(session=session, commit=False)
@@ -291,3 +293,12 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
 
     if 'new_image' in locals():
         new_image.delete_from_disk_and_database()
+
+    # must delete these here, as the cleanup for the getfixturevalue() happens after pytest_sessionfinish!
+    if 'ptf_reference_images' in locals():
+        for image in ptf_reference_images:
+            image.delete_from_disk_and_database()
+
+
+def test_images(ptf_aligned_images):
+    print(ptf_aligned_images)

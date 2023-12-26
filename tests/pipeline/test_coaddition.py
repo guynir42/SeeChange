@@ -254,5 +254,11 @@ def test_zogy_vs_naive(ptf_aligned_images, coadder):
     zogy_im_nans = zogy_im.copy()
     zogy_im_nans[zogy_fl > 0] = np.nan
     zogy_fwhm = estimate_psf_width(zogy_im_nans)
+    naive_im_nans = naive_im.copy()
+    naive_im_nans[naive_fl > 0] = np.nan
+    naive_fwhm = estimate_psf_width(naive_im_nans)
 
     assert all(zogy_fwhm <= fwhms)  # the ZOGY PSF should be narrower than original PSFs
+    assert zogy_fwhm < naive_fwhm
+
+

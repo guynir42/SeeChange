@@ -139,9 +139,9 @@ def blocking_plots():
     if isinstance(inter, str):
         inter = inter.lower() in ('true', '1', 'on', 'yes')
 
-    # if not inter:  # for non-interactive plots, use headless plots that just save to disk
-    #     # ref: https://stackoverflow.com/questions/15713279/calling-pylab-savefig-without-display-in-ipython
-    #     matplotlib.use("Agg")
+    if not inter:  # for non-interactive plots, use headless plots that just save to disk
+        # ref: https://stackoverflow.com/questions/15713279/calling-pylab-savefig-without-display-in-ipython
+        matplotlib.use("Agg")
 
     yield inter
 

@@ -349,7 +349,13 @@ class Coadder:
 
         # This is where the magic happens
         outim, psf, score = self._zogy_core(imcube, psfcube, bkg_sigmas, flux_zps)
-        outwt, _, _ = self._zogy_core(wtcube, psfcube, bkg_sigmas, flux_zps)
+
+        # coadd the variance as well
+        varmap = 1 / wtcube ** 2
+        varflag = wtcube == 0
+        varmap = self.inpainter.run(varmap, varflag, wtcube)  # wtcube doesn't do anything, maybe put something else?
+        outvarmap, _, _ = self._zogy_core(varmap, psfcube, bkg_sigmas, flux_zps)
+        outwt = 1 / np.sqrt(outvarmap)
 
         outfl = np.zeros(outim.shape, dtype='uint16')
         for f, p in zip(flags, psf_fwhms):
