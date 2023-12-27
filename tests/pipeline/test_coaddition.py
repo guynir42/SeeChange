@@ -1,7 +1,12 @@
 import pytest
+import uuid
+
+from astropy.io import fits
 
 import numpy as np
 from numpy.fft import fft2, ifft2, fftshift
+
+from models.image import Image
 
 from improc.simulator import Simulator
 from improc.tools import sigma_clipping
@@ -261,5 +266,73 @@ def test_zogy_vs_naive(ptf_aligned_images, coadder):
 
     assert all(zogy_fwhm <= fwhms)  # the ZOGY PSF should be narrower than original PSFs
     assert zogy_fwhm < naive_fwhm
+
+
+def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
+    for image, aligned_image in zip(ptf_reference_images, ptf_aligned_images):
+        image.aligned_image = aligned_image
+
+    # first make sure the "naive" coadd method works
+    coadder.pars.test_parameter = uuid.uuid4().hex
+    coadder.pars.method = 'naive'
+
+    ref_image = coadder.run(ptf_reference_images)
+    ref_image.provenance.is_testing = True
+    ref_image.provenance.update_id()
+
+    # now check that ZOGY works and verify the output
+    coadder.pars.test_parameter = uuid.uuid4().hex
+    coadder.pars.method = 'zogy'
+
+    ref_image = coadder.run(ptf_reference_images)
+    ref_image.provenance.is_testing = True
+    ref_image.provenance.update_id()
+
+    assert isinstance(ref_image, Image)
+    assert ref_image.filepath is None
+    assert ref_image.type == 'ComSci'
+    assert ref_image.provenance.id != ptf_reference_images[0].provenance.id
+    assert ref_image.instrument == 'PTF'
+    assert ref_image.telescope == 'P48'
+    assert ref_image.filter == 'R'
+    assert ref_image.section_id == '11'
+
+    assert isinstance(ref_image.header, dict)
+    assert isinstance(ref_image.raw_header, fits.Header)
+
+    # check a random value from the header, should have been taken from the last image
+    assert ref_image.raw_header['TELDEC'] == ptf_reference_images[-1].raw_header['TELDEC']
+    # the coordinates have also been grabbed from the last image
+    assert ref_image.ra == ptf_reference_images[-1].ra
+    assert ref_image.dec == ptf_reference_images[-1].dec
+    assert ref_image.ra_corner_00 == ptf_reference_images[-1].ra_corner_00  # check one of the corners
+
+    assert ref_image.start_mjd == min([im.start_mjd for im in ptf_reference_images])
+    assert ref_image.end_mjd == max([im.end_mjd for im in ptf_reference_images])
+    assert ref_image.exp_time == sum([im.exp_time for im in ptf_reference_images])
+
+    assert ref_image.is_coadd
+    assert not ref_image.is_sub
+    assert ref_image.exposure_id is None
+    assert ref_image.exposure is None
+
+    assert ref_image.upstream_images == ptf_reference_images
+    assert ref_image.ref_image_index == len(ptf_reference_images) - 1
+    assert ref_image.new_image_index is None
+
+    assert ref_image.data is not None
+    assert ref_image.data.shape == ptf_reference_images[0].data.shape
+    assert ref_image.weight is not None
+    assert ref_image.weight.shape == ref_image.data.shape
+    assert ref_image.flags is not None
+    assert ref_image.flags.shape == ref_image.data.shape
+    assert ref_image.zogy_psf is not None
+    assert ref_image.score is not None
+    assert ref_image.score.shape == ref_image.data.shape
+
+
+
+
+
 
 

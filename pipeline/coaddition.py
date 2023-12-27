@@ -382,7 +382,6 @@ class Coadder:
         ----------
         images: list of Image objects
 
-
         Returns
         -------
         output: Image object
@@ -406,10 +405,19 @@ class Coadder:
         output.new_image = None
 
         if self.pars.method == 'naive':
-            self._coadd_naive(output)
+            outim, outwt, outfl = self._coadd_naive(images)
         elif self.pars.method == 'zogy':
-            self._coadd_zogy(output)
+            outim, outwt, outfl, outpsf, outscore = self._coadd_zogy(images)
         else:
             raise ValueError(f'Unknown coaddition method: {self.pars.method}. Use "naive" or "zogy".')
+
+        output.data = outim
+        output.weight = outwt
+        output.flags = outfl
+
+        if 'outpsf' in locals():
+            output.zogy_psf = outpsf  # TODO: do we have a better place to put this?
+        if 'outscore' in locals():
+            output.score = outscore
 
         return output
