@@ -115,7 +115,7 @@ def photometor(photometor_factory):
 def coadder_factory(test_config):
 
     def make_coadder():
-        coadd = Coadder(**test_config.value('coaddition'))
+        coadd = Coadder(**test_config.value('coaddition.coaddition'))
         coadd.pars._enforce_no_new_attrs = False
         coadd.pars.test_parameter = coadd.pars.add_par(
             'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True

@@ -8,10 +8,15 @@ from models.provenance import Provenance
 from models.image import Image
 
 from pipeline.parameters import Parameters
+from pipeline.detection import Detector
+from pipeline.astro_cal import AstroCalibrator
+from pipeline.photo_cal import PhotCalibrator
 
 from improc.bitmask_tools import dilate_bitmask
 from improc.inpainting import Inpainter
 from improc.tools import sigma_clipping
+
+from util.config import Config
 
 
 class ParsCoadd(Parameters):
@@ -421,3 +426,49 @@ class Coadder:
             output.score = outscore
 
         return output
+
+
+class ParsCoaddPipeline(Parameters):
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        self.date_range = self.add_par(
+            'date_range', 7.0, float, 'Number of days before end date to set start date, if start date is not given. '
+        )
+
+        self._enforce_no_new_attrs = True  # lock against new parameters
+
+        self.override(kwargs)
+
+
+class CoaddPipeline:
+    """A pipeline that runs coaddition and other tasks like source extraction on the coadd image. """
+    def __init__(self, **kwargs):
+        self.config = Config.get()
+
+        # top level parameters
+        self.pars = ParsCoaddPipeline(**(self.config.value('coaddition.pipeline', {})))
+        self.pars.augment(kwargs.get('coadd_pipeline', {}))
+
+        # coaddition process
+        coadd_config = self.config.value('coaddition.coaddition', {})
+        coadd_config.update(kwargs.get('coaddition', {}))
+
+        # source detection ("extraction" for the regular image!)
+        extraction_config = self.config.value('coaddition.extraction', {})
+        extraction_config.update(kwargs.get('extraction', {'measure_psf': True}))
+        self.pars.add_defaults_to_dict(extraction_config)
+        self.extractor = Detector(**extraction_config)
+
+        # astrometric fit using a first pass of sextractor and then astrometric fit to Gaia
+        astro_cal_config = self.config.value('coaddition.astro_cal', {})
+        astro_cal_config.update(kwargs.get('astro_cal', {}))
+        self.pars.add_defaults_to_dict(astro_cal_config)
+        self.astro_cal = AstroCalibrator(**astro_cal_config)
+
+        # photometric calibration:
+        photo_cal_config = self.config.value('coaddition.photo_cal', {})
+        photo_cal_config.update(kwargs.get('photo_cal', {}))
+        self.pars.add_defaults_to_dict(photo_cal_config)
+        self.photo_cal = PhotCalibrator(**photo_cal_config)
+

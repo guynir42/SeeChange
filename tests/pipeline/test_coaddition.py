@@ -331,7 +331,8 @@ def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
     assert ref_image.score.shape == ref_image.data.shape
 
 
-
+def test_coaddition_pipeline(ptf_reference_images, ptf_aligned_images):
+    pass
 
 
 
