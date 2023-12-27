@@ -268,6 +268,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
         prov.update_id()
         new_image = Image.from_images(images_to_align, index=-1)
         new_image.provenance = prov
+        new_image.provenance_id = prov.id
         new_image.provenance.upstreams = new_image.get_upstream_provenances()
 
         filenames = []
