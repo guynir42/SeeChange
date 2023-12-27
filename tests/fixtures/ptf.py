@@ -234,7 +234,7 @@ def ptf_reference_images(ptf_images_factory):
         session.autoflush = False
 
         for image in images:
-            image = image.recursive_merge(session)
+            image = session.merge(image)
             image.exposure.delete_from_disk_and_database(session=session, commit=False)
             image.delete_from_disk_and_database(session=session, commit=False, remove_downstream_data=True)
         session.commit()
@@ -298,6 +298,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
     if 'ptf_reference_images' in locals():
         with SmartSession() as session:
             for image in ptf_reference_images:
-                image.exposure.delete_from_disk_and_database(commit=False)
-                image.delete_from_disk_and_database(commit=False, remove_downstream_data=True)
+                image = session.merge(image)
+                image.exposure.delete_from_disk_and_database(commit=False, session=session)
+                image.delete_from_disk_and_database(commit=False, session=session, remove_downstream_data=True)
             session.commit()

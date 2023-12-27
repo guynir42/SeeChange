@@ -1346,6 +1346,9 @@ class FileOnDiskMixin:
             if info.persistent:
                 session.delete(self)
                 need_commit = True
+            elif info.pending:
+                session.expunge(self)
+                need_commit = True
             elif info.detached:
                 session.execute(sa.delete(self.__class__).where(self.__class__.id == self.id))
                 need_commit = True

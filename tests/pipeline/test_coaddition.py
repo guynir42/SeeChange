@@ -50,7 +50,8 @@ def estimate_psf_width(data, sz=15, upsampling=25):
         flux.append(np.sum(psf[mask]))
 
     flux = np.array(flux)
-    area = np.array(area)
+    area = np.array(area, dtype=float)
+    area[area == 0] = np.nan
     flux_n = flux / area  # normalize by the area of the annulus
 
     # go over the flux difference curve and find where it drops below half the peak flux:
@@ -139,7 +140,7 @@ def test_zogy_simulation(coadder, blocking_plots):
     for i in range(num_images):
         sim.make_image(new_sky=True, new_stars=False)
         images.append(sim.apply_bias_correction(sim.image))
-        weights.append(np.ones_like(sim.image))
+        weights.append(np.ones_like(sim.image, dtype=float))
         flags.append(np.zeros_like(sim.image, dtype=np.int16))
         flags[-1][100, 100] = 1  # just to see what happens to a flagged pixel
         truths.append(sim.truth)
@@ -161,11 +162,11 @@ def test_zogy_simulation(coadder, blocking_plots):
     fwhms_est = np.array(fwhms_est)
     fwhms_est2 = np.sqrt(fwhms_est ** 2 - 1.5)  # add the pixelization width
     deltas = np.abs((fwhms - fwhms_est2) / fwhms)
-    print(
-        f'max(deltas) = {np.max(deltas) * 100:.1f}%, '
-        f'mean(deltas) = {np.mean(deltas) * 100:.1f}%, '
-        f'std(deltas)= {np.std(deltas) * 100 :.1f}% '
-    )
+    # print(
+    #     f'max(deltas) = {np.max(deltas) * 100:.1f}%, '
+    #     f'mean(deltas) = {np.mean(deltas) * 100:.1f}%, '
+    #     f'std(deltas)= {np.std(deltas) * 100 :.1f}% '
+    # )
     assert np.all(deltas < 0.3)  # the estimator should be within 30% of the truth
 
     # now that we know the estimator is good, lets check the coadded images vs. the originals:

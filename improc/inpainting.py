@@ -1,3 +1,4 @@
+import warnings
 
 import numpy as np
 from scipy.signal import convolve
@@ -130,13 +131,15 @@ class Inpainter:
                 scaling[i] = mu
         else:
             raise ValueError(f"Unknown rescaling method: {self.pars.rescale_method}")
-
-        if self.pars.multi_image_method == 'mean':
-            replacements = np.nanmean(self.images_nan / scaling, axis=0)
-        elif self.pars.multi_image_method == 'median':
-            replacements = np.nanmedian(self.images_nan / scaling, axis=0)
-        else:
-            raise ValueError(f"Unknown interpolation method: {self.pars.multi_image_method}")
+        with warnings.catch_warnings():
+            # we definitely expect all images to have NaNs on the same spot for at least some pixels (e.g., saturation)
+            warnings.filterwarnings(action='ignore', message='All-NaN slice encountered')
+            if self.pars.multi_image_method == 'mean':
+                replacements = np.nanmean(self.images_nan / scaling, axis=0)
+            elif self.pars.multi_image_method == 'median':
+                replacements = np.nanmedian(self.images_nan / scaling, axis=0)
+            else:
+                raise ValueError(f"Unknown interpolation method: {self.pars.multi_image_method}")
 
         for i in range(self.images_cube_done.shape[0]):
             positions = np.isnan(self.images_nan[i])

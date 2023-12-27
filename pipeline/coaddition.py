@@ -156,9 +156,15 @@ class Coadder:
             raise ValueError('images must be a list of Image objects or 2D arrays. ')
 
         imcube = np.array(data)
-        wtcube = np.array(weights)
         outim = np.sum(imcube, axis=0)
-        outwt = 1 / np.sqrt(np.sum(1 / wtcube ** 2, axis=0))
+
+        wtcube = np.array(weights)
+        varflag = wtcube == 0
+        wtcube2 = wtcube ** 2
+        wtcube2[varflag] = np.nan
+        varmap = 1 / wtcube2
+
+        outwt = 1 / np.sqrt(np.sum(varmap, axis=0))
 
         outfl = np.zeros(outim.shape, dtype='uint16')
         for f in flags:
@@ -351,11 +357,13 @@ class Coadder:
         outim, psf, score = self._zogy_core(imcube, psfcube, bkg_sigmas, flux_zps)
 
         # coadd the variance as well
-        varmap = 1 / wtcube ** 2
         varflag = wtcube == 0
+        wtcube2 = wtcube ** 2
+        wtcube2[varflag] = np.nan
+        varmap = 1 / wtcube2
         varmap = self.inpainter.run(varmap, varflag, wtcube)  # wtcube doesn't do anything, maybe put something else?
         outvarmap, _, _ = self._zogy_core(varmap, psfcube, bkg_sigmas, flux_zps)
-        outwt = 1 / np.sqrt(outvarmap)
+        outwt = 1 / np.sqrt(np.abs(outvarmap))
 
         outfl = np.zeros(outim.shape, dtype='uint16')
         for f, p in zip(flags, psf_fwhms):
