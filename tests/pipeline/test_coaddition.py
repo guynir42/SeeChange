@@ -285,7 +285,6 @@ def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
 
     ref_image = coadder.run(ptf_reference_images, ptf_aligned_images)
     ref_image.provenance.is_testing = True
-    ref_image.provenance.update_id()
 
     # now check that ZOGY works and verify the output
     coadder.pars.test_parameter = uuid.uuid4().hex
@@ -293,7 +292,6 @@ def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
 
     ref_image = coadder.run(ptf_reference_images, ptf_aligned_images)
     ref_image.provenance.is_testing = True
-    ref_image.provenance.update_id()
 
     assert isinstance(ref_image, Image)
     assert ref_image.filepath is None
@@ -338,7 +336,7 @@ def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
     assert ref_image.score.shape == ref_image.data.shape
 
 
-def test_coaddition_pipeline_inputs(ptf_reference_images, ptf_aligned_images):
+def test_coaddition_pipeline_inputs(ptf_reference_images):
     pipe = CoaddPipeline()
     assert pipe.pars.date_range == 7
     assert isinstance(pipe.coadder, Coadder)
@@ -370,7 +368,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images, ptf_aligned_images):
         instrument="PTF",
         filter="R",
         section_id="11",
-        provenance_ids='LC275GLSOXG5THTQKK7M',
+        provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
     )
 
     # without giving a start/end time, all these images will not be selected!
@@ -382,7 +380,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images, ptf_aligned_images):
         instrument="PTF",
         filter="R",
         section_id="11",
-        provenance_ids='LC275GLSOXG5THTQKK7M',
+        provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
         start_time='2000-01-01',
         end_time='2007-01-01',
     )
@@ -394,10 +392,9 @@ def test_coaddition_pipeline_inputs(ptf_reference_images, ptf_aligned_images):
         instrument="PTF",
         filter="R",
         section_id="11",
-        provenance_ids='LC275GLSOXG5THTQKK7M',
+        provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
         start_time='2000-01-01',
     )
-
     im_ids = set([im.id for im in images])
     ptf_im_ids = set([im.id for im in ptf_reference_images])
     assert ptf_im_ids == im_ids
@@ -415,7 +412,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images, ptf_aligned_images):
         instrument="PTF",
         filter="R",
         section_id="11",
-        provenance_ids='LC275GLSOXG5THTQKK7M',
+        provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
         start_time='2000-01-01',
     )
 

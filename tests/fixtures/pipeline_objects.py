@@ -309,15 +309,19 @@ def datastore_factory(
                     if ds.exposure is not None:
                         ds.image.exposure = ds.exposure
 
+                    # add the preprocessing steps from instruement (TODO: remove this as part of Issue #142)
+                    preprocessing_steps = ds.image.instrument_object.preprocessing_steps
+                    prep_pars = preprocessor.pars.get_critical_pars()
+                    prep_pars['preprocessing_steps'] = preprocessing_steps
+
                     upstreams = [ds.exposure.provenance] if ds.exposure is not None else []  # images without exposure
                     prov = Provenance(
                         code_version=code_version,
                         process='preprocessing',
                         upstreams=upstreams,
-                        parameters=preprocessor.pars.to_dict(),
+                        parameters=prep_pars,
                         is_testing=True,
                     )
-                    prov.update_id()
                     prov = prov.recursive_merge(session)
 
                     # if Image already exists on the database, use that instead of this one
@@ -340,6 +344,7 @@ def datastore_factory(
             if ds.image is None:  # make the preprocessed image
                 _logger.debug('making preprocessed image. ')
                 ds = preprocessor.run(ds)
+                ds.image.provenance.is_testing = True
 
                 if bad_pixel_map is not None:
                     ds.image.flags |= bad_pixel_map
@@ -379,7 +384,6 @@ def datastore_factory(
                         parameters=extractor.pars.to_dict(),
                         is_testing=True,
                     )
-                    prov.update_id()
                     prov = prov.recursive_merge(session)
 
                     # if SourceList already exists on the database, use that instead of this one
@@ -416,7 +420,6 @@ def datastore_factory(
                         parameters=extractor.pars.to_dict(),
                         is_testing=True,
                     )
-                    prov.update_id()
                     prov = prov.recursive_merge(session)
 
                     # if PSF already exists on the database, use that instead of this one
@@ -465,7 +468,6 @@ def datastore_factory(
                         parameters=astrometor.pars.to_dict(),
                         is_testing=True,
                     )
-                    prov.update_id()
                     prov = prov.recursive_merge(session)
 
                     # check if WCS already exists on the database
@@ -513,7 +515,6 @@ def datastore_factory(
                         parameters=photometor.pars.to_dict(),
                         is_testing=True,
                     )
-                    prov.update_id()
                     prov = prov.recursive_merge(session)
 
                     # check if ZP already exists on the database

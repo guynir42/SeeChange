@@ -419,7 +419,6 @@ class Coadder:
             upstreams=output.get_upstream_provenances(),
             process='coaddition',
         )
-        output.provenance.update_id()
         output.provenance_id = output.provenance.id
 
         output.is_coadd = True

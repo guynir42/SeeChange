@@ -265,7 +265,6 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
             process='coaddition',
             is_testing=True,
         )
-        prov.update_id()
         new_image = Image.from_images(images_to_align, index=-1)
         new_image.provenance = prov
         new_image.provenance_id = prov.id
