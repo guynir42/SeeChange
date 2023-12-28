@@ -492,6 +492,8 @@ class CoaddPipeline:
         self.pars.add_defaults_to_dict(photo_cal_config)
         self.photo_cal = PhotCalibrator(**photo_cal_config)
 
+        self.datastore = None  # use this datastore to save the coadd image and all the products
+
         self.aligned_images = None  # use this to pass in already aligned images
 
     def parse_inputs(self, *args, **kwargs):
@@ -604,8 +606,8 @@ class CoaddPipeline:
         # the self.aligned_images is None unless you explicitly pass in the pre-aligned images to save time
         coadd = self.coadder.run(images, self.aligned_images)
 
-        ds = self.extractor.run(coadd)
-        ds = self.astro_cal.run(ds)
-        ds = self.photo_cal.run(ds)
+        self.datastore = self.extractor.run(coadd)
+        self.datastore = self.astro_cal.run(self.datastore)
+        self.datastore = self.photo_cal.run(self.datastore)
 
-        return ds.image
+        return self.datastore.image

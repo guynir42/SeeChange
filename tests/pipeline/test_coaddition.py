@@ -278,7 +278,6 @@ def test_zogy_vs_naive(ptf_aligned_images, coadder):
 
 
 def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
-
     # first make sure the "naive" coadd method works
     coadder.pars.test_parameter = uuid.uuid4().hex
     coadder.pars.method = 'naive'
@@ -447,5 +446,31 @@ def test_coaddition_pipeline_outputs(ptf_reference_images, ptf_aligned_images):
     assert isinstance(coadd_image.wcs, WorldCoordinates)
     assert isinstance(coadd_image.zp, ZeroPoint)
 
+    # check that the ZOGY PSF width is similar to the PSFex result
+    assert np.max(coadd_image.zogy_psf) == pytest.approx(np.max(coadd_image.psf.get_clip()), abs=0.01)
+    zogy_fwhm = estimate_psf_width(coadd_image.zogy_psf)
+    psfex_fwhm = estimate_psf_width(np.pad(coadd_image.psf.get_clip(), 20))  # pad so extract_psf_surrogate works
+    assert zogy_fwhm == pytest.approx(psfex_fwhm, abs=0.1)
 
 
+def test_coadded_reference(ptf_ref):
+    ref_image = ptf_ref.image
+    assert isinstance(ref_image, Image)
+    assert ref_image.filepath is not None
+    assert ref_image.type == 'ComSci'
+    assert isinstance(ref_image.sources, SourceList)
+    assert isinstance(ref_image.psf, PSF)
+    assert isinstance(ref_image.wcs, WorldCoordinates)
+    assert isinstance(ref_image.zp, ZeroPoint)
+
+    assert ptf_ref.target == ref_image.target
+    assert ptf_ref.filter == ref_image.filter
+    assert ptf_ref.section_id == ref_image.section_id
+
+    assert ptf_ref.validity_start is None
+    assert ptf_ref.validity_end is None
+
+    assert ptf_ref.provenance.upstreams[0].id == ref_image.provenance_id
+    assert ptf_ref.provenance.process == 'reference'
+
+    assert ptf_ref.provenance.parameters['test_parameter'] == 'test_value'
