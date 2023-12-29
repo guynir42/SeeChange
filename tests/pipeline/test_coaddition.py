@@ -450,7 +450,23 @@ def test_coaddition_pipeline_outputs(ptf_reference_images, ptf_aligned_images):
     assert np.max(coadd_image.zogy_psf) == pytest.approx(np.max(coadd_image.psf.get_clip()), abs=0.01)
     zogy_fwhm = estimate_psf_width(coadd_image.zogy_psf)
     psfex_fwhm = estimate_psf_width(np.pad(coadd_image.psf.get_clip(), 20))  # pad so extract_psf_surrogate works
-    assert zogy_fwhm == pytest.approx(psfex_fwhm, abs=0.1)
+    assert zogy_fwhm == pytest.approx(psfex_fwhm, rel=0.1)
+
+    # check that the S/N is consistent with a coadd
+    flux_zp = [10 ** (0.4 * im.zp.zp) for im in ptf_reference_images]  # flux in ADU of a magnitude 0 star
+    bkgs = [im.bkg_rms_estimate for im in ptf_reference_images]
+    snrs = np.array(flux_zp) / np.array(bkgs)
+    mean_snr = np.mean(snrs)
+
+    flux_zp_zogy = 10 ** (0.4 * coadd_image.zp.zp)
+    _, bkg_zogy = sigma_clipping(coadd_image.data)
+    snr_zogy = flux_zp_zogy / bkg_zogy
+
+    # zogy background noise is normalized by construction
+    assert bkg_zogy == pytest.approx(1.0, abs=0.1)
+
+    # S/N should be sqrt(N) better
+    assert snr_zogy == pytest.approx(mean_snr * np.sqrt(len(ptf_reference_images)), rel=0.1)
 
 
 def test_coadded_reference(ptf_ref):

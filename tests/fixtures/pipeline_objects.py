@@ -7,6 +7,8 @@ import numpy as np
 
 import sqlalchemy as sa
 
+import sep
+
 from models.base import SmartSession, _logger
 from models.provenance import Provenance
 from models.enums_and_bitflags import BitFlagConverter
@@ -368,6 +370,23 @@ def datastore_factory(
                 elif cache_dir is not None and cache_base_name is None:
                     ds.cache_base_name = output_path
                     print(f'Saving image to cache at: {output_path}')
+
+            # check if background was calculated
+            if ds.image.bkg_mean_estimate is None or ds.image.bkg_rms_estimate is None:
+                # Estimate the background rms with sep
+                boxsize = ds.image.instrument_object.background_box_size
+                filtsize = ds.image.instrument_object.background_filt_size
+
+                # Dysfunctionality alert: sep requires a *float* image for the mask
+                # IEEE 32-bit floats have 23 bits in the mantissa, so they should
+                # be able to precisely represent a 16-bit integer mask image
+                # In any event, sep.Background uses >0 as "bad"
+                fmask = np.array(ds.image.flags, dtype=np.float32)
+                backgrounder = sep.Background(ds.image.data, mask=fmask,
+                                              bw=boxsize, bh=boxsize, fw=filtsize, fh=filtsize)
+
+                ds.image.bkg_mean_estimate = backgrounder.globalback
+                ds.image.bkg_rms_estimate = backgrounder.globalrms
 
             ############# extraction to create sources #############
             if cache_dir is not None and cache_base_name is not None:

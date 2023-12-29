@@ -231,7 +231,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
 
 @pytest.fixture(scope='session')
 def ptf_reference_images(ptf_images_factory):
-    images = ptf_images_factory('2009-04-05', '2009-05-01', max_images=10)
+    images = ptf_images_factory('2009-04-05', '2009-05-01', max_images=5)
 
     yield images
 
@@ -262,7 +262,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
             output_images[-1].zp = ZeroPoint.copy_from_cache(cache_dir, filename + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
-        images_to_align = ptf_reference_images[:9]  # speed things up using fewer images
+        images_to_align = ptf_reference_images
         prov = Provenance(
             code_version=code_version,
             parameters={'alignment': {'method': 'swarp', 'to_index': 'last'}, 'test_parameter': 'test_value'},
