@@ -914,10 +914,19 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if 'alignment' not in self.provenance.parameters:
             raise RuntimeError('Cannot align images without an "alignment" dictionary in the Provenance parameters!')
 
-        if self.provenance.parameters['alignment']['to_index'] == 'first':
+        to_index = self.provenance.parameters['alignment'].get('to_index')
+        if to_index == 'first':
             image_index = 0
-        elif self.provenance.parameters['alignment']['to_index'] == 'last':
+        elif to_index == 'last':
             image_index = -1
+        elif to_index == 'new':
+            image_index = self.new_image_index
+        elif to_index == 'ref':
+            image_index = self.ref_image_index  # this is not recommended!
+        else:
+            raise RuntimeError(
+                f'Got illegal value for "to_index" ({to_index}) in the Provenance parameters!'
+            )
 
         if self._aligner is None:
             self._aligner = ImageAligner(**self.provenance.parameters['alignment'])
@@ -1283,6 +1292,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     elif extension == '.flags.fits':
                         self._flags = read_fits_image(filename, output='data')
                         gotflags = True
+                    elif extension == '.score.fits':
+                        self._score = read_fits_image(filename, output='data')
                     else:
                         raise ValueError( f'Unknown image extension {extension}' )
                 if not ( gotim and gotweight and gotflags ):

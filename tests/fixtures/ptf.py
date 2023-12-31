@@ -153,7 +153,11 @@ def ptf_urls():
     links = soup.find_all('a')
     filenames = [link.get('href') for link in links if link.get('href').endswith('.fits')]
 
-    bad_files = ['PTF200904053266_2_o_19609_11.w.fits', 'PTF200904053340_2_o_19614_11.w.fits']
+    bad_files = [
+        'PTF200904053266_2_o_19609_11.w.fits',
+        'PTF200904053340_2_o_19614_11.w.fits',
+        'PTF201002163703_2_o_18626_11.w.fits',
+    ]
     for file in bad_files:
         if file in filenames:
             filenames.pop(filenames.index(file))
@@ -215,9 +219,9 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
                             f.write(f'{key} {value}\n')
 
             except Exception as e:
-                raise e
                 # I think we should fix this along with issue #150
                 print(f'Error processing {url}')  # this will also leave behind exposure and image data on disk only
+                raise e
                 # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
                 continue
             images.append(ds.image)
@@ -244,6 +248,21 @@ def ptf_reference_images(ptf_images_factory):
             image.delete_from_disk_and_database(session=session, commit=False, remove_downstream_data=True)
         session.commit()
 
+
+@pytest.fixture(scope='session')
+def ptf_supernova_images(ptf_images_factory):
+    images = ptf_images_factory('2010-02-01', '2013-12-31', max_images=2)
+
+    yield images
+
+    with SmartSession() as session:
+        session.autoflush = False
+
+        for image in images:
+            image = session.merge(image)
+            image.exposure.delete_from_disk_and_database(session=session, commit=False)
+            image.delete_from_disk_and_database(session=session, commit=False, remove_downstream_data=True)
+        session.commit()
 
 # conditionally call the ptf_reference_images fixture if cache is not there:
 # ref: https://stackoverflow.com/a/75337251

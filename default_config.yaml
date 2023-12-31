@@ -78,7 +78,10 @@ photo_cal:
   min_catalog_stars: 50
 
 subtraction:
-  method: hotpants
+  method: zogy
+  alignment:
+    method: swarp
+    to_index: new
 
 detection:
   subtraction: true
