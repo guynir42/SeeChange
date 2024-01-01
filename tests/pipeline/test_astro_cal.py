@@ -27,12 +27,12 @@ def test_solve_wcs_scamp_failures( ztf_gaiadr3_excerpt, ztf_datastore_uncommitte
     # Make sure it fails if we give it too small of a crossid radius.
     # Note that this one is passed directly to _solve_wcs_scamp.
     # _solve_wcs_scamp doesn't read what we pass to AstroCalibrator
-    # constructor, because that is an array of crossid_rad values to
+    # constructor, because that is an array of crossid_radius values to
     # try, whereas _solve_wcs_scamp needs a single value.  (The
-    # iteration happens outsice _solve_wcs_scamp.)
+    # iteration happens outside _solve_wcs_scamp.)
 
     with pytest.raises( BadMatchException, match="which isn.*t good enough" ):
-        wcs = astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp, crossid_rad=0.01 )
+        wcs = astrometor._solve_wcs_scamp( ds.image, ds.sources, catexp, crossid_radius=0.01 )
 
     astrometor.pars.min_frac_matched = 0.8
     with pytest.raises( BadMatchException, match="which isn.*t good enough" ):

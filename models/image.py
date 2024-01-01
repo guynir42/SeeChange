@@ -931,7 +931,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if self._aligner is None:
             self._aligner = ImageAligner(**self.provenance.parameters['alignment'])
         else:
-            self._aligner.pars.override(**self.provenance.parameters['alignment'])
+            self._aligner.pars.override(self.provenance.parameters['alignment'])
 
         # verify all products are loaded
         for im in self.upstream_images:
