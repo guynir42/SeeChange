@@ -964,6 +964,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         The aligned_images must have the same provenance parameters as the Image,
         and their "original_image_id" must point to the IDs of the upstream_images.
 
+        If they are inconsistent, they will be removed and the _aligned_images
+        attribute will be set to None to be lazy filled by _make_aligned_images().
         """
         if self._aligned_images is None:
             return
@@ -978,9 +980,14 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         upstream_images_filepaths = [image.filepath for image in self.upstream_images]
 
         for image in self._aligned_images:
-            if self.provenance.parameters['alignment'] != image.header.get('alignment_parameters', None):
-                self._aligned_images = None
-                return
+            # im_pars will contain all the default keys and any overrides from self.provenance
+            im_pars = image.header.get('alignment_parameters', {})
+
+            # if self.provenance has non-default values, or if im_pars are missing any keys, remake all of them
+            for key, value in self.provenance.parameters['alignment'].items():
+                if key not in im_pars or im_pars[key] != value:
+                    self._aligned_images = None
+                    return
 
             if image.header['original_image_filepath'] not in upstream_images_filepaths:
                 self._aligned_images = None

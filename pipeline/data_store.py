@@ -399,7 +399,9 @@ class DataStore:
                 parameters=pars_dict,
                 upstreams=upstreams,
             )
-            prov = session.merge(prov)
+            db_prov = session.scalars(sa.select(Provenance).where(Provenance.id == prov.id)).first()
+            if db_prov is not None:  # only merge if this provenance already exists
+                prov = session.merge(prov)
 
         return prov
 

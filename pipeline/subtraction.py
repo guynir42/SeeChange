@@ -4,6 +4,7 @@ import numpy as np
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 
+from models.base import SmartSession
 from models.provenance import Provenance
 from models.image import Image
 
@@ -127,18 +128,8 @@ class Subtractor:
         ds, session = DataStore.from_args(*args, **kwargs)
 
         # get the provenance for this step:
-        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
-        sub_image = ds.get_subtraction(prov, session=session)
-
-        if sub_image is None:
-            self.has_recalculated = True
-            # use the latest image in the data store,
-            # or load using the provenance given in the
-            # data store's upstream_provs, or just use
-            # the most recent provenance for "preprocessing"
-            image = ds.get_image(session=session)
-            if image is None:
-                raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
+        with SmartSession(session) as session:
+            prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
 
             # look for a reference that has to do with the current image
             ref = ds.get_reference(session=session)
@@ -146,41 +137,52 @@ class Subtractor:
                 raise ValueError(
                     f'Cannot find a reference image corresponding to the datastore inputs: {ds.get_inputs()}'
                 )
-            sub_image = Image.from_ref_and_new(ref.image, image)
-            sub_image.provenance = Provenance(
-                code_version=image.provenance.code_version,
-                parameters=self.pars.get_critical_pars(),
-                upstreams=sub_image.get_upstream_provenances(),
-                process='subtraction',
-            )
-            sub_image.provenance_id = sub_image.provenance.id
 
-            # make sure to grab the correct aligned images
-            new_image = sub_image.aligned_images[sub_image.new_image_index]
-            ref_image = sub_image.aligned_images[sub_image.ref_image_index]
+            # manually add the upstreams of reference image's products (SourceList, PSF, WCS, ZP)
+            upstreams = prov.upstreams
+            upstreams.append(ref.sources.provenance)
+            upstreams.append(ref.psf.provenance)
+            upstreams.append(ref.wcs.provenance)
+            upstreams.append(ref.zp.provenance)
+            prov.upstreams = upstreams  # must re-assign to make sure list items are unique
+            prov.update_id()
+            prov = session.merge(prov)
+            sub_image = ds.get_subtraction(prov, session=session)
 
-            if self.pars.method.lower() == 'naive':
-                outim, outwt, outfl = self._subtract_naive(new_image, ref_image)
-            elif self.pars.method.lower() == 'hotpants':
-                raise NotImplementedError('Hotpants not implemented yet')
-            elif self.pars.method.lower() == 'zogy':
-                outim, outwt, outfl, score, psf = self._subtract_zogy(new_image, ref_image)
-            else:
-                raise ValueError(f'Unknown subtraction method {self.pars.method}')
+            if sub_image is None:
+                self.has_recalculated = True
+                # use the latest image in the data store,
+                # or load using the provenance given in the
+                # data store's upstream_provs, or just use
+                # the most recent provenance for "preprocessing"
+                image = ds.get_image(session=session)
+                if image is None:
+                    raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
-            sub_image.data = outim
-            sub_image.weight = outwt
-            sub_image.flags = outfl
-            if 'score' in locals():
-                sub_image.score = score
-            if 'psf' in locals():
-                sub_image.zogy_psf = psf  # this is not saved to DB but can be useful for testing / source detection
-
-            if sub_image.provenance is None:
+                sub_image = Image.from_ref_and_new(ref.image, image)
                 sub_image.provenance = prov
-            else:
-                if sub_image.provenance.id != prov.id:
-                    raise ValueError('Provenance mismatch for sub_image and provenance!')
+                sub_image.provenance_id = prov.id
+
+                # make sure to grab the correct aligned images
+                new_image = sub_image.aligned_images[sub_image.new_image_index]
+                ref_image = sub_image.aligned_images[sub_image.ref_image_index]
+
+                if self.pars.method.lower() == 'naive':
+                    outim, outwt, outfl = self._subtract_naive(new_image, ref_image)
+                elif self.pars.method.lower() == 'hotpants':
+                    raise NotImplementedError('Hotpants not implemented yet')
+                elif self.pars.method.lower() == 'zogy':
+                    outim, outwt, outfl, score, psf = self._subtract_zogy(new_image, ref_image)
+                else:
+                    raise ValueError(f'Unknown subtraction method {self.pars.method}')
+
+                sub_image.data = outim
+                sub_image.weight = outwt
+                sub_image.flags = outfl
+                if 'score' in locals():
+                    sub_image.score = score
+                if 'psf' in locals():
+                    sub_image.zogy_psf = psf  # this is not saved to DB but can be useful for testing / source detection
 
         ds.sub_image = sub_image
 

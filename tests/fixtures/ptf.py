@@ -264,6 +264,7 @@ def ptf_supernova_images(ptf_images_factory):
             image.delete_from_disk_and_database(session=session, commit=False, remove_downstream_data=True)
         session.commit()
 
+
 # conditionally call the ptf_reference_images fixture if cache is not there:
 # ref: https://stackoverflow.com/a/75337251
 @pytest.fixture(scope='session')
@@ -331,7 +332,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
 @pytest.fixture
 def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_dir, code_version):
     cache_dir = os.path.join(cache_dir, 'PTF')
-    cache_base_name = '187/PTF_20090405_073932_11_R_ComSci_BWED6R'
+    cache_base_name = '187/PTF_20090405_073932_11_R_ComSci_BWED6R_u-ywhkxr'
 
     pipe = CoaddPipeline()
     pipe.coadder = coadder  # use this one that has a test_parameter defined
@@ -417,7 +418,7 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
         ref.provenance.is_testing = True
         ref.provenance.update_id()
 
-        session.add(ref)
+        ref = session.merge(ref)
         session.commit()
 
     yield ref

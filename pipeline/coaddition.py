@@ -426,6 +426,7 @@ class Coadder:
 
         if aligned_images is not None:
             output.aligned_images = aligned_images
+            output.header['alignment_parameters'] = self.pars.alignment
 
         if self.pars.method == 'naive':
             outim, outwt, outfl = self._coadd_naive(output.aligned_images)

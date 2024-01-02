@@ -99,7 +99,7 @@ def test_run_scamp( decam_datastore, astrometor ):
     astrometor.pars.mag_range_catalog = 4.
     astrometor.pars.min_catalog_stars = 50
     astrometor.pars.max_resid = 0.15
-    astrometor.pars.crossid_radius = [2.0]
+    astrometor.pars.crossid_radii = [2.0]
     astrometor.pars.min_frac_matched = 0.1
     astrometor.pars.min_matched_stars = 10
     astrometor.pars.test_parameter = uuid.uuid4().hex  # make sure it gets a different Provenance

@@ -219,7 +219,7 @@ class AstroCalibrator:
                 exceptions.append(ex)
                 continue
 
-            for radius in self.pars.crossid_radius:
+            for radius in self.pars.crossid_radii:
                 try:
                     wcs = self._solve_wcs_scamp( image, sources, catexp, crossid_radius=radius )
                     success = True
