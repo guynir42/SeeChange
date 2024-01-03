@@ -1559,12 +1559,16 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 sa.select(PSF).where(PSF.image_id == self.id)
             ).all()
             downstreams += psfs
+            if self.psf is not None and self.psf not in psfs:  # if not in the session, could be duplicate!
+                downstreams.append(self.psf)
 
             # get all source lists that are related to this image (regardless of provenance)
             sources = session.scalars(
                 sa.select(SourceList).where(SourceList.image_id == self.id)
             ).all()
             downstreams += sources
+            if self.sources is not None and self.sources not in sources:  # if not in the session, could be duplicate!
+                downstreams.append(self.sources)
 
             wcses = []
             zps = []
@@ -1576,6 +1580,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 zps += session.scalars(
                     sa.select(ZeroPoint).where(ZeroPoint.sources_id == s.id)
                 ).all()
+            if self.wcs is not None and self.wcs not in wcses:  # if not in the session, could be duplicate!
+                wcses.append(self.wcs)
+            if self.zp is not None and self.zp not in zps:  # if not in the session, could be duplicate!
+                zps.append(self.zp)
+
+            downstreams += wcses
+            downstreams += zps
 
             # TODO: replace with a relationship to downstream_images (see issue #151)
             # now look for other images that were created based on this one
