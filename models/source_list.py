@@ -676,11 +676,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
         with SmartSession(session) as session:
             wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == self.id)).all()
-            if self.wcs is not None and self.wcs not in wcs:  # if not in the session, could be duplicate!
-                wcs.append(self.wcs)
             zps = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == self.id)).all()
-            if self.zp is not None and self.zp not in zps:  # if not in the session, could be duplicate!
-                zps.append(self.zp)
 
         return wcs + zps
 
