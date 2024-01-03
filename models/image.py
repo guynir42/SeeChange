@@ -946,18 +946,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         self._aligned_images = aligned
 
-        # also suggest a filepath for an image created from the aligned upstream images:
-        self._combined_filepath = None  # if we don't clear this, it gets loaded in invent filepath!
-        path = self.invent_filepath()
-        utag = hashlib.sha256()
-        for image in self.upstream_images:
-            utag.update(image.filepath.encode('utf-8'))
-        utag = base64.b32encode(utag.digest()).decode().lower()
-        utag = '_u-' + utag[:6]
-        path += utag
-
-        self._combined_filepath = path
-
     def _check_aligned_images(self):
         """Check that the aligned_images loaded in this Image are consistent.
 
@@ -1050,10 +1038,14 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         (e.g., SourceList) will just append another string to the Image
         filename.
 
-        """
-        if self._combined_filepath is not None:
-            return self._combined_filepath
+        Coadded or difference images (that have a list of upstream_images)
+        will also be appended a "u-tag" which is just the letter u
+        (for "upstreams") follwed by the first 6 characters of the
+        SHA256 hash of the upstream image filepaths.  This is to make
+        sure that the filepath is unique for each combination of
+        upstream images.
 
+        """
         prov_hash = inst_name = im_type = date = time = filter = ra = dec = dec_int_pm = ''
         section_id = section_id_int = ra_int = ra_int_h = ra_frac = dec_int = dec_frac = 0
 
@@ -1099,7 +1091,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if name_convention is None:
             name_convention = default_convention
 
-        filename = name_convention.format(
+        filepath = name_convention.format(
             inst_name=inst_name,
             im_type=im_type,
             date=date,
@@ -1121,7 +1113,17 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # TODO: which elements of the naming convention are really necessary?
         #  and what is a good way to make sure the filename actually depends on them?
 
-        return filename
+        if self.upstream_images is not None and len(self.upstream_images) > 0:
+            utag = hashlib.sha256()
+            for image in self.upstream_images:
+                if image.filepath is None:
+                    raise RuntimeError('Cannot invent filepath when upstream image has no filepath!')
+                utag.update(image.filepath.encode('utf-8'))
+            utag = base64.b32encode(utag.digest()).decode().lower()
+            utag = '_u-' + utag[:6]
+            filepath += utag
+
+        return filepath
 
     def save(self, filename=None, only_image=False, just_update_header=True, **kwargs ):
         """Save the data (along with flags, weights, etc.) to disk.
