@@ -966,22 +966,22 @@ class DataStore:
                     provenance = self._get_provenance_for_an_upstream(process_name, session=session)
 
                 if provenance is not None:  # if None, it means we can't find it on the DB
-        aliased_table = sa.orm.aliased(image_upstreams_association_table)
-        self.sub_image = session.scalars(
-            sa.select(Image).join(
-                image_upstreams_association_table,
-                sa.and_(
-                    image_upstreams_association_table.c.upstream_id == ref.image_id,
-                    image_upstreams_association_table.c.downstream_id == Image.id,
-                )
-            ).join(
-                aliased_table,
-                sa.and_(
-                    aliased_table.c.upstream_id == image.id,
-                    aliased_table.c.downstream_id == Image.id,
-                )
-            ).where(Image.provenance.has(id=provenance.id))
-        ).first()
+                    aliased_table = sa.orm.aliased(image_upstreams_association_table)
+                    self.sub_image = session.scalars(
+                        sa.select(Image).join(
+                            image_upstreams_association_table,
+                            sa.and_(
+                                image_upstreams_association_table.c.upstream_id == ref.image_id,
+                                image_upstreams_association_table.c.downstream_id == Image.id,
+                            )
+                        ).join(
+                            aliased_table,
+                            sa.and_(
+                                aliased_table.c.upstream_id == image.id,
+                                aliased_table.c.downstream_id == Image.id,
+                            )
+                        ).where(Image.provenance.has(id=provenance.id))
+                    ).first()
 
         return self.sub_image
 
