@@ -1122,12 +1122,17 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         To load those products (assuming all were previously committed with their own provenances)
         use the load_upstream_products() method.
 
-        IMPORTANT RESTRICTION: to maintain the ability of a downstream to recover its upstreams
-        using the provenance (which is the definition of why we need a provenance) it is not
-        allowed for images with the same provenance to have related products (e.g., a SourceList)
-        that have different provenances.  This is because the downstream would not know which
-        SourceList to use.  Images from different instruments, or a coadded reference vs.
-        a new image, would have different provenances, so their products could (and indeed must)
+        IMPORTANT RESTRICTION:
+        When putting images in the upstream of a combined image (coadded or subtracted),
+        if there are multiple images with the same provenance, they must also have
+        loaded downstream products (e.g., SourceList) that have the same provenance.
+        This is used to maintain the ability of a downstream to recover its upstreams
+        using the provenance (which is the definition of why we need a provenance).
+        The images could still be associated with multiple different products with
+        different provenances, but not have them loaded into the relevant in-memory
+        attributes of the Image objects when creating the coadd.
+        Images from different instruments, or a coadded reference vs. a new image,
+        would naturally have different provenances, so their products could (and indeed must)
         have different provenances. But images from the same instrument with the same provenance
         should all be produced using the same code and parameters, otherwise it will be impossible
         to know which product was processed in which way.
