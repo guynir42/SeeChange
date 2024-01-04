@@ -305,6 +305,7 @@ def test_decam_download_and_commit_exposure(code_version, decam_raw_origin_expos
                         os.unlink(path)
 
 
+@pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
 def test_get_default_calibrators( decam_default_calibrators ):
     sections, filters = decam_default_calibrators
     decam = get_instrument_instance( 'DECam' )

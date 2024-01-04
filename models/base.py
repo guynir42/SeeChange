@@ -536,7 +536,6 @@ class SeeChangeBase:
 
         return output
 
-
 Base = declarative_base(cls=SeeChangeBase)
 
 ARCHIVE = None

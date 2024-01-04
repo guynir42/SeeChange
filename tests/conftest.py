@@ -243,6 +243,7 @@ def provenance_preprocessing(code_version):
 @pytest.fixture
 def archive(test_config):
     archive_specs = test_config.value('archive')
+
     if archive_specs is None:
         raise ValueError( "archive in config is None" )
     archive = Archive( **archive_specs )

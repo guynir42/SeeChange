@@ -75,6 +75,20 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
     is_coadd = association_proxy('image', 'is_coadd')
 
+    @hybrid_property
+    def is_coadd(self):
+        """Whether this source list is from a coadd image (detections),
+        or from a regular image (sources, the default).
+        """
+        if self.image is None:
+            return None
+        else:
+            return self.image.is_coadd
+
+    @is_coadd.expression
+    def is_coadd(cls):
+        return sa.select(Image.is_coadd).where(Image.id == cls.image_id).label('is_coadd')
+
     aper_rads = sa.Column(
         sa.ARRAY( sa.REAL ),
         nullable=True,
@@ -671,8 +685,8 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         """Get all the data products (WCSs and ZPs) that are made using this source list. """
         from models.world_coordinates import WorldCoordinates
         from models.zero_point import ZeroPoint
-        # TODO: add Cutouts and Measurements?
 
+        # TODO: add Cutouts and Measurements?
         with SmartSession(session) as session:
             wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == self.id)).all()
             zps = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == self.id)).all()

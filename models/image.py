@@ -796,7 +796,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             output.upstream_images = [new_image, ref_image]
         output.ref_image_index = output.upstream_images.index(ref_image)
         output.new_image_index = output.upstream_images.index(new_image)
-
         output._upstream_bitflag = 0
         output._upstream_bitflag |= ref_image.bitflag
         output._upstream_bitflag |= new_image.bitflag
@@ -1125,6 +1124,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         This happens when the objects are used to produce, e.g., a coadd or
         a subtraction image, but they would not necessarily be loaded automatically from the DB.
         To load those products (assuming all were previously committed with their own provenances)
+<<<<<<< HEAD
         use the load_upstream_products() method on each of the upstream images.
 
         IMPORTANT RESTRICTION: to maintain the ability of a downstream to recover its upstreams
@@ -1137,6 +1137,24 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         But images from the same instrument with the same provenance  should all
         be produced using the same code and parameters, otherwise it will be
         impossible to know which product was processed in which way.
+=======
+        use the load_upstream_products() method.
+
+        IMPORTANT RESTRICTION:
+        When putting images in the upstream of a combined image (coadded or subtracted),
+        if there are multiple images with the same provenance, they must also have
+        loaded downstream products (e.g., SourceList) that have the same provenance.
+        This is used to maintain the ability of a downstream to recover its upstreams
+        using the provenance (which is the definition of why we need a provenance).
+        The images could still be associated with multiple different products with
+        different provenances, but not have them loaded into the relevant in-memory
+        attributes of the Image objects when creating the coadd.
+        Images from different instruments, or a coadded reference vs. a new image,
+        would naturally have different provenances, so their products could (and indeed must)
+        have different provenances. But images from the same instrument with the same provenance
+        should all be produced using the same code and parameters, otherwise it will be impossible
+        to know which product was processed in which way.
+>>>>>>> upstream/main
 
         Returns
         -------
@@ -1253,14 +1271,22 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
                 wcs_results = session.scalars(
                     sa.select(WorldCoordinates).where(
+<<<<<<< HEAD
                         WorldCoordinates.sources_id.in_(sources_ids),
+=======
+                        WorldCoordinates.source_list_id.in_(sources_ids),
+>>>>>>> upstream/main
                         WorldCoordinates.provenance_id.in_(prov_ids),
                     )
                 ).all()
 
                 zp_results = session.scalars(
                     sa.select(ZeroPoint).where(
+<<<<<<< HEAD
                         ZeroPoint.sources_id.in_(sources_ids),
+=======
+                        ZeroPoint.source_list_id.in_(sources_ids),
+>>>>>>> upstream/main
                         ZeroPoint.provenance_id.in_(prov_ids),
                     )
                 ).all()
@@ -1371,6 +1397,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             zps = []
             for s in sources:
                 wcses += session.scalars(
+<<<<<<< HEAD
                     sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == s.id)
                 ).all()
 
@@ -1379,6 +1406,15 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 ).all()
 
             # TODO: replace with a relationship to downstream_images (see issue #151)
+=======
+                    sa.select(WorldCoordinates).where(WorldCoordinates.source_list_id == s.id)
+                ).all()
+
+                zps += session.scalars(
+                    sa.select(ZeroPoint).where(ZeroPoint.source_list_id == s.id)
+                ).all()
+
+>>>>>>> upstream/main
             # now look for other images that were created based on this one
             # ref: https://docs.sqlalchemy.org/en/20/orm/join_conditions.html#self-referential-many-to-many
             images = session.scalars(
