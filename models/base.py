@@ -116,6 +116,9 @@ def SmartSession(*args):
 def get_all_database_objects(display=False, session=None):
     """Find all the objects and their associated IDs in the database.
 
+    WARNING: this is only meant to be used on test databases.
+    Calling this on a production database would be very slow!
+
     Parameters
     ----------
     display: bool (optional)
@@ -341,6 +344,7 @@ class SeeChangeBase:
 
         Will convert non-standard data types:
         UUID will be converted to string (using the .hex attribute).
+        Numpy arrays are replaced by lists.
 
         To reload, use the from_dict() method:
         reloaded_object = MyClass.from_dict( output_dict )
@@ -366,6 +370,9 @@ class SeeChangeBase:
 
             if key in ['modified', 'created_at'] and isinstance(value, datetime.datetime):
                 value = value.isoformat()
+
+            if isinstance(value, (datetime.datetime, np.ndarray)):
+                raise TypeError('Found some columns we non-standard types. Please parse all columns! ')
 
             output[key] = value
 
@@ -1297,13 +1304,11 @@ class FileOnDiskMixin:
 
         # make sure these are set to null just in case we fail
         # to commit later on, we will at least know something is wrong
-        try:
-            self.md5sum = None
-            self.md5sum_extensions = None
-            self.filepath_extensions = None
-            self.filepath = None
-        except:
-            pass
+
+        self.md5sum = None
+        self.md5sum_extensions = None
+        self.filepath_extensions = None
+        self.filepath = None
 
         with SmartSession(session) as session:
             info = sa.inspect(self)
