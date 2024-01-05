@@ -201,6 +201,7 @@ def datastore_factory(
         detector_factory,
         cutter_factory,
         measurer_factory,
+
 ):
     """Provide a function that returns a datastore with all the products based on the given exposure and section ID.
 
@@ -261,7 +262,6 @@ def datastore_factory(
         measurer = measurer_factory()
         measurer.pars.override(overrides.get('measurement', {}))
         measurer.pars.augment(augments.get('measurement', {}))
-
         with SmartSession(session) as session:
             code_version = session.merge(code_version)
             if ds.image is not None:  # if starting from an externally provided Image, must merge it first
@@ -276,7 +276,6 @@ def datastore_factory(
                 if os.path.isfile(cache_path):
                     _logger.debug('loading image from cache. ')
                     ds.image = Image.copy_from_cache(cache_dir, cache_name)
-
                     # assign the correct exposure to the object loaded from cache
                     if ds.exposure_id is not None:
                         ds.image.exposure_id = ds.exposure_id
@@ -314,7 +313,6 @@ def datastore_factory(
             if ds.image is None:  # make the preprocessed image
                 _logger.debug('making preprocessed image. ')
                 ds = preprocessor.run(ds)
-
                 if bad_pixel_map is not None:
                     ds.image.flags |= bad_pixel_map
                     if ds.image.weight is not None:
