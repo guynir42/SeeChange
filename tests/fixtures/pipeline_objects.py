@@ -316,7 +316,7 @@ def datastore_factory(
                 if bad_pixel_map is not None:
                     ds.image.flags |= bad_pixel_map
                     if ds.image.weight is not None:
-                        ds.image.weight[bad_pixel_map.astype(bool)] = 0.0
+                        ds.image.weight[ds.image.flags.astype(bool)] = 0.0
 
                 ds.image.save()
                 output_path = ds.image.copy_to_cache(cache_dir)
