@@ -505,7 +505,7 @@ class Detector:
                      "-FILTER", "Y",
                      "-FILTER_NAME", str(conv),
                      "-WEIGHT_TYPE", "MAP_WEIGHT",
-                     "-RESCALE_WEIGHTS", "Y",
+                     "-RESCALE_WEIGHTS", "N",
                      "-WEIGHT_IMAGE", str(tmpweight),
                      "-WEIGHT_GAIN", "N",
                      "-FLAG_IMAGE", str(tmpflags),

@@ -129,7 +129,10 @@ def ptf_urls():
     links = soup.find_all('a')
     filenames = [link.get('href') for link in links if link.get('href').endswith('.fits')]
 
-    bad_files = ['PTF200904053266_2_o_19609_11.w.fits']
+    bad_files = [
+        'PTF200904053266_2_o_19609_11.w.fits',
+        'PTF200904053340_2_o_19614_11.w.fits',
+    ]
     for file in bad_files:
         if file in filenames:
             filenames.pop(filenames.index(file))
@@ -193,7 +196,8 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
                             f.write(f'{key} {value}\n')
 
             except Exception as e:
-                # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
+                print(f'Error processing {url}')
+                print(e)  # TODO: should we be worried that some of these images can't complete their processing?
                 continue  # I think we should fix this along with issue #150
             images.append(ds.image)
 
