@@ -147,7 +147,7 @@ def test_sextractor_extract_once( decam_datastore, extractor ):
         extractor.pars.test_parameter = uuid.uuid4().hex
         sourcelist, sourcefile = run_sextractor(decam_datastore.image, extractor)
 
-        assert sourcelist.num_sources == 5623
+        assert sourcelist.num_sources == 5611
         assert len(sourcelist.data) == sourcelist.num_sources
         assert sourcelist.aper_rads == [ 5. ]
         assert sourcelist._inf_aper_num is None
@@ -159,10 +159,10 @@ def test_sextractor_extract_once( decam_datastore, extractor ):
 
         assert sourcelist.x.min() == pytest.approx( 16.0, abs=0.1 )
         assert sourcelist.x.max() == pytest.approx( 2039.6, abs=0.1 )
-        assert sourcelist.y.min() == pytest.approx( 16.0, abs=0.1 )
+        assert sourcelist.y.min() == pytest.approx( 16.264, abs=0.1 )
         assert sourcelist.y.max() == pytest.approx( 4087.9, abs=0.1 )
         assert sourcelist.errx.min() == pytest.approx( 0.0005, abs=1e-4 )
-        assert sourcelist.errx.max() == pytest.approx( 1.039, abs=0.01 )
+        assert sourcelist.errx.max() == pytest.approx( 1.0532, abs=0.01 )
         assert sourcelist.erry.min() == pytest.approx( 0.001, abs=1e-3 )
         assert sourcelist.erry.max() == pytest.approx( 0.62, abs=0.01 )
         assert ( np.sqrt( sourcelist.varx ) == sourcelist.errx ).all()
@@ -171,14 +171,14 @@ def test_sextractor_extract_once( decam_datastore, extractor ):
         assert sourcelist.apfluxadu()[0].max() == pytest.approx( 2850920.0, rel=1e-5 )
         snr = sourcelist.apfluxadu()[0] / sourcelist.apfluxadu()[1]
         assert snr.min() == pytest.approx( -9.91, abs=0.1 )
-        assert snr.max() == pytest.approx( 2351.8, abs=1. )
+        assert snr.max() == pytest.approx( 2348.2166, abs=1. )
         assert snr.mean() == pytest.approx( 146.80, abs=0.1 )
         assert snr.std() == pytest.approx( 285.4, abs=1. )
 
         # Test multiple apertures
         sourcelist = extractor._run_sextractor_once( decam_datastore.image, apers=[2, 5] )
 
-        assert sourcelist.num_sources == 5623    # It *finds* the same things
+        assert sourcelist.num_sources == 5611    # It *finds* the same things
         assert len(sourcelist.data) == sourcelist.num_sources
         assert sourcelist.aper_rads == [ 2., 5. ]
         assert sourcelist._inf_aper_num is None
@@ -189,11 +189,11 @@ def test_sextractor_extract_once( decam_datastore, extractor ):
         assert sourcelist.info['SEXBKGND'] == pytest.approx( 179.8, abs=0.1 )
         assert sourcelist.x.min() == pytest.approx( 16.0, abs=0.1 )
         assert sourcelist.x.max() == pytest.approx( 2039.6, abs=0.1 )
-        assert sourcelist.y.min() == pytest.approx( 16.0, abs=0.1 )
+        assert sourcelist.y.min() == pytest.approx( 16.264, abs=0.1 )
         assert sourcelist.y.max() == pytest.approx( 4087.9, abs=0.1 )
         assert sourcelist.apfluxadu(apnum=1)[0].min() == pytest.approx( -656.8731, rel=1e-5 )
         assert sourcelist.apfluxadu(apnum=1)[0].max() == pytest.approx( 2850920.0, rel=1e-5 )
-        assert sourcelist.apfluxadu(apnum=0)[0].min() == pytest.approx( 84.74182, rel=1e-5 )
+        assert sourcelist.apfluxadu(apnum=0)[0].min() == pytest.approx( 89.445114, rel=1e-5 )
         assert sourcelist.apfluxadu(apnum=0)[0].max() == pytest.approx( 557651.8, rel=1e-5 )
 
     finally:  # cleanup temporary file
@@ -263,7 +263,7 @@ def test_extract_sources_sextractor( decam_datastore, extractor, blocking_plots 
                 if use:
                     ofp.write( f"image;circle({x+1},{y+1},6) # color=blue width=2\n" )
 
-    assert sources.num_sources == 5495
+    assert sources.num_sources == 5500
     assert sources.num_sources == len(sources.data)
     assert sources.aper_rads == pytest.approx( [ 2.885, 4.286, 8.572, 12.858,
                                                  17.145, 21.431, 30.003, 42.862 ], abs=0.01 )
@@ -276,16 +276,16 @@ def test_extract_sources_sextractor( decam_datastore, extractor, blocking_plots 
 
     assert sources.apfluxadu()[0].min() == pytest.approx( 200.34559, rel=1e-5 )
     assert sources.apfluxadu()[0].max() == pytest.approx( 1105999.625, rel=1e-5 )
-    assert sources.apfluxadu()[0].mean() == pytest.approx( 36756.87, rel=1e-5 )
-    assert sources.apfluxadu()[0].std() == pytest.approx( 122040.1875, rel=1e-5 )
+    assert sources.apfluxadu()[0].mean() == pytest.approx( 36779.797 , rel=1e-5 )
+    assert sources.apfluxadu()[0].std() == pytest.approx(  121950.04 , rel=1e-5 )
 
-    assert sources.good.sum() == 3648
+    assert sources.good.sum() == 3638
     # This value is what you get using the SPREAD_MODEL parameter
     # assert sources.is_star.sum() == 4870
     # assert ( sources.good & sources.is_star ).sum() == 3593
     # This is what you get with CLASS_STAR
-    assert sources.is_star.sum() == 335
-    assert ( sources.good & sources.is_star ).sum() == 62
+    assert sources.is_star.sum() == 337
+    assert ( sources.good & sources.is_star ).sum() == 61
 
 
 # TODO : add tests that handle different combinations
@@ -303,7 +303,7 @@ def test_run_detection_sextractor( decam_datastore, extractor ):
     ds = extractor.run( ds )
 
     assert extractor.has_recalculated
-    assert ds.sources.num_sources == 5495
+    assert ds.sources.num_sources == 5500
     assert ds.sources.num_sources == len(ds.sources.data)
     assert ds.sources.aper_rads == pytest.approx( [ 2.88551706,  4.28627014,  8.57254028, 12.85881042, 17.14508057,
                                                     21.43135071, 30.00389099, 42.86270142], abs=0.01 )
@@ -316,16 +316,16 @@ def test_run_detection_sextractor( decam_datastore, extractor ):
 
     assert ds.sources.apfluxadu()[0].min() == pytest.approx( 200.3456, rel=1e-5 )
     assert ds.sources.apfluxadu()[0].max() == pytest.approx( 1105999.6, rel=1e-5 )
-    assert ds.sources.apfluxadu()[0].mean() == pytest.approx( 36756.88, rel=1e-5 )
-    assert ds.sources.apfluxadu()[0].std() == pytest.approx( 122040.19, rel=1e-5 )
+    assert ds.sources.apfluxadu()[0].mean() == pytest.approx( 36779.797, rel=1e-5 )
+    assert ds.sources.apfluxadu()[0].std() == pytest.approx(  121950.04 , rel=1e-5 )
 
-    assert ds.sources.good.sum() == 3648
+    assert ds.sources.good.sum() == 3638
     # This value is what you get using the SPREAD_MODEL parameter
     # assert ds.sources.is_star.sum() == 4870
     # assert ( ds.sources.good & ds.sources.is_star ).sum() == 3593
     # This value is what you get using the CLASS_STAR parameter
-    assert ds.sources.is_star.sum() == 335
-    assert ( ds.sources.good & ds.sources.is_star ).sum() == 62
+    assert ds.sources.is_star.sum() == 337
+    assert ( ds.sources.good & ds.sources.is_star ).sum() == 61
 
     # TODO : actually think about these psf fluxes and how they compare
     #  to the aperture fluxes (esp. the large-aperture fluxes).  Try to

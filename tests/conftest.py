@@ -41,16 +41,16 @@ def pytest_sessionstart(session):
 # This will be executed after the last test (session is the pytest session, not the SQLAlchemy session)
 def pytest_sessionfinish(session, exitstatus):
     # print('Final teardown fixture executed! ')
-    with SmartSession() as session:
+    with SmartSession() as dbsession:
         # first get rid of any Exposure loading Provenances, if they have no Exposures attached
-        provs = session.scalars(sa.select(Provenance).where(Provenance.process == 'load_exposure'))
+        provs = dbsession.scalars(sa.select(Provenance).where(Provenance.process == 'load_exposure'))
         for prov in provs:
-            exp = session.scalars(sa.select(Exposure).where(Exposure.provenance_id == prov.id)).all()
+            exp = dbsession.scalars(sa.select(Exposure).where(Exposure.provenance_id == prov.id)).all()
             if len(exp) == 0:
-                session.delete(prov)
-        session.commit()
+                dbsession.delete(prov)
+        dbsession.commit()
 
-        objects = get_all_database_objects(session=session)
+        objects = get_all_database_objects(session=dbsession)
         any_objects = False
         for Class, ids in objects.items():
             # TODO: check that surviving provenances have test_parameter
@@ -61,14 +61,14 @@ def pytest_sessionfinish(session, exitstatus):
                     f'There are {len(ids)} {Class.__name__} objects in the database. Please make sure to cleanup!'
                 )
                 for id in ids:
-                    obj = session.scalars(sa.select(Class).where(Class.id == id)).first()
+                    obj = dbsession.scalars(sa.select(Class).where(Class.id == id)).first()
                     print(f'  {obj}')
                     any_objects = True
 
         # delete the CodeVersion object (this should remove all provenances as well)
-        session.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
+        dbsession.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
 
-        session.commit()
+        dbsession.commit()
 
         # comment this line out if you just want tests to pass quietly
         if any_objects:
