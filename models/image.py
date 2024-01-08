@@ -108,7 +108,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     ref_image_index = sa.Column(
-        sa.SMALLINT,
+        sa.Integer,
         nullable=True,
         doc=(
             "Index of the reference image used to produce this image, in the upstream_images list. "
@@ -138,7 +138,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             self.ref_image_index = self.upstream_images.index(value)
 
     new_image_index = sa.Column(
-        sa.SMALLINT,
+        sa.Integer,
         nullable=True,
         doc=(
             "Index of the new image used to produce a difference image, in the upstream_images list. "
