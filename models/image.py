@@ -889,8 +889,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         The parameters of the alignment must be given in the parameters attribute
         of this Image's Provenance.
 
-        The index to which the images are aligned is given by the parameters, using
-        the "to_index" key, which can be "first" or "last".
+        The index to which the images are aligned is given by the "to_index" key in the
+        "alignment" dictionary in the parameters of the image provenance; the value can
+        be "first" or "last".
 
         The resulting images are saved in _aligned_images, which are not saved
         to the database. Note that each aligned image is also referred to by
