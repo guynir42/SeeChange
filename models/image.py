@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.schema import CheckConstraint
 
 from astropy.time import Time
@@ -895,6 +896,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
 
+
     def _make_aligned_images(self):
         """Align the upstream_images to one of the images pointed to by image_index.
 
@@ -977,7 +979,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             if image.header['original_image_id'] not in upstream_images_ids:
                 self._aligned_images = None
                 return
-
 
     @property
     def aligned_images(self):
