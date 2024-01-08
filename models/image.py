@@ -648,7 +648,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         This new object does not have a provenance or any relationships to other objects.
         It should be used only as a working copy, not to be saved back into the database.
-        The filepath should also be set to a new (unique) value so as not to overwrite the original.
+        The filepath is set to None and should be manually set to a new (unique)
+        value so as not to overwrite the original.
         """
         copy_attributes = [
             'data',
@@ -657,7 +658,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             'score',
             'background',
             'header',
-
         ]
         simple_attributes = [
             'ra',
