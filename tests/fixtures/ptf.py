@@ -147,8 +147,10 @@ def ptf_urls():
     soup = BeautifulSoup(r.text, 'html.parser')
     links = soup.find_all('a')
     filenames = [link.get('href') for link in links if link.get('href').endswith('.fits')]
-
-    bad_files = ['PTF200904053266_2_o_19609_11.w.fits', 'PTF200904053340_2_o_19614_11.w.fits']
+    bad_files = [
+        'PTF200904053266_2_o_19609_11.w.fits',
+        'PTF200904053340_2_o_19614_11.w.fits',
+    ]
     for file in bad_files:
         if file in filenames:
             filenames.pop(filenames.index(file))
@@ -215,6 +217,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
                 print(f'Error processing {url}')  # this will also leave behind exposure and image data on disk only
                 # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
                 continue
+
             images.append(ds.image)
             if max_images is not None and len(images) >= max_images:
                 break

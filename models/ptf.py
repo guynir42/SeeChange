@@ -86,7 +86,7 @@ class PTF(Instrument):
         section: SensorSection
             A new section for this instrument.
         """
-        (dx, dy) = self.get_section_offsets(section_id)
+        (dx, dy) = self.get_section_offsets(section_id)  # this also runs "check_section_id" internally
         defective = section_id == 1  # TODO: check which chip is defective!
         return SensorSection(section_id, self.name, size_x=2048, size_y=4096,
                              offset_x=dx, offset_y=dy, defective=defective)
@@ -140,7 +140,7 @@ class PTF(Instrument):
         #     'i': np.array([-0.2491122, 0.51709843, 0.02919352, -0.02097517]),
         #     'z': np.array([-0.38939061, 0.70406435, 0.04190059, -0.01617815])
         # }
-        # TODO: must find better transformations!
+        # TODO: must find transformations!
         transformations = {
             'R': np.array([0]),
             'V': np.array([0]),
