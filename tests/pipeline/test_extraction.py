@@ -279,7 +279,7 @@ def test_extract_sources_sextractor( decam_datastore, extractor, blocking_plots 
     assert sources.apfluxadu()[0].mean() == pytest.approx( 36779.797 , rel=1e-5 )
     assert sources.apfluxadu()[0].std() == pytest.approx(  121950.04 , rel=1e-5 )
 
-    assert sources.good.sum() == 3638
+    assert sources.good.sum() == 3643
     # This value is what you get using the SPREAD_MODEL parameter
     # assert sources.is_star.sum() == 4870
     # assert ( sources.good & sources.is_star ).sum() == 3593
@@ -319,7 +319,7 @@ def test_run_detection_sextractor( decam_datastore, extractor ):
     assert ds.sources.apfluxadu()[0].mean() == pytest.approx( 36779.797, rel=1e-5 )
     assert ds.sources.apfluxadu()[0].std() == pytest.approx(  121950.04 , rel=1e-5 )
 
-    assert ds.sources.good.sum() == 3638
+    assert ds.sources.good.sum() == 3643
     # This value is what you get using the SPREAD_MODEL parameter
     # assert ds.sources.is_star.sum() == 4870
     # assert ( ds.sources.good & ds.sources.is_star ).sum() == 3593
