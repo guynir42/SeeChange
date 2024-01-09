@@ -284,10 +284,8 @@ def test_extract_sources_sextractor( decam_datastore, extractor, blocking_plots 
     # assert sources.is_star.sum() == 4870
     # assert ( sources.good & sources.is_star ).sum() == 3593
     # This is what you get with CLASS_STAR
-    assert sources.is_star.sum() == 335
-    assert ( sources.good & sources.is_star ).sum() == 60
-    # assert sources.is_star.sum() == 337
-    # assert ( sources.good & sources.is_star ).sum() == 63
+    assert sources.is_star.sum() == 337
+    assert ( sources.good & sources.is_star ).sum() == 63
 
 
 # TODO : add tests that handle different combinations
@@ -326,10 +324,8 @@ def test_run_detection_sextractor( decam_datastore, extractor ):
     # assert ds.sources.is_star.sum() == 4870
     # assert ( ds.sources.good & ds.sources.is_star ).sum() == 3593
     # This value is what you get using the CLASS_STAR parameter
-    assert ds.sources.is_star.sum() == 335
-    assert ( ds.sources.good & ds.sources.is_star ).sum() == 60
-    # assert ds.sources.is_star.sum() == 337
-    # assert ( ds.sources.good & ds.sources.is_star ).sum() == 63
+    assert ds.sources.is_star.sum() == 337
+    assert ( ds.sources.good & ds.sources.is_star ).sum() == 63
 
     # TODO : actually think about these psf fluxes and how they compare
     #  to the aperture fluxes (esp. the large-aperture fluxes).  Try to
