@@ -153,7 +153,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     @property
     def image_shape(self):
         """The shape of the image this PSF is for."""
-        return self.header['NAXIS2'], self.header['NAXIS1']
+        return self.header['IMAXIS2'], self.header['IMAXIS1']
 
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object"""

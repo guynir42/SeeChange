@@ -350,6 +350,7 @@ class Coadder:
         imcube -= bkg_means
 
         # make sure to inpaint missing data
+        # TODO: make sure images are scaled before inpainting, or add that in the inpainting code
         imcube = self.inpainter.run(imcube, flcube, wtcube)
 
         if np.any(np.isnan(imcube)):
