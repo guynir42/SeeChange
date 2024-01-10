@@ -18,7 +18,7 @@ from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
 from pipeline.utils import parse_session, parse_ra_hms_to_deg, parse_dec_dms_to_deg, get_latest_provenance
 
-from improc.bitmask_tools import dilate_bitmask
+from improc.bitmask_tools import dilate_bitflag
 from improc.inpainting import Inpainter
 from improc.tools import sigma_clipping
 
@@ -96,8 +96,8 @@ class Coadder:
     contribute zero weight, so the total weight of that pixel will be zero (if all input images have a bad pixel)
     or they would have lower weight if only some images had bad pixels there.
 
-    Remember that coaddition uses convolution with the PSF, so any effects of individual pixels could affect nearby
-    pixels, depending on the size of the PSF.
+    Remember that some coaddition methods use convolution with the PSF, so any effects of individual pixels
+    could affect nearby pixels, depending on the size of the PSF.
     """
 
     def __init__( self, **kwargs ):
@@ -194,14 +194,14 @@ class Coadder:
         psfcube: ndarray
             The PSF cube to use for coaddition.
         sigmas: ndarray
-            The noise estimate for each image in the data cube.
+            The background noise estimate for each image in the data cube.
             Must be a 1D array with a length equal to the first axis of the data cube.
-            It could have additional dimensions but it will be reshaped to be multiplied
+            It could have additional dimensions, but it will be reshaped to be multiplied
             with the data cube and psf cube.
         flux_zps: ndarray
             The flux zero points for each image in the data cube.
             Must be a 1D array with a length equal to the first axis of the data cube.
-            It could have additional dimensions but it will be reshaped to be multiplied
+            It could have additional dimensions, but it will be reshaped to be multiplied
             with the data cube and psf cube.
 
         Returns
@@ -234,6 +234,7 @@ class Coadder:
         datacube_f = fft2(datacube)
         psfcube_f = fft2(psfcube)
 
+        # paper ref: https://ui.adsabs.harvard.edu/abs/2017ApJ...836..188Z/abstract
         score_f = np.sum(flux_zps / sigmas ** 2 * np.conj(psfcube_f) * datacube_f, axis=0)  # eq 7
         psf_f = np.sqrt(np.sum(flux_zps ** 2 / sigmas ** 2 * np.abs(psfcube_f) ** 2, axis=0))  # eq 10
         outdata_f = score_f / psf_f  # eq 8
@@ -258,10 +259,10 @@ class Coadder:
     ):
         """Use Zackay & Ofek proper image coaddition to add the images together.
 
-        This method uses the PSF of each image to
+        This method uses the PSF of each image to coadd images with proper weight
+        given to each frequency in Fourier space, such that it preserves information
+        even when using images with different PSFs.
 
-        Parameters
-        ----------
         Parameters
         ----------
         images: list of Image or list of 2D ndarrays
@@ -286,6 +287,7 @@ class Coadder:
             The mean background for each image.
             If images is given as Image objects, can be left as None.
             This variable can be used to override the background estimation.
+            If images are already background subtracted, set these to zeros.
         bkg_sigmas: list of floats
             The RMS of the background for each image.
             If images is given as Image objects, can be left as None.
@@ -360,9 +362,10 @@ class Coadder:
         imcube -= bkg_means
 
         # make sure to inpaint missing data
+        # TODO: make sure images are scaled before inpainting, or add that in the inpainting code
         imcube = self.inpainter.run(imcube, flcube, wtcube)
 
-        if np.sum(np.isnan(imcube)) > 0:
+        if np.any(np.isnan(imcube)):
             raise ValueError('There are still NaNs in the image data after inpainting!')
 
         # This is where the magic happens
@@ -380,7 +383,7 @@ class Coadder:
         outfl = np.zeros(outim.shape, dtype='uint16')
         for f, p in zip(flags, psf_fwhms):
             splash_pixels = int(np.ceil(p * self.pars.flag_fwhm_factor))
-            outfl = outfl | dilate_bitmask(f, iterations=splash_pixels)
+            outfl = outfl | dilate_bitflag(f, iterations=splash_pixels)
 
         return outim, outwt, outfl, psf, score
 
@@ -441,7 +444,7 @@ class Coadder:
         if 'outpsf' in locals():
             output.zogy_psf = outpsf  # TODO: do we have a better place to put this?
         if 'outscore' in locals():
-            output.score = outscore
+            output.zogy_score = outscore
 
         return output
 

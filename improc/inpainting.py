@@ -89,6 +89,11 @@ class Inpainter:
 
         If the input images are a 2D single image,
         will add a new axis to make it a 3D data cube with one image.
+
+        This will move the inputs self.images, self.flags and self.weights
+        into the _cube versions, where they are guaranteed to be 3D data cubes.
+
+        Also, will make self.images_nan, where the bad pixels are replaced with NaNs.
         """
         if len(self.images.shape) == 2:
             self.images_cube = np.expand_dims(self.images, axis=0)
@@ -194,6 +199,14 @@ class Inpainter:
         pixels are interpolated inside each image separately.
         The flags and weights are not modified by this function,
         and only a copy of the images array (with bad pixels removed) is returned.
+
+        Note that the quality of the inpainted images depends on having
+        the images scaled to the same zero-point and have them background subtracted.
+        If they have very different seeing, the inpainting between images also may be poor.
+        In most cases, the inpainted pixels should be flagged so the values they store are
+        not used directly to measure anything.
+        The inpainted image should be smooth enough to avoid making large artefacts
+        in coadded/subtracted images, particularly when using FFT methods (e.g., ZOGY).
 
         Parameters
         ----------

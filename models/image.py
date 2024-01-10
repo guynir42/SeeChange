@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.schema import CheckConstraint
 
 from astropy.time import Time
@@ -111,7 +112,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     ref_image_index = sa.Column(
-        sa.SMALLINT,
+        sa.Integer,
         nullable=True,
         doc=(
             "Index of the reference image used to produce this image, in the upstream_images list. "
@@ -141,7 +142,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             self.ref_image_index = self.upstream_images.index(value)
 
     new_image_index = sa.Column(
-        sa.SMALLINT,
+        sa.Integer,
         nullable=True,
         doc=(
             "Index of the new image used to produce a difference image, in the upstream_images list. "
@@ -653,7 +654,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         This new object does not have a provenance or any relationships to other objects.
         It should be used only as a working copy, not to be saved back into the database.
-        The filepath should also be set to a new (unique) value so as not to overwrite the original.
+        The filepath is set to None and should be manually set to a new (unique)
+        value so as not to overwrite the original.
         """
         copy_attributes = [
             'data',
@@ -767,7 +769,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     raise ValueError(f"Cannot combine images with different {att} values: {values}")
             setattr(output, att, getattr(images[index], att))
 
-        # TODO: should RA and Dec also be exactly the same??
         output.ra = images[index].ra
         output.dec = images[index].dec
         output.ra_corner_00 = images[index].ra_corner_00
@@ -877,7 +878,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             output.upstream_images = [new_image, ref_image]
         output.ref_image_index = output.upstream_images.index(ref_image)
         output.new_image_index = output.upstream_images.index(new_image)
-
         output._upstream_bitflag = 0
         output._upstream_bitflag |= ref_image.bitflag
         output._upstream_bitflag |= new_image.bitflag
@@ -895,14 +895,16 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
 
+
     def _make_aligned_images(self):
         """Align the upstream_images to one of the images pointed to by image_index.
 
         The parameters of the alignment must be given in the parameters attribute
         of this Image's Provenance.
 
-        The index to which the images are aligned is given by the parameters, using
-        the "to_index" key, which can be "first" or "last".
+        The index to which the images are aligned is given by the "to_index" key in the
+        "alignment" dictionary in the parameters of the image provenance; the value can
+        be "first" or "last".
 
         The resulting images are saved in _aligned_images, which are not saved
         to the database. Note that each aligned image is also referred to by
@@ -1305,16 +1307,20 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         To load those products (assuming all were previously committed with their own provenances)
         use the load_upstream_products() method on each of the upstream images.
 
-        IMPORTANT RESTRICTION: to maintain the ability of a downstream to recover its upstreams
-        using the provenance (which is the definition of why we need a provenance) it is not
-        allowed for different images with the same provenance to have related products
-        (e.g., a SourceList) that have different provenances.  This is because the downstream
-        would not know which SourceList to use.  Images from different instruments, or a
-        coadded reference vs. a new image, would have different provenances,
-        so their products could (and indeed must) have different provenances.
-        But images from the same instrument with the same provenance  should all
-        be produced using the same code and parameters, otherwise it will be
-        impossible to know which product was processed in which way.
+        IMPORTANT RESTRICTION:
+        When putting images in the upstream of a combined image (coadded or subtracted),
+        if there are multiple images with the same provenance, they must also have
+        loaded downstream products (e.g., SourceList) that have the same provenance.
+        This is used to maintain the ability of a downstream to recover its upstreams
+        using the provenance (which is the definition of why we need a provenance).
+        The images could still be associated with multiple different products with
+        different provenances, but not have them loaded into the relevant in-memory
+        attributes of the Image objects when creating the coadd.
+        Images from different instruments, or a coadded reference vs. a new image,
+        would naturally have different provenances, so their products could (and indeed must)
+        have different provenances. But images from the same instrument with the same provenance
+        should all be produced using the same code and parameters, otherwise it will be impossible
+        to know which product was processed in which way.
 
         Returns
         -------

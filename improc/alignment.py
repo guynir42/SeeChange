@@ -21,7 +21,7 @@ from models.image import Image
 from pipeline.data_store import DataStore
 from pipeline.parameters import Parameters
 from pipeline.utils import read_fits_image
-from improc.bitmask_tools import dilate_bitmask
+from improc.bitmask_tools import dilate_bitflag
 
 
 class ParsImageAligner(Parameters):
@@ -68,7 +68,7 @@ class ImageAligner:
         self.pars = ParsImageAligner( **kwargs )
 
     @staticmethod
-    def image_from_source_and_target(image, target):
+    def image_source_warped_to_target(image, target):
         """Create a new Image object from the source and target images.
         Most image attributes are from the source image, but the coordinates
         (and corners) are taken from the target image.
@@ -259,7 +259,7 @@ class ImageAligner:
             if res.returncode != 0:
                 raise SubprocessFailure(res)
 
-            warpedim = self.image_from_source_and_target(image, target)
+            warpedim = self.image_source_warped_to_target(image, target)
 
             warpedim.data, warpedim.raw_header = read_fits_image( outim, output="both" )
             warpedim.weight = read_fits_image(outwt)
@@ -267,7 +267,7 @@ class ImageAligner:
             warpedim.flags = np.rint(warpedim.flags).astype(np.uint16)  # convert back to integers
 
             # expand bad pixel mask to allow for warping that smears the badness
-            warpedim.flags = dilate_bitmask(warpedim.flags, iterations=1)  # use the default structure
+            warpedim.flags = dilate_bitflag(warpedim.flags, iterations=1)  # use the default structure
 
             # warpedim.flags = np.zeros( warpedim.weight.shape, dtype=np.uint16 )  # Do I want int16 or uint16?
             # TODO : a good cutoff for this weight
@@ -337,7 +337,8 @@ class ImageAligner:
             warped_image.type = 'Warped'
             warped_image.psf = source_image.psf
             warped_image.zp = source_image.zp
-            # TODO: are SourceList and WorldCoordinates also included? Are they valid for the warped image?
+            warped_image.wcs = source_image.wcs
+            # TODO: what about SourceList?
         else:  # Do the warp
 
             if self.pars.method == 'swarp':

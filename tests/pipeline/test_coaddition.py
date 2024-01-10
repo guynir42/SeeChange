@@ -331,8 +331,8 @@ def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
     assert ref_image.flags is not None
     assert ref_image.flags.shape == ref_image.data.shape
     assert ref_image.zogy_psf is not None
-    assert ref_image.score is not None
-    assert ref_image.score.shape == ref_image.data.shape
+    assert ref_image.zogy_score is not None
+    assert ref_image.zogy_score.shape == ref_image.data.shape
 
 
 def test_coaddition_pipeline_inputs(ptf_reference_images):
