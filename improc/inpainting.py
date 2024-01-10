@@ -200,6 +200,14 @@ class Inpainter:
         The flags and weights are not modified by this function,
         and only a copy of the images array (with bad pixels removed) is returned.
 
+        Note that the quality of the inpainted images depends on having
+        the images scaled to the same zero-point and have them background subtracted.
+        If they have very different seeing, the inpainting between images also may be poor.
+        In most cases, the inpainted pixels should be flagged so the values they store are
+        not used directly to measure anything.
+        The inpainted image should be smooth enough to avoid making large artefacts
+        in coadded/subtracted images, particularly when using FFT methods (e.g., ZOGY).
+
         Parameters
         ----------
         images: np.ndarray (2D or 3D)

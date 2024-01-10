@@ -769,7 +769,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     raise ValueError(f"Cannot combine images with different {att} values: {values}")
             setattr(output, att, getattr(images[index], att))
 
-        # TODO: should RA and Dec also be exactly the same??
         output.ra = images[index].ra
         output.dec = images[index].dec
         output.ra_corner_00 = images[index].ra_corner_00
