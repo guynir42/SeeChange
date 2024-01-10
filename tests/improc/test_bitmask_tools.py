@@ -1,6 +1,6 @@
 import numpy as np
 
-from improc.bitmask_tools import dilate_bitmask
+from improc.bitmask_tools import dilate_bitflag
 
 
 def test_bitmask_dilation():
@@ -10,7 +10,7 @@ def test_bitmask_dilation():
     array[7, 7] = 3
     array[9, 9] = 4
 
-    dilated = dilate_bitmask(array, iterations=1)
+    dilated = dilate_bitflag(array, iterations=1)
     assert dilated.dtype == array.dtype
     assert np.all(dilated[0:1, :] == 0)
     assert np.all(dilated[:, 0:1] == 0)
@@ -38,7 +38,7 @@ def test_bitmask_dilation():
     assert dilated[9, 8] == 4
 
     struct = np.ones((3, 3), dtype=bool)
-    dilated = dilate_bitmask(array, structure=struct, iterations=1)
+    dilated = dilate_bitflag(array, structure=struct, iterations=1)
     assert dilated.dtype == array.dtype
     assert np.all(dilated[0:1, :] == 0)
     assert np.all(dilated[:, 0:1] == 0)
@@ -74,5 +74,5 @@ def test_bitmask_dilation():
     assert dilated[8, 9] == 4
     assert dilated[9, 8] == 4
     
-    dilated = dilate_bitmask(array.astype('uint16'), iterations=1)
+    dilated = dilate_bitflag(array.astype('uint16'), iterations=1)
     assert dilated.dtype == array.dtype

@@ -9,7 +9,7 @@ from models.image import Image
 
 from pipeline.parameters import Parameters
 
-from improc.bitmask_tools import dilate_bitmask
+from improc.bitmask_tools import dilate_bitflag
 from improc.inpainting import Inpainter
 from improc.tools import sigma_clipping
 
@@ -368,7 +368,7 @@ class Coadder:
         outfl = np.zeros(outim.shape, dtype='uint16')
         for f, p in zip(flags, psf_fwhms):
             splash_pixels = int(np.ceil(p * self.pars.flag_fwhm_factor))
-            outfl = outfl | dilate_bitmask(f, iterations=splash_pixels)
+            outfl = outfl | dilate_bitflag(f, iterations=splash_pixels)
 
         return outim, outwt, outfl, psf, score
 

@@ -89,6 +89,11 @@ class Inpainter:
 
         If the input images are a 2D single image,
         will add a new axis to make it a 3D data cube with one image.
+
+        This will move the inputs self.images, self.flags and self.weights
+        into the _cube versions, where they are guaranteed to be 3D data cubes.
+
+        Also, will make self.images_nan, where the bad pixels are replaced with NaNs.
         """
         if len(self.images.shape) == 2:
             self.images_cube = np.expand_dims(self.images, axis=0)

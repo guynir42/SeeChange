@@ -26,7 +26,7 @@ from pipeline.subtraction import Subtractor
 from pipeline.cutting import Cutter
 from pipeline.measurement import Measurer
 
-from improc.bitmask_tools import make_saturated_mask
+from improc.bitmask_tools import make_saturated_flag
 
 @pytest.fixture(scope='session')
 def preprocessor_factory(test_config):
@@ -345,7 +345,7 @@ def datastore_factory(
                         ds.image.weight[ds.image.flags.astype(bool)] = 0.0
 
                 # flag saturated pixels, too (TODO: is there a better way to get the saturation limit? )
-                mask = make_saturated_mask(ds.image.data, ds.image.instrument_object.saturation_limit, iterations=2)
+                mask = make_saturated_flag(ds.image.data, ds.image.instrument_object.saturation_limit, iterations=2)
                 ds.image.flags |= (mask * 2 ** BitFlagConverter.convert('saturated')).astype(np.uint16)
 
                 ds.image.save()
