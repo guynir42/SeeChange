@@ -614,3 +614,4 @@ class CoaddPipeline:
         self.datastore = self.photo_cal.run(self.datastore)
 
         return self.datastore.image
+

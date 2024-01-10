@@ -490,3 +490,4 @@ def test_coadded_reference(ptf_ref):
     assert ptf_ref.provenance.process == 'reference'
 
     assert ptf_ref.provenance.parameters['test_parameter'] == 'test_value'
+
