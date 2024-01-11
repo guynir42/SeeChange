@@ -548,7 +548,7 @@ class CoaddPipeline:
         self.aligned_images = None
 
         if len(args) == 1 and isinstance(args[0], list):
-            if not all([isinstance(a, Image) for a in args]):
+            if not all([isinstance(a, Image) for a in args[0]]):
                 raise TypeError('When supplying a list, all elements must be Image objects. ')
             self.images = args[0]  # in case we are given a list of images
         elif len(args) == 2 and isinstance(args[0], list) and isinstance(args[1], list):
