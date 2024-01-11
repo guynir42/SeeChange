@@ -512,8 +512,10 @@ class CoaddPipeline:
         """Parse the possible inputs to the run method.
 
         The possible input types are:
-        - a list of Image objects
-        - two lists of Image objects, the second one is a list of aligned images matching the first list.
+        - unamed arguments that are all Image objects, to be treated as self.images
+        - a list of Image objects, assigned into self.images
+        - two lists of Image objects, the second one is a list of aligned images matching the first list,
+          such that the two lists are assigned to self.images and self.aligned_images
         - start_time + end_time + instrument + filter + section_id + provenance_id + RA + Dec (or target)
 
         To pass the latter option, must use named parameters.
@@ -554,11 +556,10 @@ class CoaddPipeline:
                 raise TypeError('When supplying two lists, both must be lists of Image objects. ')
             self.images = args[0]
             self.aligned_images = args[1]
-
-        # check if any remaining args are not Image objects
-        for arg in args:
-            if not isinstance(arg, Image):
-                raise ValueError('All unnamed arguments must be Image objects. ')
+        elif all([isinstance(a, Image) for a in args]):
+            self.images = args
+        else:
+            raise ValueError('All unnamed arguments must be Image objects. ')
 
         if self.images is None:  # get the images from the DB
             # TODO: this feels like it could be a useful tool, maybe need to move it Image class? Issue 188
