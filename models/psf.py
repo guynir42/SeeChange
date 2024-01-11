@@ -153,7 +153,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     @property
     def image_shape(self):
         """The shape of the image this PSF is for."""
-        return self.header['NAXIS2'], self.header['NAXIS1']
+        return self.header['IMAXIS2'], self.header['IMAXIS1']
 
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object"""
@@ -388,11 +388,11 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
             raise NotImplementedError( "Only know how to get clip for psfex PSF files" )
 
         if x is None:
-            # x = self.image_shape[1] / 2.
-            x = 0  # I think the x/y are centered on the center of the image
+            x = self.image_shape[1] / 2.
+            # x = 0  # I think the x/y are centered on the center of the image
         if y is None:
-            # y = self.image_shape[0] / 2.
-            y = 0  # I think the x/y are centered on the center of the image
+            y = self.image_shape[0] / 2.
+            # y = 0  # I think the x/y are centered on the center of the image
 
         psfbase = self.get_resampled_psf( x, y, dtype=np.float64 )
 

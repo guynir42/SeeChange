@@ -77,6 +77,7 @@ photo_cal:
   mag_range_catalog: 4.0
   min_catalog_stars: 50
 
+
 subtraction:
   method: zogy
   alignment:
@@ -126,16 +127,19 @@ coaddition:
       rescale_method: median
       single_image_method: biharmonic
       ignore_flags: 0
+  # The following are used to override the regular "extraction" parameters
   extraction:
     measure_psf: true
     threshold: 3.0
     method: sextractor
+    # The following are used to override the regular "astro_cal" parameters
   astro_cal:
     cross_match_catalog: GaiaDR3
     solution_method: scamp
     max_catalog_mag: [22.0]
     mag_range_catalog: 6.0
     min_catalog_stars: 50
+    # The following are used to override the regular "photo_cal" parameters
   photo_cal:
     cross_match_catalog: GaiaDR3
     max_catalog_mag: [22.0]

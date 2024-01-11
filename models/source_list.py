@@ -72,7 +72,6 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     )
 
     is_sub = association_proxy('image', 'is_sub')
-
     is_coadd = association_proxy('image', 'is_coadd')
 
     aper_rads = sa.Column(
@@ -672,8 +671,8 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         """Get all the data products (WCSs and ZPs) that are made using this source list. """
         from models.world_coordinates import WorldCoordinates
         from models.zero_point import ZeroPoint
-        # TODO: add Cutouts and Measurements?
 
+        # TODO: add Cutouts and Measurements?
         with SmartSession(session) as session:
             wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == self.id)).all()
             zps = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == self.id)).all()

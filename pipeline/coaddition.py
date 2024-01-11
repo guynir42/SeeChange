@@ -18,7 +18,7 @@ from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
 from pipeline.utils import parse_session, parse_ra_hms_to_deg, parse_dec_dms_to_deg, get_latest_provenance
 
-from improc.bitmask_tools import dilate_bitmask
+from improc.bitmask_tools import dilate_bitflag
 from improc.inpainting import Inpainter
 from improc.tools import sigma_clipping
 
@@ -96,8 +96,8 @@ class Coadder:
     contribute zero weight, so the total weight of that pixel will be zero (if all input images have a bad pixel)
     or they would have lower weight if only some images had bad pixels there.
 
-    Remember that coaddition uses convolution with the PSF, so any effects of individual pixels could affect nearby
-    pixels, depending on the size of the PSF.
+    Remember that some coaddition methods use convolution with the PSF, so any effects of individual pixels
+    could affect nearby pixels, depending on the size of the PSF.
     """
 
     def __init__( self, **kwargs ):
@@ -194,14 +194,14 @@ class Coadder:
         psfcube: ndarray
             The PSF cube to use for coaddition.
         sigmas: ndarray
-            The noise estimate for each image in the data cube.
+            The background noise estimate for each image in the data cube.
             Must be a 1D array with a length equal to the first axis of the data cube.
-            It could have additional dimensions but it will be reshaped to be multiplied
+            It could have additional dimensions, but it will be reshaped to be multiplied
             with the data cube and psf cube.
         flux_zps: ndarray
             The flux zero points for each image in the data cube.
             Must be a 1D array with a length equal to the first axis of the data cube.
-            It could have additional dimensions but it will be reshaped to be multiplied
+            It could have additional dimensions, but it will be reshaped to be multiplied
             with the data cube and psf cube.
 
         Returns
@@ -234,6 +234,7 @@ class Coadder:
         datacube_f = fft2(datacube)
         psfcube_f = fft2(psfcube)
 
+        # paper ref: https://ui.adsabs.harvard.edu/abs/2017ApJ...836..188Z/abstract
         score_f = np.sum(flux_zps / sigmas ** 2 * np.conj(psfcube_f) * datacube_f, axis=0)  # eq 7
         psf_f = np.sqrt(np.sum(flux_zps ** 2 / sigmas ** 2 * np.abs(psfcube_f) ** 2, axis=0))  # eq 10
         outdata_f = score_f / psf_f  # eq 8
@@ -258,10 +259,10 @@ class Coadder:
     ):
         """Use Zackay & Ofek proper image coaddition to add the images together.
 
-        This method uses the PSF of each image to
+        This method uses the PSF of each image to coadd images with proper weight
+        given to each frequency in Fourier space, such that it preserves information
+        even when using images with different PSFs.
 
-        Parameters
-        ----------
         Parameters
         ----------
         images: list of Image or list of 2D ndarrays
@@ -286,6 +287,7 @@ class Coadder:
             The mean background for each image.
             If images is given as Image objects, can be left as None.
             This variable can be used to override the background estimation.
+            If images are already background subtracted, set these to zeros.
         bkg_sigmas: list of floats
             The RMS of the background for each image.
             If images is given as Image objects, can be left as None.
@@ -360,9 +362,10 @@ class Coadder:
         imcube -= bkg_means
 
         # make sure to inpaint missing data
+        # TODO: make sure images are scaled before inpainting, or add that in the inpainting code
         imcube = self.inpainter.run(imcube, flcube, wtcube)
 
-        if np.sum(np.isnan(imcube)) > 0:
+        if np.any(np.isnan(imcube)):
             raise ValueError('There are still NaNs in the image data after inpainting!')
 
         # This is where the magic happens
@@ -380,7 +383,7 @@ class Coadder:
         outfl = np.zeros(outim.shape, dtype='uint16')
         for f, p in zip(flags, psf_fwhms):
             splash_pixels = int(np.ceil(p * self.pars.flag_fwhm_factor))
-            outfl = outfl | dilate_bitmask(f, iterations=splash_pixels)
+            outfl = outfl | dilate_bitflag(f, iterations=splash_pixels)
 
         return outim, outwt, outfl, psf, score
 
@@ -394,11 +397,13 @@ class Coadder:
         ----------
         images: list of Image objects
             The input Image objects that will be used as the upstream_images for the new, coadded image.
-        aligned_images: list of Image objects
+        aligned_images: list of Image objects (optional)
             A list of images that correspond to the images list,
             but already aligned to each other, so it can be put into the output image's aligned_images attribute.
             The aligned images must have the same alignment parameters as in the output image's provenance
-            (i.e., the "alignement" dictionary should be the same as in the coadder object's pars).
+            (i.e., the "alignment" dictionary should be the same as in the coadder object's pars).
+            If not given, the output Image object will generate the aligned images by itself,
+            using the input images and its provenance's alignment parameters.
 
         Returns
         -------
@@ -424,6 +429,10 @@ class Coadder:
         output.is_coadd = True
         output.new_image = None
 
+        # note: output is a newly formed image, that has upstream_images
+        # and also a Provenance that contains "alignment" parameters...
+        # it can create its own aligned_images, but if you already have them,
+        # you can pass them in to save time re-calculating them here:
         if aligned_images is not None:
             output.aligned_images = aligned_images
             output.header['alignment_parameters'] = self.pars.alignment
@@ -442,7 +451,7 @@ class Coadder:
         if 'outpsf' in locals():
             output.zogy_psf = outpsf  # TODO: do we have a better place to put this?
         if 'outscore' in locals():
-            output.score = outscore
+            output.zogy_score = outscore
 
         return output
 
@@ -476,32 +485,39 @@ class CoaddPipeline:
         self.coadder = Coadder(**coadd_config)
 
         # source detection ("extraction" for the regular image!)
-        extraction_config = self.config.value('coaddition.extraction', {})
+        extraction_config = self.config.value('extraction', {})
+        extraction_config.update(self.config.value('coaddition.extraction', {}))  # override coadd specific pars
         extraction_config.update(kwargs.get('extraction', {'measure_psf': True}))
         self.pars.add_defaults_to_dict(extraction_config)
         self.extractor = Detector(**extraction_config)
 
         # astrometric fit using a first pass of sextractor and then astrometric fit to Gaia
-        astro_cal_config = self.config.value('coaddition.astro_cal', {})
+        astro_cal_config = self.config.value('astro_cal', {})
+        astro_cal_config.update(self.config.value('coaddition.astro_cal', {}))  # override coadd specific pars
         astro_cal_config.update(kwargs.get('astro_cal', {}))
         self.pars.add_defaults_to_dict(astro_cal_config)
         self.astro_cal = AstroCalibrator(**astro_cal_config)
 
         # photometric calibration:
-        photo_cal_config = self.config.value('coaddition.photo_cal', {})
+        photo_cal_config = self.config.value('photo_cal', {})
+        photo_cal_config.update(self.config.value('coaddition.photo_cal', {}))  # override coadd specific pars
         photo_cal_config.update(kwargs.get('photo_cal', {}))
         self.pars.add_defaults_to_dict(photo_cal_config)
         self.photo_cal = PhotCalibrator(**photo_cal_config)
 
         self.datastore = None  # use this datastore to save the coadd image and all the products
 
+        self.images = None  # use this to store the input images
         self.aligned_images = None  # use this to pass in already aligned images
 
     def parse_inputs(self, *args, **kwargs):
         """Parse the possible inputs to the run method.
 
         The possible input types are:
-        - a list of Image objects
+        - unamed arguments that are all Image objects, to be treated as self.images
+        - a list of Image objects, assigned into self.images
+        - two lists of Image objects, the second one is a list of aligned images matching the first list,
+          such that the two lists are assigned to self.images and self.aligned_images
         - start_time + end_time + instrument + filter + section_id + provenance_id + RA + Dec (or target)
 
         To pass the latter option, must use named parameters.
@@ -509,8 +525,8 @@ class CoaddPipeline:
         or unnamed args, and it will be used throughout the pipeline
         (and left open at the end).
 
-        The start_time and end_time can be float (interpreted as MJD)
-        or string (interpreted by astropy.time.Time(...)), or None.
+        The start_time and end_time can be floats (interpreted as MJD)
+        or strings (interpreted by astropy.time.Time(...)), or None.
         If end_time is not given, will use current time.
         If start_time is not given, will use end_time minus the
         coaddition pipeline parameter date_range.
@@ -530,85 +546,85 @@ class CoaddPipeline:
         """
         # first parse the session from args and kwargs
         args, kwargs, session = parse_session(*args, **kwargs)
-
-        if len(args) == 1 and isinstance(args[0], list):
-            args = args[0]  # in case we are given a list of images
+        self.images = None
+        self.aligned_images = None
+        if len(args) == 0:
+            pass  # there are not args, we can skip them quietly
+        elif len(args) == 1 and isinstance(args[0], list):
+            if not all([isinstance(a, Image) for a in args[0]]):
+                raise TypeError('When supplying a list, all elements must be Image objects. ')
+            self.images = args[0]  # in case we are given a list of images
         elif len(args) == 2 and isinstance(args[0], list) and isinstance(args[1], list):
-            if not all([isinstance(im, Image) for im in args[1]]):
+            if not all([isinstance(im, Image) for im in args[0] + args[1]]):
                 raise TypeError('When supplying two lists, both must be lists of Image objects. ')
+            self.images = args[0]
             self.aligned_images = args[1]
-            args = args[0]
-        # check if any remaining args are not Image objects
-        for arg in args:
-            if not isinstance(arg, Image):
-                raise ValueError('All unnamed arguments must be Image objects. ')
+        elif all([isinstance(a, Image) for a in args]):
+            self.images = args
+        else:
+            raise ValueError('All unnamed arguments must be Image objects. ')
 
-        images = args
+        if self.images is None:  # get the images from the DB
+            # TODO: this feels like it could be a useful tool, maybe need to move it Image class? Issue 188
+            # if no images were given, parse the named parameters
+            ra = kwargs.get('ra', None)
+            if isinstance(ra, str):
+                ra = parse_ra_hms_to_deg(ra)
+            dec = kwargs.get('dec', None)
+            if isinstance(dec, str):
+                dec = parse_dec_dms_to_deg(dec)
+            target = kwargs.get('target', None)
+            if target is None and (ra is None or dec is None):
+                raise ValueError('Must give either target or RA and Dec. ')
 
-        if len(images) > 0:
-            return images  # TODO: maybe instead allow the kwargs to filter down the list of Images?
+            start_time = kwargs.get('start_time', None)
+            end_time = kwargs.get('end_time', None)
+            if end_time is None:
+                end_time = Time.now().mjd
+            if start_time is None:
+                start_time = end_time - self.pars.date_range
 
-        # TODO: this feels like it could be a useful tool, maybe need to move it Image class?
-        # if no images were given, parse the named parameters
-        ra = kwargs.get('ra', None)
-        if isinstance(ra, str):
-            ra = parse_ra_hms_to_deg(ra)
-        dec = kwargs.get('dec', None)
-        if isinstance(dec, str):
-            dec = parse_dec_dms_to_deg(dec)
-        target = kwargs.get('target', None)
-        if target is None and (ra is None or dec is None):
-            raise ValueError('Must give either target or RA and Dec. ')
+            if isinstance(end_time, str):
+                end_time = Time(end_time).mjd
+            if isinstance(start_time, str):
+                start_time = Time(start_time).mjd
 
-        start_time = kwargs.get('start_time', None)
-        end_time = kwargs.get('end_time', None)
-        if end_time is None:
-            end_time = Time.now().mjd
-        if start_time is None:
-            start_time = end_time - self.pars.date_range
+            instrument = kwargs.get('instrument', None)
+            filter = kwargs.get('filter', None)
+            section_id = str(kwargs.get('section_id', None))
+            provenance_ids = kwargs.get('provenance_ids', None)
+            if provenance_ids is None:
+                prov = get_latest_provenance('preprocessing', session=session)
+                provenance_ids = [prov.id]
+            provenance_ids = listify(provenance_ids)
 
-        if isinstance(end_time, str):
-            end_time = Time(end_time).mjd
-        if isinstance(start_time, str):
-            start_time = Time(start_time).mjd
+            with SmartSession(session) as session:
+                stmt = sa.select(Image).where(
+                        Image.mjd >= start_time,
+                        Image.mjd <= end_time,
+                        Image.instrument == instrument,
+                        Image.filter == filter,
+                        Image.section_id == section_id,
+                        Image.provenance_id.in_(provenance_ids),
+                    )
 
-        instrument = kwargs.get('instrument', None)
-        filter = kwargs.get('filter', None)
-        section_id = str(kwargs.get('section_id', None))
-        provenance_ids = kwargs.get('provenance_ids', None)
-        if provenance_ids is None:
-            prov = get_latest_provenance('preprocessing', session=session)
-            provenance_ids = [prov.id]
-        provenance_ids = listify(provenance_ids)
-
-        with SmartSession(session) as session:
-            stmt = sa.select(Image).where(
-                    Image.mjd >= start_time,
-                    Image.mjd <= end_time,
-                    Image.instrument == instrument,
-                    Image.filter == filter,
-                    Image.section_id == section_id,
-                    Image.provenance_id.in_(provenance_ids),
-                )
-
-            if target is not None:
-                stmt = stmt.where(Image.target == target)
-            else:
-                stmt = stmt.where(Image.containing( ra, dec ))
-            images = session.scalars(stmt.order_by(Image.mjd.asc())).all()
-
-        return images
+                if target is not None:
+                    stmt = stmt.where(Image.target == target)
+                else:
+                    stmt = stmt.where(Image.containing( ra, dec ))
+                self.images = session.scalars(stmt.order_by(Image.mjd.asc())).all()
 
     def run(self, *args, **kwargs):
-        images = self.parse_inputs(*args, **kwargs)
-        if len(images) == 0:
+        self.parse_inputs(*args, **kwargs)
+        if self.images is None or len(self.images) == 0:
             raise ValueError('No images found matching the given parameters. ')
 
         # the self.aligned_images is None unless you explicitly pass in the pre-aligned images to save time
-        coadd = self.coadder.run(images, self.aligned_images)
+        coadd = self.coadder.run(self.images, self.aligned_images)
 
         self.datastore = self.extractor.run(coadd)
         self.datastore = self.astro_cal.run(self.datastore)
         self.datastore = self.photo_cal.run(self.datastore)
 
         return self.datastore.image
+

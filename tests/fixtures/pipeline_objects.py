@@ -28,7 +28,7 @@ from pipeline.subtraction import Subtractor
 from pipeline.cutting import Cutter
 from pipeline.measurement import Measurer
 
-from improc.bitmask_tools import make_saturated_mask
+from improc.bitmask_tools import make_saturated_flag
 
 @pytest.fixture(scope='session')
 def preprocessor_factory(test_config):
@@ -117,6 +117,7 @@ def photometor(photometor_factory):
 def coadder_factory(test_config):
 
     def make_coadder():
+
         coadd = Coadder(**test_config.value('coaddition.coaddition'))
         coadd.pars._enforce_no_new_attrs = False
         coadd.pars.test_parameter = coadd.pars.add_par(
@@ -229,6 +230,7 @@ def datastore_factory(
         detector_factory,
         cutter_factory,
         measurer_factory,
+
 ):
     """Provide a function that returns a datastore with all the products based on the given exposure and section ID.
 
@@ -289,7 +291,6 @@ def datastore_factory(
         measurer = measurer_factory()
         measurer.pars.override(overrides.get('measurement', {}))
         measurer.pars.augment(augments.get('measurement', {}))
-
         with SmartSession(session) as session:
             code_version = session.merge(code_version)
             if ds.image is not None:  # if starting from an externally provided Image, must merge it first
@@ -304,7 +305,6 @@ def datastore_factory(
                 if os.path.isfile(cache_path):
                     _logger.debug('loading image from cache. ')
                     ds.image = Image.copy_from_cache(cache_dir, cache_name)
-
                     # assign the correct exposure to the object loaded from cache
                     if ds.exposure_id is not None:
                         ds.image.exposure_id = ds.exposure_id
@@ -347,14 +347,13 @@ def datastore_factory(
                 _logger.debug('making preprocessed image. ')
                 ds = preprocessor.run(ds)
                 ds.image.provenance.is_testing = True
-
                 if bad_pixel_map is not None:
                     ds.image.flags |= bad_pixel_map
                     if ds.image.weight is not None:
-                        ds.image.weight[bad_pixel_map.astype(bool)] = 0.0
+                        ds.image.weight[ds.image.flags.astype(bool)] = 0.0
 
                 # flag saturated pixels, too (TODO: is there a better way to get the saturation limit? )
-                mask = make_saturated_mask(ds.image.data, ds.image.instrument_object.saturation_limit, iterations=2)
+                mask = make_saturated_flag(ds.image.data, ds.image.instrument_object.saturation_limit, iterations=2)
                 ds.image.flags |= (mask * 2 ** BitFlagConverter.convert('saturated')).astype(np.uint16)
 
                 ds.image.save()

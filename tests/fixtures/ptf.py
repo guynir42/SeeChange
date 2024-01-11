@@ -152,7 +152,6 @@ def ptf_urls():
     soup = BeautifulSoup(r.text, 'html.parser')
     links = soup.find_all('a')
     filenames = [link.get('href') for link in links if link.get('href').endswith('.fits')]
-
     bad_files = [
         'PTF200904053266_2_o_19609_11.w.fits',
         'PTF200904053340_2_o_19614_11.w.fits',
@@ -224,6 +223,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
                 raise e
                 # print(e)  # TODO: should we be worried that some of these images can't complete their processing?
                 continue
+
             images.append(ds.image)
             if max_images is not None and len(images) >= max_images:
                 break
@@ -282,6 +282,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
             output_images[-1].zp = ZeroPoint.copy_from_cache(cache_dir, filename + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
+
         images_to_align = ptf_reference_images
         prov = Provenance(
             code_version=code_version,
@@ -429,5 +430,4 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
         session.commit()
         ref_in_db = session.scalars(sa.select(Reference).where(Reference.id == ref.id)).first()
         assert ref_in_db is None  # should have been deleted by cascade when image is deleted
-
 

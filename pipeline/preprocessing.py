@@ -179,6 +179,7 @@ class Preprocessor:
         required_bitflag = 0
         for step in self._stepstodo:
             required_bitflag |= string_to_bitflag( step, image_preprocessing_inverse )
+
         if image._data is None:  # in case we are skipping all preprocessing steps
             image.data = image.raw_data
 
