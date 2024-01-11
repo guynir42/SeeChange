@@ -506,6 +506,7 @@ class CoaddPipeline:
 
         self.datastore = None  # use this datastore to save the coadd image and all the products
 
+        self.images = None  # use this to store the input images
         self.aligned_images = None  # use this to pass in already aligned images
 
     def parse_inputs(self, *args, **kwargs):
@@ -546,8 +547,9 @@ class CoaddPipeline:
         args, kwargs, session = parse_session(*args, **kwargs)
         self.images = None
         self.aligned_images = None
-
-        if len(args) == 1 and isinstance(args[0], list):
+        if len(args) == 0:
+            pass  # there are not args, we can skip them quietly
+        elif len(args) == 1 and isinstance(args[0], list):
             if not all([isinstance(a, Image) for a in args[0]]):
                 raise TypeError('When supplying a list, all elements must be Image objects. ')
             self.images = args[0]  # in case we are given a list of images
