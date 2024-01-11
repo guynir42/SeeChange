@@ -265,5 +265,3 @@ class Reference(Base, AutoIDMixin):
                 elif len(zps) == 1:
                     self.image.zp = zps[0]
                     self.zp = zps[0]
-
-

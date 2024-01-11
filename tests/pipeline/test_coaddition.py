@@ -421,7 +421,6 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
 
 
 def test_coaddition_pipeline_outputs(ptf_reference_images, ptf_aligned_images):
-
     try:
         pipe = CoaddPipeline()
         coadd_image = pipe.run(ptf_reference_images, ptf_aligned_images)
