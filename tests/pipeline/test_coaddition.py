@@ -358,11 +358,11 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
     assert pipe.coadder.pars.method == 'zogy'
 
     # now run the pipeline:
-    images = pipe.parse_inputs(ptf_reference_images)
-    assert images == ptf_reference_images
+    pipe.parse_inputs(ptf_reference_images)
+    assert pipe.images == ptf_reference_images
 
     # make sure you can grab these using the target and other parameters:
-    images = pipe.parse_inputs(
+    pipe.parse_inputs(
         target="100014",
         instrument="PTF",
         filter="R",
@@ -371,10 +371,10 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
     )
 
     # without giving a start/end time, all these images will not be selected!
-    assert len(images) == 0
+    assert len(pipe.images) == 0
 
     # try with a time too far in the past
-    images = pipe.parse_inputs(
+    pipe.parse_inputs(
         target="100014",
         instrument="PTF",
         filter="R",
@@ -383,10 +383,10 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
         start_time='2000-01-01',
         end_time='2007-01-01',
     )
-    assert len(images) == 0
+    assert len(pipe.images) == 0
 
     # without an end_time, should use "now" so it would include the images
-    images = pipe.parse_inputs(
+    pipe.parse_inputs(
         target="100014",
         instrument="PTF",
         filter="R",
@@ -394,7 +394,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
         provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
         start_time='2000-01-01',
     )
-    im_ids = set([im.id for im in images])
+    im_ids = set([im.id for im in pipe.images])
     ptf_im_ids = set([im.id for im in ptf_reference_images])
     assert ptf_im_ids == im_ids
 
@@ -404,7 +404,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
     center_dec = np.mean(ptf_decs)
 
     # make sure we can grab these images using coordinates as well:
-    images = pipe.parse_inputs(
+    pipe.parse_inputs(
         target=None,
         ra=center_ra,
         dec=center_dec,
@@ -415,7 +415,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
         start_time='2000-01-01',
     )
 
-    im_ids = set([im.id for im in images])
+    im_ids = set([im.id for im in pipe.images])
     ptf_im_ids = set([im.id for im in ptf_reference_images])
     assert ptf_im_ids == im_ids
 
