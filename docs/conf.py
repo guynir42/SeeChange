@@ -15,6 +15,7 @@ author = 'Guy Nir, Robert A. Knop'
 
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx_mdinclude',
 ]
 
 templates_path = ['_templates']
