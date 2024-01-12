@@ -1,4 +1,4 @@
 Overview
 ===========
 
-mdinclude:: overview.md
+.. mdinclude:: overview.md
