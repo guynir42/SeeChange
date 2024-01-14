@@ -37,7 +37,7 @@ def test_warp_decam( decam_datastore, decam_reference ):
         # expect it to be exactly identical, but it should be very
         # close.
         imwcs = ds.wcs.wcs
-        warpwcs = astropy.wcs.WCS( warped.raw_header )
+        warpwcs = astropy.wcs.WCS( warped.header )
         x = [ 256, 1791, 256, 1791, 1024 ]
         y = [ 256, 256, 3839, 3839, 2048 ]
         imsc = imwcs.pixel_to_world( x, y )

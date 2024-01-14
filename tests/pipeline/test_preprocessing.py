@@ -33,8 +33,8 @@ def test_preprocessing(provenance_decam_prep, decam_exposure, test_config, prepr
     #  from the raw image header.  (If not, when the file gets
     #  written out as floats, they'll be there and will screw
     #  things up.)
-    assert 'BSCALE' not in ds.image.raw_header
-    assert 'BZERO' not in ds.image.raw_header
+    assert 'BSCALE' not in ds.image.header
+    assert 'BZERO' not in ds.image.header
 
     # Flatfielding should have improved the sky noise, though for DECam
     # it looks like this is a really small effect.  I've picked out a

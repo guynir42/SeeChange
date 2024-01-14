@@ -140,8 +140,8 @@ class ImageCleanup:
         if image.instrument is None:
             image.instrument = 'DemoInstrument'
 
-        if image._raw_header is None:
-            image._raw_header = fits.Header()
+        if image._header is None:
+            image._header = fits.Header()
 
         image.save(no_archive=not archive)
 

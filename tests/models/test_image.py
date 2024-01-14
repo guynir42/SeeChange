@@ -307,7 +307,7 @@ def test_image_save_justheader( sim_image1 ):
         info = archive.get_info( pathlib.Path( names[0] ).relative_to( FileOnDiskMixin.local_path ) )
         assert uuid.UUID( info['md5sum'] ) == sim_image1.md5sum_extensions[0]
 
-        sim_image1._raw_header['ADDEDKW'] = 'This keyword was added'
+        sim_image1._header['ADDEDKW'] = 'This keyword was added'
         sim_image1.data = np.full( (64, 32), 0.5, dtype=np.float32 )
         sim_image1.weight = np.full( (64, 32), 2., dtype=np.float32 )
 
@@ -349,7 +349,7 @@ def test_image_save_onlyimage( sim_image1 ):
     assert names[1].endswith('.flags.fits')
     assert names[2].endswith('.weight.fits')
 
-    sim_image1._raw_header['ADDEDTOO'] = 'An added keyword'
+    sim_image1._header['ADDEDTOO'] = 'An added keyword'
     sim_image1.data = np.full( (64, 32), 0.0625, dtype=np.float32 )
 
     with open( names[1], "w" ) as ofp:

@@ -301,11 +301,11 @@ def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
     assert ref_image.filter == 'R'
     assert ref_image.section_id == '11'
 
-    assert isinstance(ref_image.header, dict)
-    assert isinstance(ref_image.raw_header, fits.Header)
+    assert isinstance(ref_image.info, dict)
+    assert isinstance(ref_image.header, fits.Header)
 
     # check a random value from the header, should have been taken from the last image
-    assert ref_image.raw_header['TELDEC'] == ptf_reference_images[-1].raw_header['TELDEC']
+    assert ref_image.header['TELDEC'] == ptf_reference_images[-1].header['TELDEC']
     # the coordinates have also been grabbed from the last image
     assert ref_image.ra == ptf_reference_images[-1].ra
     assert ref_image.dec == ptf_reference_images[-1].dec
