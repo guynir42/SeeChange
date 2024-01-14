@@ -59,12 +59,13 @@ class Subtractor:
 
         Returns
         -------
-        outim : np.ndarray
-            The difference between the new and reference images
-        outwt: np.ndarray
-            The weight image for the difference
-        outfl: np.ndarray
-            The flag image for the difference
+        dictionary with the following keys:
+            outim : np.ndarray
+                The difference between the new and reference images
+            outwt: np.ndarray
+                The weight image for the difference
+            outfl: np.ndarray
+                The flag image for the difference
         """
         outim = new_image.data - ref_image.data
 
@@ -85,7 +86,7 @@ class Subtractor:
         outfl = new_image.flags.copy()
         outfl |= ref_image.flags
 
-        return outim, outwt, outfl
+        return dict(outim=outim, outwt=outwt, outfl=outfl)
 
     def _subtract_zogy(self, new_image, ref_image):
         """Use ZOGY to subtract the two images.
@@ -104,18 +105,46 @@ class Subtractor:
 
         Returns
         -------
-        outim : np.ndarray
-            The difference between the new and reference images
-        outwt: np.ndarray
-            The weight image for the difference
-        outfl: np.ndarray
-            The flag image for the difference
-        score: np.ndarray
-            The ZOGY score image (the matched-filter result)
-        zogy_psf: np.ndarray
-            The ZOGY PSF image (the matched-filter PSF)
+        dictionary with the following keys:
+            outim : np.ndarray
+                The difference between the new and reference images
+            outwt: np.ndarray
+                The weight image for the difference
+            outfl: np.ndarray
+                The flag image for the difference
+            zogy_score: np.ndarray
+                The ZOGY score image (the matched-filter result)
+            zogy_psf: np.ndarray
+                The ZOGY PSF image (the matched-filter PSF)
         """
-        pass
+        raise NotImplementedError('Not implemented ZOGY subtraction yet')
+
+    def _subtract_hotpants(self, new_image, ref_image):
+        """Use Hotpants to subtract the two images.
+
+        This applies PSF matching and uses the Hotpants algorithm to subtract the two images.
+        reference: ...
+
+        Parameters
+        ----------
+        new_image : Image
+            The Image containing the new data, including the data array, weight, and flags.
+            Image must also have the PSF and ZeroPoint objects loaded.
+        ref_image : Image
+            The Image containing the reference data, including the data array, weight, and flags
+            Image must also have the PSF and ZeroPoint objects loaded.
+
+        Returns
+        -------
+        dictionary with the following keys:
+            outim : np.ndarray
+                The difference between the new and reference images
+            outwt: np.ndarray
+                The weight image for the difference
+            outfl: np.ndarray
+                The flag image for the difference
+        """
+        raise NotImplementedError('Not implemented Hotpants subtraction yet')
 
     def run(self, *args, **kwargs):
         """
@@ -168,21 +197,21 @@ class Subtractor:
                 ref_image = sub_image.aligned_images[sub_image.ref_image_index]
 
                 if self.pars.method.lower() == 'naive':
-                    outim, outwt, outfl = self._subtract_naive(new_image, ref_image)
+                    outdict = self._subtract_naive(new_image, ref_image)
                 elif self.pars.method.lower() == 'hotpants':
-                    raise NotImplementedError('Hotpants not implemented yet')
+                    outdict = self._subtract_hotpants(new_image, ref_image)
                 elif self.pars.method.lower() == 'zogy':
-                    outim, outwt, outfl, score, psf = self._subtract_zogy(new_image, ref_image)
+                    outdict = self._subtract_zogy(new_image, ref_image)
                 else:
                     raise ValueError(f'Unknown subtraction method {self.pars.method}')
 
-                sub_image.data = outim
-                sub_image.weight = outwt
-                sub_image.flags = outfl
-                if 'score' in locals():
-                    sub_image.score = score
-                if 'psf' in locals():
-                    sub_image.zogy_psf = psf  # this is not saved to DB but can be useful for testing / source detection
+                sub_image.data = outdict['outim']
+                sub_image.weight = outdict['outwt']
+                sub_image.flags = outdict['outfl']
+                if 'score' in outdict:
+                    sub_image.zogy_score = outdict['zogy_score']
+                if 'psf' in outdict:
+                    sub_image.zogy_psf = outdict['psf']  # not saved but can be useful for testing / source detection
 
         ds.sub_image = sub_image
 
