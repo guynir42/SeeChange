@@ -2,6 +2,7 @@
 import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.schema import UniqueConstraint
 
 from models.base import Base, SeeChangeBase, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed
 from models.enums_and_bitflags import CutoutsFormatConverter
@@ -10,6 +11,13 @@ from models.enums_and_bitflags import CutoutsFormatConverter
 class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
 
     __tablename__ = 'cutouts'
+
+    # a unique constraint on the provenance and the source list, but also on the index in the list
+    __table_args__ = (
+        UniqueConstraint(
+            'index_in_sources', 'sources_id', 'provenance_id', name='_cutouts_index_sources_provenance_uc'
+        ),
+    )
 
     _format = sa.Column(
         sa.SMALLINT,
@@ -42,6 +50,12 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
     sources = orm.relationship(
         'SourceList',
         doc="The source list this cutout is associated with. "
+    )
+
+    index_in_sources = sa.Column(
+        sa.Integer,
+        nullable=False,
+        doc="Index of this cutout in the source list. "
     )
 
     new_image_id = sa.Column(

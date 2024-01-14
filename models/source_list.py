@@ -7,6 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy.schema import UniqueConstraint
 
 import astropy.table
 
@@ -34,6 +35,10 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     """
 
     __tablename__ = 'source_lists'
+
+    __table_args__ = (
+        UniqueConstraint('image_id', 'provenance_id', name='_source_list_image_provenance_uc'),
+    )
 
     _format = sa.Column(
         sa.SMALLINT,

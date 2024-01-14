@@ -298,7 +298,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     section_id = sa.Column(
         sa.Text,
-        nullable=False,
+        nullable=True,
         index=True,
         doc='Section ID of the image, possibly inside a larger mosiaced exposure. '
     )

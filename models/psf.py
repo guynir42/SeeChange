@@ -6,6 +6,7 @@ import numpy as np
 import sqlalchemy as sa
 import sqlalchemy.orm as orm
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.schema import UniqueConstraint
 
 from astropy.io import fits
 
@@ -28,6 +29,10 @@ from models.enums_and_bitflags import PSFFormatConverter, psf_badness_inverse
 
 class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     __tablename__ = 'psfs'
+
+    __table_args__ = (
+        UniqueConstraint('image_id', 'provenance_id', name='_psf_image_provenance_uc'),
+    )
 
     _format = sa.Column(
         sa.SMALLINT,
