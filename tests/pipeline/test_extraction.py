@@ -98,11 +98,9 @@ def test_sep_save_source_list(decam_small_image, provenance_base, extractor):
         assert np.array_equal(data, sources.data)
 
         with SmartSession() as session:
-            decam_small_image.recursive_merge(session)
-            sources.provenance = session.merge( sources.provenance )
+            sources = session.merge( sources )
             decam_small_image.save()  # pretend to save this file
             decam_small_image.exposure.save()
-            session.add(sources)
             session.commit()
             image_id = decam_small_image.id
             sources_id = sources.id

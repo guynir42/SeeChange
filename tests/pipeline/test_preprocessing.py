@@ -9,7 +9,7 @@ from models.base import FileOnDiskMixin, SmartSession
 from models.image import Image
 
 
-def test_preprocessing(provenance_decam_prep, decam_exposure, test_config, preprocessor, decam_default_calibrators):
+def test_preprocessing(decam_exposure, test_config, preprocessor, decam_default_calibrators):
     # The decam_default_calibrators fixture is included so that
     # _get_default_calibrators won't be called as a side effect of calls
     # to Preprocessor.run().  (To avoid committing.)

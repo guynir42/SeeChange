@@ -705,6 +705,8 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
             If None, will open a new session
             and close it at the end of the function.
         """
+        if self.instrument is None:
+            return
         with SmartSession(session) as session:
             self.instrument_object.fetch_sections(session=session, dateobs=self.mjd)
 

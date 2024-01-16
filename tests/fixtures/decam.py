@@ -189,6 +189,10 @@ def decam_exposure(decam_filename, data_dir):
     exposure = Exposure( filepath=filename, instrument='DECam', **exphdrinfo )
     exposure.save()  # save to archive and get an MD5 sum
 
+    with SmartSession() as session:
+        session.add(exposure)
+        session.commit()
+
     yield exposure
 
     # Just in case this exposure got loaded into the database
@@ -196,9 +200,11 @@ def decam_exposure(decam_filename, data_dir):
 
 
 @pytest.fixture
-def decam_raw_image( decam_exposure ):
+def decam_raw_image( decam_exposure, provenance_base ):
     image = Image.from_exposure(decam_exposure, section_id='N1')
     image.data = image.raw_data.astype(np.float32)
+    image.provenance = provenance_base
+    image.save()
 
     yield image
 
@@ -209,6 +215,7 @@ def decam_raw_image( decam_exposure ):
 def decam_small_image(decam_raw_image):
     image = decam_raw_image
     image.data = image.data[256:256+512, 256:256+512].copy()  # make it C-contiguous
+
     return image
 
 

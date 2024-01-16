@@ -56,7 +56,7 @@ def test_image_no_null_values(provenance_base):
         image = Image(f"Demo_test_{rnd_str(5)}.fits", md5sum=uuid.uuid4(), nofile=True, section_id=1)
         with SmartSession() as session:
             for i in range(len(required)):
-                image.recursive_merge( session )
+                image = session.merge(image)
                 # set the exposure to the values in "added" or None if not in "added"
                 for k in required.keys():
                     setattr(image, k, added.get(k, None))
@@ -107,20 +107,20 @@ def test_image_must_have_md5(sim_image_uncommitted, provenance_base):
 
         im.md5sum = None
         with SmartSession() as session:
-            im.recursive_merge(session)
+
             with pytest.raises(IntegrityError, match='violates check constraint'):
-                session.add(im)
+                im = session.merge(im)
                 session.commit()
             session.rollback()
 
             # adding md5sums should fix this problem
             _2 = ImageCleanup.save_image(im, archive=True)
-            session.add(im)
+            im = session.merge(im)
             session.commit()
 
     finally:
         with SmartSession() as session:
-            im = im.recursive_merge(session)
+            im = session.merge(im)
             exp = im.exposure
             im.delete_from_disk_and_database(session)
 
@@ -210,9 +210,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
 
     try:
         with SmartSession() as session:
-            # First, work around SQLAlchemy
             im.provenance = provenance_base
-            im = im.recursive_merge( session )
 
             # Now do multiple images
             test_config.set_value('storage.images.single_file', False)
@@ -265,7 +263,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
                     assert m.hexdigest() == localmd5s[filename].hexdigest()
 
             # Make sure that the md5sum is properly saved to the database
-            session.add( im )
+            im = session.merge(im)
             session.commit()
             with SmartSession() as differentsession:
                 dbimage = differentsession.scalars(sa.select(Image).where(Image.id == im.id)).first()
@@ -438,8 +436,7 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
         session.add(sim_image1)
         # sim_reference = session.merge(sim_reference)
         new = Image.from_new_and_ref(sim_image1, sim_reference.image)
-        new.provenance = provenance_extra
-        new = new.recursive_merge(session)
+        new.provenance = session.merge(provenance_extra)
 
         # save and delete at the end
         cleanup2 = ImageCleanup.save_image(new)
@@ -475,7 +472,7 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
 def test_image_preproc_bitflag( sim_image1 ):
 
     with SmartSession() as session:
-        im = sim_image1.recursive_merge( session )
+        im = session.merge(sim_image1)
 
         assert im.preproc_bitflag == 0
         im.preproc_bitflag |= string_to_bitflag( 'zero', image_preprocessing_inverse )
@@ -511,7 +508,7 @@ def test_image_preproc_bitflag( sim_image1 ):
 def test_image_badness(sim_image1):
 
     with SmartSession() as session:
-        sim_image1 = sim_image1.recursive_merge(session)
+        sim_image1 = session.merge(sim_image1)
 
         # this is not a legit "badness" keyword...
         with pytest.raises(ValueError, match='Keyword "foo" not recognized'):
@@ -567,11 +564,12 @@ def test_multiple_images_badness(
 ):
     try:
         with SmartSession() as session:
-            sim_image1 = sim_image1.recursive_merge(session)
-            sim_image2 = sim_image2.recursive_merge(session)
-            sim_image3 = sim_image3.recursive_merge(session)
-            sim_image5 = sim_image5.recursive_merge(session)
-            sim_image6 = sim_image6.recursive_merge(session)
+            sim_image1 = session.merge(sim_image1)
+            sim_image2 = session.merge(sim_image2)
+            sim_image3 = session.merge(sim_image3)
+            sim_image5 = session.merge(sim_image5)
+            sim_image6 = session.merge(sim_image6)
+
             images = [sim_image1, sim_image2, sim_image3, sim_image5, sim_image6]
             cleanups = []
             filter = 'g'
@@ -616,8 +614,7 @@ def test_multiple_images_badness(
             sim_image4.provenance.upstreams = sim_image4.get_upstream_provenances()
             cleanups.append(ImageCleanup.save_image(sim_image4))
             images.append(sim_image4)
-            sim_image4 = sim_image4.recursive_merge(session)
-            session.add(sim_image4)
+            sim_image4 = session.merge(sim_image4)
             session.commit()
 
             assert sim_image4.id is not None
@@ -647,8 +644,7 @@ def test_multiple_images_badness(
             sim_image7.provenance = provenance_extra
             cleanups.append(ImageCleanup.save_image(sim_image7))
             images.append(sim_image7)
-            sim_image7 = sim_image7.recursive_merge( session )
-            session.add(sim_image7)
+            sim_image7 = session.merge(sim_image7)
             session.commit()
 
             # check that the new subtraction is not flagged
@@ -676,8 +672,7 @@ def test_multiple_images_badness(
             sim_image8.provenance = provenance_extra
             cleanups.append(ImageCleanup.save_image(sim_image8))
             images.append(sim_image8)
-            sim_image8 = sim_image8.recursive_merge( session )
-            session.add(sim_image8)
+            sim_image8 = session.merge(sim_image8)
             session.commit()
 
             assert sim_image8.badness == 'Banding, Bright Sky'
@@ -699,12 +694,8 @@ def test_multiple_images_badness(
             sim_image8 = Image.from_images([sim_image1, sim_image2, sim_image3, sim_image4, sim_image5, sim_image6])
             sim_image8.provenance = provenance_extra
             cleanups.append(ImageCleanup.save_image(sim_image8))
-            sim_image8 = sim_image8.recursive_merge( session )
+            sim_image8 = session.merge(sim_image8)
             images.append(sim_image8)
-            session.add(sim_image8)
-            session.commit()
-
-            session.add(sim_image8)
             session.commit()
 
             assert sim_image8.badness == 'Banding, Saturation, Bright Sky'
@@ -1005,16 +996,14 @@ def test_image_from_exposure(sim_exposure1, provenance_base):
     try:
         with SmartSession() as session:
             with pytest.raises(IntegrityError, match='null value in column .* of relation "images"'):
-                im = im.recursive_merge( session )
-                session.add(im)
+                session.merge(im)
                 session.commit()
             session.rollback()
 
             # must add the provenance!
             im.provenance = provenance_base
-            im = im.recursive_merge( session )
             with pytest.raises(IntegrityError, match='null value in column "filepath" of relation "images"'):
-                session.add(im)
+                im = session.merge(im)
                 session.commit()
             session.rollback()
 
@@ -1288,7 +1277,7 @@ def test_image_multifile(sim_image_uncommitted, provenance_base, test_config):
 
     finally:
         with SmartSession() as session:
-            im = im.recursive_merge(session)
+            im = session.merge(im)
             exp = im.exposure
             im.delete_from_disk_and_database(session=session, commit=False)
 

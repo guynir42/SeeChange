@@ -579,6 +579,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             idx = exposure.instrument_object.get_section_filter_array_index(section_id)
             new.filter = exposure.filter_array[idx]
 
+        exposure.instrument_object.check_section_id(section_id)
         new.section_id = section_id
         new.raw_data = exposure.data[section_id]
         new.instrument_object = exposure.instrument_object
@@ -943,13 +944,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         to_index = self.provenance.parameters['alignment'].get('to_index')
         if to_index == 'first':
-            image_index = 0
+            alignment_target = self.upstream_images[0]
         elif to_index == 'last':
-            image_index = -1
+            alignment_target = self.upstream_images[-1]
         elif to_index == 'new':
-            image_index = self.new_image_index
+            alignment_target = self.new_image  # only works for a subtraction (or a coadd with exactly 2 upstreams)
         elif to_index == 'ref':
-            image_index = self.ref_image_index  # this is not recommended!
+            alignment_target = self.ref_image  # this is not recommended!
         else:
             raise RuntimeError(
                 f'Got illegal value for "to_index" ({to_index}) in the Provenance parameters!'
@@ -967,7 +968,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         aligned = []
         for i, image in enumerate(self.upstream_images):
-            new_image = self._aligner.run(image, self.upstream_images[image_index])
+            new_image = self._aligner.run(image, alignment_target)
             aligned.append(new_image)
             ImageAligner.temp_images.append(new_image)  # keep track of all these images for cleanup purposes
 
@@ -1140,15 +1141,18 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # TODO: which elements of the naming convention are really necessary?
         #  and what is a good way to make sure the filename actually depends on them?
 
-        if self.upstream_images is not None and len(self.upstream_images) > 0:
-            utag = hashlib.sha256()
-            for image in self.upstream_images:
-                if image.filepath is None:
-                    raise RuntimeError('Cannot invent filepath when upstream image has no filepath!')
-                utag.update(image.filepath.encode('utf-8'))
-            utag = base64.b32encode(utag.digest()).decode().lower()
-            utag = '_u-' + utag[:6]
-            filepath += utag
+        try:
+            if self.upstream_images is not None and len(self.upstream_images) > 0:
+                utag = hashlib.sha256()
+                for image in self.upstream_images:
+                    if image.filepath is None:
+                        raise RuntimeError('Cannot invent filepath when upstream image has no filepath!')
+                    utag.update(image.filepath.encode('utf-8'))
+                utag = base64.b32encode(utag.digest()).decode().lower()
+                utag = '_u-' + utag[:6]
+                filepath += utag
+        except DetachedInstanceError:
+            pass  # ignore situations where upstream_images is not loaded, it should not happen for a combined image
 
         return filepath
 
@@ -1431,6 +1435,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         with provenances consistent with what is saved in this Image's provenance
         and its own upstreams.
         """
+        if self.provenance is None:
+            return
         prov_ids = self.provenance.upstream_ids
         # check to make sure there is any need to load
         need_to_load = False

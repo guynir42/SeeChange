@@ -1445,7 +1445,7 @@ class DataStore:
                     if obj in session and sa.inspect(obj).persistent:
                         session.delete(obj)
 
-                    if hasattr(obj, 'provenance') and obj.provenance in session:
+                    if hasattr(obj, 'provenance') and obj.provenance is not None and obj.provenance in session:
                         session.expunge(obj.provenance)
 
                 session.commit()

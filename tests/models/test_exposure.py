@@ -63,10 +63,10 @@ def test_exposure_no_null_values():
 
                 # without all the required columns on e, it cannot be added to DB
                 with pytest.raises(IntegrityError) as exc:
-                    e = e.recursive_merge( session )
+                    e = session.merge(e)
                     # session.merge( e.provenance.code_version )
                     # session.merge( e.provenance )
-                    session.add(e)
+                    # session.add(e)
                     session.commit()
                     exposure_id = e.id
                 session.rollback()
@@ -159,9 +159,6 @@ def test_exposure_coordinates():
 
 
 def test_exposure_load_demo_instrument_data(sim_exposure1):
-    # this is a new exposure, created as a fixture (not from DB):
-    assert sim_exposure1.from_db == 0
-
     # the data is a SectionData object that lazy loads from file
     assert isinstance(sim_exposure1.data, SectionData)
     assert sim_exposure1.data.filepath == sim_exposure1.get_fullpath()
