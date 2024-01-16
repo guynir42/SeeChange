@@ -232,6 +232,7 @@ def test_write_psfex_psf( ztf_filepaths_image_sources_psf ):
     tempname = ''.join( random.choices( 'abcdefghijklmnopqrstuvwxyz', k=10 ) )
     psfpath = f'{tempname}.psf'
     psffullpath = pathlib.Path( FileOnDiskMixin.local_path ) / psfpath
+    psffullpath = psffullpath.with_suffix('.psf.fits')
     psfxmlpath = f'{tempname}.psf.xml'
     psfxmlfullpath = pathlib.Path( FileOnDiskMixin.local_path ) / psfxmlpath
     sourcesfullpath = pathlib.Path( FileOnDiskMixin.local_path ) / f'{tempname}.cat'
@@ -242,7 +243,7 @@ def test_write_psfex_psf( ztf_filepaths_image_sources_psf ):
         assert psffullpath.is_file()
         assert psfxmlfullpath.is_file()
         archive = get_archive_object()
-        assert archive.get_info( psfpath ) is not None
+        assert archive.get_info( psfpath + '.fits' ) is not None
         assert archive.get_info( psfxmlpath ) is not None
 
         # See if we can read the psf we wrote back in

@@ -214,13 +214,18 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
             raise RuntimeError( "data, header, and info must all be non-None" )
 
         if filename is not None:
+            if not filename.endswith('.psf'):
+                filename += '.psf'
             self.filepath = filename
-        elif self.image.filepath is not None:
-            self.filepath = self.image.filepath
         else:
-            self.filepath = self.image.invent_filepath()
-        psfpath = pathlib.Path( self.local_path ) / f'{self.filepath}.psf'
-        psfxmlpath = pathlib.Path( self.local_path ) / f'{self.filepath}.psf.xml'
+            if self.image.filepath is not None:
+                self.filepath = self.image.filepath
+            else:
+                self.filepath = self.image.invent_filepath()
+            self.filepath += f'.psf_{self.provenance.id[:6]}'
+
+        psfpath = pathlib.Path( self.local_path ) / f'{self.filepath}.fits'
+        psfxmlpath = pathlib.Path( self.local_path ) / f'{self.filepath}.xml'
 
         header0 = fits.Header( [ fits.Card( 'SIMPLE', 'T', 'This is a FITS file' ),
                                  fits.Card( 'BITPIX', 8 ),
@@ -242,8 +247,8 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
         # Save the file to the archive and update the database record
         # (From what we did above, the files are already in the right place in the local filestore.)
-        FileOnDiskMixin.save( self, psfpath, '.psf', **kwargs )
-        FileOnDiskMixin.save( self, psfxmlpath, '.psf.xml', **kwargs )
+        FileOnDiskMixin.save( self, psfpath, '.fits', **kwargs )
+        FileOnDiskMixin.save( self, psfxmlpath, '.xml', **kwargs )
 
     def load( self, download=True, always_verify_md5=False, psfpath=None, psfxmlpath=None ):
         """Load the data from the files into the _data, _header, and _info fields.
@@ -281,9 +286,9 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
             raise ValueError( "Either both or neither of psfpath and psfxmlpath must be None" )
 
         if psfpath is None:
-            if self.filepath_extensions != [ '.psf', '.psf.xml' ]:
-                raise ValueError( f"Can't load psfex file; filepath_extension is {self.filepath_extension}, "
-                                  f"but expected ['.psf', '.psf.xml']." )
+            if self.filepath_extensions != [ '.fits', '.xml' ]:
+                raise ValueError( f"Can't load psfex file; filepath_extensions is {self.filepath_extensions}, "
+                                  f"but expected ['.fits', '.xml']." )
             psfpath, psfxmlpath = self.get_fullpath( download=download, always_verify_md5=always_verify_md5 )
 
         with fits.open( psfpath, memmap=False ) as hdul:

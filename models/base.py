@@ -113,6 +113,13 @@ def SmartSession(*args):
         yield session
 
 
+def db_stat(obj):
+    """Check the status of an object. It can be one of: transient, pending, persistent, deleted, detached."""
+    for word in ['transient', 'pending', 'persistent', 'deleted', 'detached']:
+        if getattr(sa.inspect(obj), word):
+            return word
+
+
 def get_all_database_objects(display=False, session=None):
     """Find all the objects and their associated IDs in the database.
 
@@ -168,7 +175,7 @@ def get_all_database_objects(display=False, session=None):
     return output
 
 
-def safe_merge(session, obj):
+def safe_merge(session, obj, db_check_att='filepath'):
     """
     Only merge the object if it has a valid ID,
     and if it does not exist on the session.
@@ -180,6 +187,14 @@ def safe_merge(session, obj):
         The session to use for the merge.
     obj: SeeChangeBase
         The object to merge.
+    db_check_att: str (optional)
+        If given, will check if an object with this attribute
+        exists in the DB before merging. If it does, it will
+        merge the new object with the existing object's ID.
+        Default is to check against the "filepath" attribute,
+        which will fail quietly if the object doesn't have
+        this attribute.
+        This check only occurs for objects without an id.
 
     Returns
     -------
@@ -188,18 +203,17 @@ def safe_merge(session, obj):
         if it is already on the session or if it
         doesn't have an ID.
     """
-    if obj is None:
+    if obj is None:  # given None, return None
         return None
 
-    if obj.id is None:
-        return obj
-
-    # if obj in session:
-    #     return obj
-    #
-    # if obj.id in [item.id for item in session.new | session.dirty | session.deleted if isinstance(item, type(obj))]:
-    #     return obj
-
+    # if there is no ID, maybe need to check another attribute
+    if db_check_att is not None and hasattr(obj, db_check_att):
+        existing = session.scalars(
+            sa.select(type(obj)).where(getattr(type(obj), db_check_att) == getattr(obj, db_check_att))
+        ).first()
+        if existing is not None:  # this object already has a copy on the DB!
+            obj.id = existing.id  # make sure to update existing row with new data
+            obj.created_at = existing.created_at  # make sure to keep the original creation time
     return session.merge(obj)
 
 
@@ -226,6 +240,12 @@ class SeeChangeBase:
 
     def __init__(self, **kwargs):
         self.from_db = False  # let users know this object was newly created
+
+        if hasattr(self, '_bitflag'):
+            self._bitflag = 0
+        if hasattr(self, 'upstream__bitflag'):
+            self._upstream_bitflag = 0
+
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -266,7 +286,11 @@ class SeeChangeBase:
                 if type( getattr( self, key ) ) != types.MethodType:
                     setattr(self, key, value)
 
-    def recursive_merge(self, session, done_list=None):
+    def safe_merge(self, session, db_check_att='filepath'):
+        """Safely merge this object into the session. See safe_merge()."""
+        return safe_merge(session, self, db_check_att=db_check_att)
+
+    def recursive_merge(self, session, db_check_att='filepath', done_list=None):
         """
         Recursively merge (using safe_merge) all the objects,
         the parent objects (image, ref_image, new_image, etc.)
@@ -276,6 +300,14 @@ class SeeChangeBase:
         ----------
         session: sqlalchemy.orm.session.Session
             The session to use for the merge.
+        db_check_att: str (optional)
+            If given, will check if any objects with this attribute
+            exist in the DB before merging. If they do, it will
+            merge the new object with the existing object's ID.
+            (see safe_merge). Default is to check against the
+            "filepath" attribute, which will fail quietly if the
+            object doesn't have this attribute.
+
         done_list: list (optional)
             A list of objects that have already been merged.
 
@@ -287,7 +319,7 @@ class SeeChangeBase:
         if done_list is None:
             done_list = set()
 
-        obj = safe_merge(session, self)
+        obj = self.safe_merge(session, db_check_att=db_check_att)
         if obj in done_list:
             return obj
         done_list.add(obj)
@@ -310,10 +342,18 @@ class SeeChangeBase:
                 sub_obj = getattr(self, att, None)
                 # go over lists:
                 if isinstance(sub_obj, list):
-                    setattr(obj, att, [o.recursive_merge(session, done_list=done_list) for o in sub_obj])
+                    setattr(
+                        obj,
+                        att,
+                        [o.recursive_merge(session, db_check_att=db_check_att, done_list=done_list) for o in sub_obj],
+                    )
 
                 if isinstance(sub_obj, SeeChangeBase):
-                    setattr(obj, att, sub_obj.recursive_merge(session, done_list=done_list))
+                    setattr(
+                        obj,
+                        att,
+                        sub_obj.recursive_merge(session, db_check_att=db_check_att, done_list=done_list),
+                    )
 
             except DetachedInstanceError:
                 pass

@@ -111,46 +111,44 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         doc='Images used to produce a multi-image object, like a coadd or a subtraction. '
     )
 
+    downstream_images = orm.relationship(
+        'Image',
+        secondary=image_upstreams_association_table,
+        primaryjoin='images.c.id == image_upstreams_association.c.upstream_id',
+        secondaryjoin='images.c.id == image_upstreams_association.c.downstream_id',
+        cascade='save-update, merge, refresh-expire, expunge',
+        passive_deletes=True,
+        order_by='images.c.mjd',  # in chronological order of exposure start time
+        doc='Combined Images (like coadds or a subtractions) that use this image in their production. '
+    )
+
     ref_image_id = sa.Column(
-        sa.BigInteger,
+        sa.ForeignKey('images.id', ondelete="SET NULL", name='images_ref_image_id_fkey'),
         nullable=True,
+        index=True,
         doc=(
             "ID of the reference image used to produce this image, in the upstream_images list. "
         )
     )
 
-    @property
-    def ref_image(self):
-        if self.ref_image_id is None:
-            return None
-        image = [im for im in self.upstream_images if im.id == self.ref_image_id]
-        if len(image) == 0:
-            raise RuntimeError(f'Cannot find reference image with ID {self.ref_image_id}!')
-        elif len(image) > 1:
-            raise RuntimeError(f'Found multiple reference images with ID {self.ref_image_id}!')
-        return image[0]
-
-    @ref_image.setter
-    def ref_image(self, value):
-        if value is None:
-            self.ref_image_index = None
-        else:
-            if not isinstance(value, Image):
-                raise ValueError(f"ref_image must be an Image object. Got {type(value)} instead.")
-            if value not in self.upstream_images:
-                raise ValueError(f"ref_image must be in the upstream_images list. Got {value} instead.")
-
-            # make sure the upstream_images list is sorted by mjd:
-            self.ref_image_id = value.id
+    ref_image = orm.relationship(
+        'Image',
+        primaryjoin='Image.ref_image_id == Image.id',
+        remote_side='Image.id',
+        cascade='save-update, merge, refresh-expire, expunge',
+        uselist=False,
+        lazy='selectin',
+        doc=(
+            "Reference image used to produce this image, in the upstream_images list. "
+        )
+    )
 
     @property
     def new_image(self):
         """Get the image that is NOT the reference image. This only works on subtractions (with ref+new upstreams)"""
         image = [im for im in self.upstream_images if im.id != self.ref_image_id]
-        if len(image) == 0:
-            raise RuntimeError(f'Cannot find new image, there are not enough upstream images!')
-        elif len(image) > 1:
-            raise RuntimeError(f'Found multiple new images! NOTE: reference images do not have a "new" image!')
+        if len(image) == 0 or len(image) > 1:
+            return None
         return image[0]
 
     is_sub = sa.Column(
@@ -429,6 +427,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self._instrument_object = None
         self._bitflag = 0
 
+        if 'header' in kwargs:
+            kwargs['_header'] = kwargs.pop('header')
+
         # manually set all properties (columns or not)
         for key, value in kwargs.items():
             if hasattr(self, key):
@@ -468,6 +469,41 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         this_object_session = orm.Session.object_session(self)
         if this_object_session is not None:  # if just loaded, should usually have a session!
             self.load_upstream_products(this_object_session)
+
+    def merge_all(self, session):
+        """Use safe_merge to merge all the downstream products and assign them back to self.
+
+        This includes: sources, psf, wcs, zp.
+        This will also merge relationships, such as exposure or upstream_images,
+        but that happens automatically using SQLA's magic.
+
+        Must provide a session to merge into. Need to commit at the end.
+
+        Returns the merged image with all its products on the same session.
+        """
+        new_image = self.safe_merge(session=session)
+        session.flush()
+        if self.sources is not None:
+            self.sources.image = new_image
+            self.sources.image_id = new_image.id
+            self.sources.provenance_id = self.sources.provenance.id
+            new_image.sources = self.sources.merge_all(session=session)
+            new_image.wcs = new_image.sources.wcs
+            new_image.zp = new_image.sources.zp
+            new_image.cutouts = new_image.sources.cutouts
+            new_image.measurements = new_image.sources.measurements
+
+        if self.psf is not None:
+            self.psf.image = new_image
+            self.psf.image_id = new_image.id
+            self.psf.provenance_id = self.psf.provenance.id
+            new_image.psf = self.psf.safe_merge(session=session)
+            if new_image.psf._bitflag is None:  # I don't know why this isn't set to 0 using the default
+                new_image.psf._bitflag = 0
+            if new_image.psf._upstream_bitflag is None:  # I don't know why this isn't set to 0 using the default
+                new_image.psf._upstream_bitflag = 0
+
+        return new_image
 
     def set_corners_from_header_wcs( self ):
         wcs = WCS( self._header )
@@ -738,7 +774,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         output = Image(nofile=True)
 
         fail_if_not_consistent_attributes = ['filter']
-        copy_if_consistent_attributes = ['section_id', 'instrument', 'telescope', 'project', 'target']
+        copy_if_consistent_attributes = ['section_id', 'instrument', 'telescope', 'project', 'target', 'filter']
         copy_by_index_attributes = []  # ['ra', 'dec', 'ra_corner_00', 'ra_corner_01', ...]
         for att in ['ra', 'dec']:
             copy_by_index_attributes.append(att)
@@ -777,7 +813,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         output.upstream_images = images
 
         # mark as the reference the image used for alignment
-        output.ref_image_id= images[index].id
+        output.ref_image = images[index]
+        output.ref_image_id = images[index].id
 
         output._upstream_bitflag = 0
         for im in images:
@@ -863,6 +900,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         else:
             output.upstream_images = [new_image, ref_image]
 
+        output.ref_image = ref_image
         output.ref_image_id = ref_image.id
 
         output._upstream_bitflag = 0
@@ -1581,7 +1619,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             downstreams += wcses
             downstreams += zps
 
-            # TODO: replace with a relationship to downstream_images (see issue #151)
             # now look for other images that were created based on this one
             # ref: https://docs.sqlalchemy.org/en/20/orm/join_conditions.html#self-referential-many-to-many
             images = session.scalars(

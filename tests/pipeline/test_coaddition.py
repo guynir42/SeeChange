@@ -321,8 +321,8 @@ def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
     assert ref_image.exposure is None
 
     assert ref_image.upstream_images == ptf_reference_images
-    assert ref_image.ref_image_index == len(ptf_reference_images) - 1
-    assert ref_image.new_image_index is None
+    assert ref_image.ref_image_id == ptf_reference_images[-1].id
+    assert ref_image.new_image is None
 
     assert ref_image.data is not None
     assert ref_image.data.shape == ptf_reference_images[0].data.shape

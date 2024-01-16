@@ -277,9 +277,10 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
             filenames = f.read().splitlines()
         output_images = []
         for filename in filenames:
-            output_images.append(Image.copy_from_cache(cache_dir, filename + '.image.fits'))
-            output_images[-1].psf = PSF.copy_from_cache(cache_dir, filename + '.psf')
-            output_images[-1].zp = ZeroPoint.copy_from_cache(cache_dir, filename + '.zp')
+            imfile, psffile = filename.split()
+            output_images.append(Image.copy_from_cache(cache_dir, imfile + '.image.fits'))
+            output_images[-1].psf = PSF.copy_from_cache(cache_dir, psffile + '.fits')
+            output_images[-1].zp = ZeroPoint.copy_from_cache(cache_dir, imfile + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
 
@@ -291,24 +292,26 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
             process='coaddition',
             is_testing=True,
         )
-        new_image = Image.from_images(images_to_align, index=-1)
-        new_image.provenance = prov
-        new_image.provenance_id = prov.id
-        new_image.provenance.upstreams = new_image.get_upstream_provenances()
+        coadd_image = Image.from_images(images_to_align, index=-1)
+        coadd_image.provenance = prov
+        coadd_image.provenance_id = prov.id
+        coadd_image.provenance.upstreams = coadd_image.get_upstream_provenances()
 
         filenames = []
-        for image in new_image.aligned_images:
+        psf_paths = []
+        for image in coadd_image.aligned_images:
             image.save()
             filepath = image.copy_to_cache(cache_dir)
-            image.psf.copy_to_cache(cache_dir, filepath=filepath[:-len('.image.fits.json')])
+            image.psf.copy_to_cache(cache_dir)
             image.zp.copy_to_cache(cache_dir, filepath=filepath[:-len('.image.fits.json')]+'.zp.json')
             filenames.append(image.filepath)
+            psf_paths.append(image.psf.filepath)
 
         os.makedirs(cache_dir, exist_ok=True)
         with open(os.path.join(cache_dir, 'manifest.txt'), 'w') as f:
-            for filename in filenames:
-                f.write(f'{filename}\n')
-        output_images = new_image.aligned_images
+            for filename, psf_path in zip(filenames, psf_paths):
+                f.write(f'{filename} {psf_path}\n')
+        output_images = coadd_image.aligned_images
 
     yield output_images
 
@@ -317,8 +320,8 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
             image.psf.delete_from_disk_and_database()
             image.delete_from_disk_and_database()
 
-    if 'new_image' in locals():
-        new_image.delete_from_disk_and_database()
+    if 'coadd_image' in locals():
+        coadd_image.delete_from_disk_and_database()
 
     # must delete these here, as the cleanup for the getfixturevalue() happens after pytest_sessionfinish!
     if 'ptf_reference_images' in locals():
@@ -355,25 +358,27 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
         assert coadd_image.provenance_id == coadd_image.provenance.id
 
         # get the PSF:
-        coadd_image.psf = PSF.copy_from_cache(cache_dir, cache_base_name + '.psf')
-        coadd_image.psf.provenance = Provenance(
+        prov = Provenance(
             process='extraction',
             parameters=pipe.extractor.pars.get_critical_pars(),
             upstreams=[coadd_image.provenance],
             code_version=code_version,
             is_testing=True,
         )
+        coadd_image.psf = PSF.copy_from_cache(cache_dir, cache_base_name + f'.psf_{prov.id[:6]}.fits')
+        coadd_image.psf.provenance = prov
         assert coadd_image.psf.provenance_id == coadd_image.psf.provenance.id
 
         # get the source list:
-        coadd_image.sources = SourceList.copy_from_cache(cache_dir, cache_base_name + '.sources.fits')
-        coadd_image.sources.provenance = Provenance(
+        prov = Provenance(
             process='extraction',
             parameters=pipe.extractor.pars.get_critical_pars(),
             upstreams=[coadd_image.provenance],
             code_version=code_version,
             is_testing=True,
         )
+        coadd_image.sources = SourceList.copy_from_cache(cache_dir, cache_base_name + f'.sources{prov.id[:6]}.fits')
+        coadd_image.sources.provenance = prov
         assert coadd_image.sources.provenance_id == coadd_image.sources.provenance.id
 
         # get the WCS:

@@ -387,22 +387,22 @@ def datastore_factory(
                 ds.image.bkg_mean_estimate = backgrounder.globalback
                 ds.image.bkg_rms_estimate = backgrounder.globalrms
 
-            ############# extraction to create sources #############
+            ############# extraction to create sources / PSF #############
             if cache_dir is not None and cache_base_name is not None:
-                cache_name = cache_base_name + '.sources.fits.json'
+                # try to get the SourceList from cache
+                prov = Provenance(
+                    code_version=code_version,
+                    process='extraction',
+                    upstreams=[ds.image.provenance],
+                    parameters=extractor.pars.get_critical_pars(),
+                    is_testing=True,
+                )
+                prov = prov.recursive_merge(session)
+                cache_name = f'{cache_base_name}.sources_{prov.id[:6]}.fits.json'
                 cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(cache_path):
                     _logger.debug('loading source list from cache. ')
                     ds.sources = SourceList.copy_from_cache(cache_dir, cache_name)
-
-                    prov = Provenance(
-                        code_version=code_version,
-                        process='extraction',
-                        upstreams=[ds.image.provenance],
-                        parameters=extractor.pars.to_dict(),
-                        is_testing=True,
-                    )
-                    prov = prov.recursive_merge(session)
 
                     # if SourceList already exists on the database, use that instead of this one
                     existing = session.scalars(
@@ -425,20 +425,20 @@ def datastore_factory(
                     # make sure this is saved to the archive as well
                     ds.sources.save(verify_md5=False)
 
-                cache_name = cache_base_name + '.psf.json'
+                # try to get the PSF from cache
+                # prov = Provenance(  # this is the same provenance as the SourceList (Issue #176)
+                #     code_version=code_version,
+                #     process='extraction',
+                #     upstreams=[ds.image.provenance],
+                #     parameters=extractor.pars.get_critical_pars(),
+                #     is_testing=True,
+                # )
+                # prov = prov.recursive_merge(session)
+                cache_name = f'{cache_base_name}.psf_{prov.id[:6]}.fits.json'
                 cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(cache_path):
                     _logger.debug('loading PSF from cache. ')
                     ds.psf = PSF.copy_from_cache(cache_dir, cache_name)
-
-                    prov = Provenance(
-                        code_version=code_version,
-                        process='extraction',
-                        upstreams=[ds.image.provenance],
-                        parameters=extractor.pars.to_dict(),
-                        is_testing=True,
-                    )
-                    prov = prov.recursive_merge(session)
 
                     # if PSF already exists on the database, use that instead of this one
                     existing = session.scalars(
@@ -483,7 +483,7 @@ def datastore_factory(
                         code_version=code_version,
                         process='astro_cal',
                         upstreams=[ds.sources.provenance],
-                        parameters=astrometor.pars.to_dict(),
+                        parameters=astrometor.pars.get_critical_pars(),
                         is_testing=True,
                     )
                     prov = prov.recursive_merge(session)
@@ -530,7 +530,7 @@ def datastore_factory(
                         code_version=code_version,
                         process='photo_cal',
                         upstreams=[ds.sources.provenance],
-                        parameters=photometor.pars.to_dict(),
+                        parameters=photometor.pars.get_critical_pars(),
                         is_testing=True,
                     )
                     prov = prov.recursive_merge(session)

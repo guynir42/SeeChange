@@ -1,3 +1,4 @@
+import logging
 import pytest
 import random
 import re
@@ -7,7 +8,7 @@ import astropy.wcs
 
 import sqlalchemy as sa
 
-from models.base import SmartSession
+from models.base import SmartSession, _logger
 from models.provenance import Provenance
 from models.image import Image
 
@@ -70,7 +71,6 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
         new_image = Image.from_images(ptf_reference_images, index=index)
         new_image.provenance = prov
         new_image.provenance.upstreams = new_image.get_upstream_provenances()
-        new_image.new_image = None
         new_image.data = np.sum([image.data for image in new_image.aligned_images], axis=0)
         new_image.save()
 

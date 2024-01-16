@@ -345,6 +345,9 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
         self._instrument_object = None
         self._bitflag = 0
 
+        if 'header' in kwargs:
+            kwargs['_header'] = kwargs.pop('header')
+
         # manually set all properties (columns or not, but don't
         # overwrite instance methods) Do this once here, because some of
         # the values are going to be needed by upcoming function calls.

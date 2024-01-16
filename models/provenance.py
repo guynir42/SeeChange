@@ -329,7 +329,7 @@ class Provenance(Base):
                 code_version = session.scalars(sa.select(CodeVersion).order_by(CodeVersion.id.desc())).first()
         return code_version
 
-    def recursive_merge(self, session, done_list=None):
+    def recursive_merge(self, session, db_check_att=None, done_list=None):
         """
         Recursively merge this object, its CodeVersion,
         and any upstream/downstream provenances into
@@ -339,6 +339,12 @@ class Provenance(Base):
         ----------
         session: SmartSession
             SQLAlchemy session object to merge into.
+        db_check_att: str (optional)
+            This is only used to be compatible with
+            Base.recursive_merge().
+        done_list: set (optional)
+            Keep track of objects that were already merged,
+            to avoid loops.
 
         Returns
         -------
@@ -347,9 +353,6 @@ class Provenance(Base):
         """
         if done_list is None:
             done_list = set()
-
-        # if self in done_list:
-        #     return self
 
         merged_self = safe_merge(session, self)
 
@@ -360,9 +363,11 @@ class Provenance(Base):
 
         merged_self.code_version = safe_merge(session, merged_self.code_version)
 
-        merged_self.upstreams = [
-            u.recursive_merge(session, done_list=done_list) for u in merged_self.upstreams if u is not None
-        ]
+        new_upstreams = []
+        for u in merged_self.upstreams:
+            if u is not None:
+                new_upstreams.append(u.recursive_merge(session, db_check_att=db_check_att, done_list=done_list))
+        merged_self.upstreams = new_upstreams
 
         return merged_self
 

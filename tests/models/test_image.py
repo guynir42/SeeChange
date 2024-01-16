@@ -42,7 +42,6 @@ def test_image_no_null_values(provenance_base):
         'project': 'foo',
         'target': 'bar',
         'provenance_id': provenance_base.id,
-        'section_id': 1,
     }
 
     added = {}
@@ -54,7 +53,7 @@ def test_image_no_null_values(provenance_base):
         im_id = None  # make sure to delete the image if it is added to DB
 
         # md5sum is spoofed as we don't have this file saved to archive
-        image = Image(f"Demo_test_{rnd_str(5)}.fits", md5sum=uuid.uuid4(), nofile=True)
+        image = Image(f"Demo_test_{rnd_str(5)}.fits", md5sum=uuid.uuid4(), nofile=True, section_id=1)
         with SmartSession() as session:
             for i in range(len(required)):
                 image.recursive_merge( session )

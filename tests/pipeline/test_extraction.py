@@ -91,7 +91,7 @@ def test_sep_save_source_list(decam_small_image, provenance_base, extractor):
         assert os.path.isfile(filename)
 
         # check the naming convention
-        assert re.search(r'.*/\d{3}/c4d_\d{8}_\d{6}_.+_.+_.+_.{6}.sources\.npy', filename)
+        assert re.search(r'.*/\d{3}/c4d_\d{8}_\d{6}_.+_.+_.+_.{6}.sources_.{6}\.npy', filename)
 
         # check the file contents can be loaded successfully
         data = np.load(filename)
@@ -344,23 +344,18 @@ def test_run_detection_sextractor( decam_datastore, extractor ):
     from sqlalchemy.exc import IntegrityError
 
     try:
-        # this fails because the sources' filename does not include the sources' provenance hash
-        # see issue #146
-        with pytest.raises(
-                IntegrityError,
-                match='duplicate key value violates unique constraint "ix_source_lists_filepath"'
-        ):
-            ds.save_and_commit()
+        ds.save_and_commit()
 
-            # Make sure all the files exist
-            archive = get_archive_object()
-            imdir = pathlib.Path( FileOnDiskMixin.local_path )
-            base = ds.image.filepath
-            relpaths = [ f'{base}{i}' for i in [ '.image.fits', '.weight.fits', '.flags.fits',
-                                                 '.sources.fits', '.psf', '.psf.xml' ] ]
-            for relp in relpaths:
-                assert ( imdir / relp ).is_file()
-                assert archive.get_info( relp ) is not None
+        # Make sure all the files exist
+        archive = get_archive_object()
+        imdir = pathlib.Path( FileOnDiskMixin.local_path )
+        relpaths = []
+        relpaths += [ds.image.filepath + ext for ext in ds.image.filepath_extensions]
+        relpaths += [ds.sources.filepath]
+        relpaths += [ds.psf.filepath + ext for ext in ds.psf.filepath_extensions]
+        for relp in relpaths:
+            assert ( imdir / relp ).is_file()
+            assert archive.get_info( relp ) is not None
 
     finally:
         ds.delete_everything()
