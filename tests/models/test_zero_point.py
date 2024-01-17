@@ -89,6 +89,7 @@ def test_zeropoint_committing(ztf_datastore_uncommitted, provenance_base, proven
                     image.zp = None
 
             if 'image' in locals():
+                image.sources.delete_from_disk_and_database(session=session, commit=False)
                 image.delete_from_disk_and_database(session=session, commit=False)
 
             session.commit()
