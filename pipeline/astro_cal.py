@@ -252,7 +252,7 @@ class AstroCalibrator:
         ds.wcs = WorldCoordinates( sources=sources, provenance=prov )
         ds.wcs.wcs = wcs
         if session is not None:
-            ds.wcs = ds.wcs.recursive_merge( session )
+            ds.wcs = session.merge( ds.wcs )
 
     # ----------------------------------------------------------------------
 

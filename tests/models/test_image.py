@@ -141,8 +141,8 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
         with SmartSession() as session:
             # Do single file first
             test_config.set_value('storage.images.single_file', True)
-            im.provenance = provenance_base.recursive_merge(session)
-            im.exposure = im.exposure.recursive_merge(session)  # make sure the exposure and provenance/code versions merge
+            im.provenance = session.merge(provenance_base)
+            im.exposure = session.merge(im.exposure)  # make sure the exposure and provenance/code versions merge
             # Make sure that the archive is *not* written when we tell it not to.
             im.save( no_archive=True )
             assert im.md5sum is None
@@ -175,7 +175,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             assert localmd5.hexdigest() == im.md5sum.hex
 
             # Make sure that the md5sum is properly saved to the database
-            im.provenance = im.provenance.recursive_merge(session)
+            im.provenance = session.merge(im.provenance)
             session.add( im )
             session.commit()
             with SmartSession() as differentsession:
@@ -275,7 +275,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
 
     finally:
         with SmartSession() as session:
-            im = im.recursive_merge(session)
+            im = im.merge_all(session)
             exp = im.exposure
             im.delete_from_disk_and_database(session)
 
@@ -364,7 +364,7 @@ def test_image_save_onlyimage( sim_image1 ):
 def test_image_enum_values(sim_image1):
     data_filename = None
     with SmartSession() as session:
-        sim_image1 = sim_image1.recursive_merge(session)
+        sim_image1 = sim_image1.merge_all(session)
 
         try:
             with pytest.raises(ValueError, match='ImageTypeConverter must be one of .* not foo'):
@@ -422,30 +422,31 @@ def test_image_enum_values(sim_image1):
                     os.rmdir(folder)
 
 
-def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra):
+def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra, data_dir):
     with SmartSession() as session:
-        sim_image1 = sim_image1.recursive_merge(session)
-        sim_reference = sim_reference.recursive_merge(session)
+        sim_image1 = sim_image1.merge_all(session)
+        sim_reference = sim_reference.merge_all(session)
 
         # make sure the new image matches the reference in all these attributes
         sim_image1.filter = sim_reference.filter
         sim_image1.target = sim_reference.target
         sim_image1.section_id = sim_reference.section_id
 
-        # save and delete at the end
-        session.add(sim_image1)
-        # sim_reference = session.merge(sim_reference)
         new = Image.from_new_and_ref(sim_image1, sim_reference.image)
         new.provenance = session.merge(provenance_extra)
 
         # save and delete at the end
-        cleanup2 = ImageCleanup.save_image(new)
+        cleanup = ImageCleanup.save_image(new)
 
         session.add(new)
         session.commit()
 
     # new make sure a new session can find all the upstreams/downstreams
     with SmartSession() as session:
+        sim_image1 = sim_image1.merge_all(session)
+        sim_reference = sim_reference.merge_all(session)
+        new = new.merge_all(session)
+
         # check the upstreams/downstreams for the new image
         upstream_ids = [u.id for u in new.get_upstreams(session=session)]
         assert sim_image1.id in upstream_ids
@@ -468,7 +469,49 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
         downstream_ids = [d.id for d in sim_reference.image.get_downstreams(session=session)]
         assert [new.id] == downstream_ids  # should be the only downstream
 
-        # TODO: add a test for the Image.downstream relationship
+        # test for the Image.downstream relationship
+        assert len(upstreams[0].downstream_images) == 1
+        assert upstreams[0].downstream_images == [sim_reference.image]
+        assert len(upstreams[1].downstream_images) == 1
+        assert upstreams[1].downstream_images == [sim_reference.image]
+
+        assert len(sim_image1.downstream_images) == 1
+        assert sim_image1.downstream_images == [new]
+
+        assert len(sim_reference.image.downstream_images) == 1
+        assert sim_reference.image.downstream_images == [new]
+
+        assert len(new.downstream_images) == 0
+
+        # add a second "new" image using one of the reference's upstreams instead of the reference
+        new2 = Image.from_new_and_ref(sim_image1, upstreams[0])
+        new2.provenance = session.merge(provenance_extra)
+        new2.mjd += 1  # make sure this image has a later MJD, so it comes out later on the downstream list!
+
+        # save and delete at the end
+        cleanup2 = ImageCleanup.save_image(new2)
+
+        session.add(new2)
+        session.commit()
+
+        session.refresh(upstreams[0])
+        assert len(upstreams[0].downstream_images) == 2
+        assert upstreams[0].downstream_images == [sim_reference.image, new2]
+
+        session.refresh(upstreams[1])
+        assert len(upstreams[1].downstream_images) == 1
+        assert upstreams[1].downstream_images == [sim_reference.image]
+
+        session.refresh(sim_image1)
+        assert len(sim_image1.downstream_images) == 2
+        assert sim_image1.downstream_images == [new, new2]
+
+        session.refresh(sim_reference.image)
+        assert len(sim_reference.image.downstream_images) == 1
+        assert sim_reference.image.downstream_images == [new]
+
+        assert len(new2.downstream_images) == 0
+
 
 def test_image_preproc_bitflag( sim_image1 ):
 
@@ -721,7 +764,7 @@ def test_multiple_images_badness(
         with SmartSession() as session:
             session.autoflush = False
             for im in images:
-                im = im.recursive_merge(session)
+                im = im.merge_all(session)
                 exp = im.exposure
                 im.delete_from_disk_and_database(session=session, commit=False)
 
@@ -1062,12 +1105,12 @@ def test_image_with_multiple_upstreams(sim_exposure1, sim_exposure2, provenance_
         im1_id = None
         im2_id = None
         with SmartSession() as session:
-            im = im.recursive_merge( session )
-            im1 = im1.recursive_merge( session )
-            im2 = im2.recursive_merge( session )
-            sim_exposure1 = sim_exposure1.recursive_merge( session )
-            sim_exposure2 = sim_exposure2.recursive_merge( session )
-            session.add(im)
+            im = im.merge_all( session )
+            im1 = im1.merge_all( session )
+            im2 = im2.merge_all( session )
+            sim_exposure1 = session.merge(sim_exposure1)
+            sim_exposure2 = session.merge(sim_exposure2)
+
             session.commit()
 
             im_id = im.id
@@ -1126,12 +1169,12 @@ def test_image_subtraction(sim_exposure1, sim_exposure2, provenance_base):
         im1_id = None
         im2_id = None
         with SmartSession() as session:
-            im = im.recursive_merge( session )
-            im1 = im1.recursive_merge( session )
-            im2 = im2.recursive_merge( session )
-            sim_exposure1 = sim_exposure1.recursive_merge( session )
-            sim_exposure2 = sim_exposure2.recursive_merge( session )
-            session.add(im)
+            im = im.merge_all( session )
+            im1 = im1.merge_all( session )
+            im2 = im2.merge_all( session )
+            sim_exposure1 = session.merge(sim_exposure1)
+            sim_exposure2 = session.merge(sim_exposure2)
+
             session.commit()
 
             im_id = im.id

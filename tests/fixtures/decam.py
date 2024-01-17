@@ -118,7 +118,7 @@ def provenance_decam_prep(code_version):
             is_testing=True,
         )
         p.update_id()
-        p = p.recursive_merge(session)
+        p = session.merge(p)
         session.commit()
 
     yield p
@@ -369,7 +369,7 @@ def decam_reference(decam_ref_datastore):
 
     if 'ref' in locals():
         with SmartSession() as session:
-            ref = ref.recursive_merge(session)
+            ref = session.merge(ref)
             if sa.inspect(ref).persistent:
-                session.delete(ref.provenance)  # should also delete the reference
+                session.delete(ref.provenance)  # should also delete the reference image
             session.commit()

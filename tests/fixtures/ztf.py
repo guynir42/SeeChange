@@ -65,6 +65,15 @@ def ztf_datastore_uncommitted( ztf_filepaths_image_sources_psf ):
     ds.image.dec = ( ds.image.dec_corner_00 + ds.image.dec_corner_01 +
                      ds.image.dec_corner_00 + ds.image.dec_corner_11 ) / 4.
     ds.image.calculate_coordinates()
+    ds.image.instrument = 'ZTF'
+    ds.image.telescope = 'P48'
+    ds.image.project = 'Program 1'
+    ds.image.section_id = ds.image.header['CCD_ID']
+    ds.image.target = f'field {ds.image.header["FIELDID"]}'
+    ds.image.exp_time = ds.image.header['EXPTIME']
+    ds.image.mjd = ds.image.header['OBSMJD']
+    ds.image.end_mjd = ds.image.mjd + ds.image.header['EXPTIME'] / 86400.
+    ds.image.filter = ds.image.header['FILTER']
 
     ds.sources = SourceList( filepath=str( sources.relative_to( FileOnDiskMixin.local_path ) ), format='sextrfits' )
     ds.sources.load( sources )
@@ -98,5 +107,5 @@ def ztf_gaiadr3_excerpt( ztf_datastore_uncommitted ):
     yield catexp
 
     with SmartSession() as session:
-        catexp = catexp.recursive_merge( session )
+        catexp = session.merge(catexp)
         catexp.delete_from_disk_and_database( session=session )

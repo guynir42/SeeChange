@@ -381,7 +381,7 @@ def test_preprocessing_calibrator_files( decam_default_calibrators ):
             if linfile is None:
                 linfile = session.get( DataFile, info[ 'linearity_fileid' ] )
             else:
-                linfile = linfile.recursive_merge( session )
+                linfile = session.merge(linfile)
                 assert linfile == session.get( DataFile, info[ 'linearity_fileid' ] )
 
     # Make sure we can call it a second time and don't get "file exists"

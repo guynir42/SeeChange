@@ -15,7 +15,7 @@ from models.source_list import SourceList
 
 def test_source_list_bitflag(sim_sources):
     with SmartSession() as session:
-        sim_sources = sim_sources.recursive_merge( session )
+        sim_sources = sim_sources.merge_all( session )
 
         # all these data products should have bitflag zero
         assert sim_sources.bitflag == 0

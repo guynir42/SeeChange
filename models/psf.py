@@ -170,6 +170,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         self._header = None
         self._data = None
         self._table = None
+        self._info = None
 
         # Manually set all properties ( columns or not )
         for key, value in kwargs.items():
@@ -183,6 +184,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         self._header = None
         self._data = None
         self._table = None
+        self._info = None
 
     def save( self, filename=None, **kwargs ):
         """Write the PSF to disk.

@@ -92,7 +92,7 @@ def sim_exposure_filter_array():
 
     if 'e' in locals():
         with SmartSession() as session:
-            e = e.recursive_merge(session)
+            e = session.merge(e)
             if sa.inspect( e ).persistent:
                 session.delete(e)
                 session.commit()
@@ -227,7 +227,7 @@ def sim_reference(provenance_preprocessing, provenance_extra):
     dec = np.random.uniform(-90, 90)
     images = []
     with SmartSession() as session:
-        provenance_extra = provenance_extra.recursive_merge(session)
+        provenance_extra = session.merge(provenance_extra)
 
         for i in range(5):
             exp = make_sim_exposure()
@@ -282,7 +282,7 @@ def sim_reference(provenance_preprocessing, provenance_extra):
 
     if 'ref' in locals():
         with SmartSession() as session:
-            ref = ref.recursive_merge(session)
+            ref = ref.merge_all(session)
             for im in ref.image.upstream_images:
                 im.exposure.delete_from_disk_and_database(session=session, commit=False)
                 im.delete_from_disk_and_database(session=session, commit=False)
@@ -324,5 +324,5 @@ def sim_sources(sim_image1):
     yield s
 
     with SmartSession() as session:
-        s = s.recursive_merge(session)
+        s = s.merge_all(session)
         s.delete_from_disk_and_database(session=session, commit=True)

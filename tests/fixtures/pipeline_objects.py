@@ -294,7 +294,7 @@ def datastore_factory(
         with SmartSession(session) as session:
             code_version = session.merge(code_version)
             if ds.image is not None:  # if starting from an externally provided Image, must merge it first
-                ds.image = ds.image.recursive_merge(session)
+                ds.image = ds.image.merge_all(session)
 
             ############ preprocessing to create image ############
 
@@ -324,7 +324,7 @@ def datastore_factory(
                         parameters=prep_pars,
                         is_testing=True,
                     )
-                    prov = prov.recursive_merge(session)
+                    prov = session.merge(prov)
 
                     # if Image already exists on the database, use that instead of this one
                     existing = session.scalars(sa.select(Image).where(Image.filepath == ds.image.filepath)).first()
@@ -397,7 +397,7 @@ def datastore_factory(
                     parameters=extractor.pars.get_critical_pars(),
                     is_testing=True,
                 )
-                prov = prov.recursive_merge(session)
+                prov = session.merge(prov)
                 cache_name = f'{cache_base_name}.sources_{prov.id[:6]}.fits.json'
                 cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(cache_path):
@@ -433,7 +433,7 @@ def datastore_factory(
                 #     parameters=extractor.pars.get_critical_pars(),
                 #     is_testing=True,
                 # )
-                # prov = prov.recursive_merge(session)
+                # prov = session.merge(prov)
                 cache_name = f'{cache_base_name}.psf_{prov.id[:6]}.fits.json'
                 cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(cache_path):
@@ -486,7 +486,7 @@ def datastore_factory(
                         parameters=astrometor.pars.get_critical_pars(),
                         is_testing=True,
                     )
-                    prov = prov.recursive_merge(session)
+                    prov = session.merge(prov)
 
                     # check if WCS already exists on the database
                     existing = session.scalars(
@@ -533,7 +533,7 @@ def datastore_factory(
                         parameters=photometor.pars.get_critical_pars(),
                         is_testing=True,
                     )
-                    prov = prov.recursive_merge(session)
+                    prov = session.merge(prov)
 
                     # check if ZP already exists on the database
                     existing = session.scalars(

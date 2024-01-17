@@ -439,8 +439,7 @@ class DECam(Instrument):
                                           instrument='DECam',
                                           sensor_section=section,
                                           image=image )
-                calfile = calfile.recursive_merge( dbsess )
-                dbsess.add( calfile )
+                calfile = dbsess.merge(calfile)
                 dbsess.commit()
             else:
                 datafile = dbsess.scalars(sa.select(DataFile).where(DataFile.filepath == str(filepath))).first()
@@ -449,8 +448,8 @@ class DECam(Instrument):
                 if datafile is None:
                     datafile = DataFile( filepath=str(filepath), provenance=prov )
                     datafile.save( str(fileabspath) )
-                    datafile = datafile.recursive_merge( dbsess )
-                    dbsess.add( datafile )
+                    datafile = dbsess.merge(datafile)
+
                 # Linearity file applies for all chips, so load the database accordingly
                 for ssec in self._chip_radec_off.keys():
                     calfile = CalibratorFile( type='Linearity',
@@ -460,8 +459,8 @@ class DECam(Instrument):
                                               sensor_section=ssec,
                                               datafile=datafile
                                               )
-                    calfile = calfile.recursive_merge( dbsess )
-                    dbsess.add( calfile )
+                    calfile = dbsess.merge(calfile)
+
                 dbsess.commit()
 
         return calfile
@@ -733,8 +732,7 @@ class DECamOriginExposures:
                 code_version=Provenance.get_code_version(session=dbsess),
                 is_testing=True,
             )
-            provenance = provenance.recursive_merge( dbsess )
-            dbsess.add( provenance )
+            provenance = dbsess.merge( provenance )
 
             downloaded = self.download_exposures( outdir=outdir, indexes=indexes,
                                                   clobber=clobber, existing_ok=existing_ok )
@@ -792,8 +790,7 @@ class DECamOriginExposures:
                                    **exphdrinfo )
                 dbpath = outdir / expobj.filepath
                 expobj.save( expfile )
-                expobj = expobj.recursive_merge( dbsess )
-                dbsess.add( expobj )
+                expobj = dbsess.merge(expobj)
                 dbsess.commit()
                 if delete_downloads and ( dbpath.resolve() != expfile.resolve() ):
                     expfile.unlink()

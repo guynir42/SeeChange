@@ -487,7 +487,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if self.sources is not None:
             self.sources.image = new_image
             self.sources.image_id = new_image.id
-            self.sources.provenance_id = self.sources.provenance.id
+            self.sources.provenance_id = self.sources.provenance.id if self.sources.provenance is not None else None
             new_image.sources = self.sources.merge_all(session=session)
             new_image.wcs = new_image.sources.wcs
             new_image.zp = new_image.sources.zp
@@ -498,7 +498,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if self.psf is not None:
             self.psf.image = new_image
             self.psf.image_id = new_image.id
-            self.psf.provenance_id = self.psf.provenance.id
+            self.psf.provenance_id = self.psf.provenance.id if self.psf.provenance is not None else None
             new_image.psf = self.psf.safe_merge(session=session)
             if new_image.psf._bitflag is None:  # I don't know why this isn't set to 0 using the default
                 new_image.psf._bitflag = 0

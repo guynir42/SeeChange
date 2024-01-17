@@ -1432,7 +1432,6 @@ class DataStore:
                 session.autoflush = False
                 obj_list = self.get_all_data_products(output='list', omit_exposure=True)
                 for i, obj in enumerate(obj_list):  # first make sure all are merged
-                    # obj_list[i] = obj.recursive_merge(session)
                     obj_list[i] = session.merge(obj)
 
                 # no flush to prevent some foreign keys from being voided before all objects are deleted
