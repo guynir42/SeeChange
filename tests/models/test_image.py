@@ -468,6 +468,7 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
         downstream_ids = [d.id for d in sim_reference.image.get_downstreams(session=session)]
         assert [new.id] == downstream_ids  # should be the only downstream
 
+        # TODO: add a test for the Image.downstream relationship
 
 def test_image_preproc_bitflag( sim_image1 ):
 

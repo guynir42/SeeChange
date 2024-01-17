@@ -195,7 +195,6 @@ def decam_exposure(decam_filename, data_dir):
 
     yield exposure
 
-    # Just in case this exposure got loaded into the database
     exposure.delete_from_disk_and_database()
 
 
@@ -216,7 +215,7 @@ def decam_small_image(decam_raw_image):
     image = decam_raw_image
     image.data = image.data[256:256+512, 256:256+512].copy()  # make it C-contiguous
 
-    return image
+    yield image
 
 
 @pytest.fixture
@@ -288,6 +287,7 @@ def decam_ref_datastore( code_version, persistent_dir, cache_dir, data_dir, data
         refyaml = yaml.safe_load( ifp )
 
     with SmartSession() as session:
+        code_version = session.merge(code_version)
         prov = Provenance(
             process='preprocessing',
             code_version=code_version,

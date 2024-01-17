@@ -336,77 +336,98 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
 @pytest.fixture
 def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_dir, code_version):
     cache_dir = os.path.join(cache_dir, 'PTF')
-    cache_base_name = '187/PTF_20090405_073932_11_R_ComSci_BWED6R_u-ywhkxr'
+    cache_base_name = '187/PTF_20090405_073932_11_R_ComSci_C2WFMZ_u-ywhkxr'
 
     pipe = CoaddPipeline()
     pipe.coadder = coadder  # use this one that has a test_parameter defined
 
-    extensions = ['image.fits', 'psf', 'sources.fits', 'wcs', 'zp']
+    # build up the provenance tree
+    with SmartSession() as session:
+        code_version = session.merge(code_version)
+        im = ptf_reference_images[0]
+        upstream_provs = [im.provenance, im.sources.provenance, im.psf.provenance, im.wcs.provenance, im.zp.provenance]
+        im_prov = Provenance(
+            process='coaddition',
+            parameters=coadder.pars.get_critical_pars(),
+            upstreams=upstream_provs,
+            code_version=code_version,
+            is_testing=True,
+        )
+
+        psf_prov = Provenance(
+            process='extraction',
+            parameters=pipe.extractor.pars.get_critical_pars(),
+            upstreams=[im_prov],
+            code_version=code_version,
+            is_testing=True,
+        )
+
+        # this is the same provenance as psf_prov (see Issue #176)
+        sources_prov = Provenance(
+            process='extraction',
+            parameters=pipe.extractor.pars.get_critical_pars(),
+            upstreams=[im_prov],
+            code_version=code_version,
+            is_testing=True,
+        )
+
+        wcs_prov = Provenance(
+            process='astro_cal',
+            parameters=pipe.astro_cal.pars.get_critical_pars(),
+            upstreams=[sources_prov],
+            code_version=code_version,
+            is_testing=True,
+        )
+
+        zp_prov = Provenance(
+            process='photo_cal',
+            parameters=pipe.photo_cal.pars.get_critical_pars(),
+            upstreams=[sources_prov, wcs_prov],
+            code_version=code_version,
+            is_testing=True,
+        )
+
+    extensions = ['image.fits', f'psf_{psf_prov.id[:6]}.fits', f'sources_{sources_prov.id[:6]}.fits', 'wcs', 'zp']
     filenames = [os.path.join(cache_dir, cache_base_name) + f'.{ext}.json' for ext in extensions]
     if all([os.path.isfile(filename) for filename in filenames]):  # can load from cache
         # get the image:
         coadd_image = Image.copy_from_cache(cache_dir, cache_base_name + '.image.fits')
         # we must load these images in order to save the reference image with upstreams
         coadd_image.upstream_images = ptf_reference_images
-        coadd_image.provenance = Provenance(
-            process='coaddition',
-            parameters=coadder.pars.get_critical_pars(),
-            upstreams=coadd_image.get_upstream_provenances(),
-            code_version=code_version,
-            is_testing=True,
-        )
+        coadd_image.provenance = im_prov
         assert coadd_image.provenance_id == coadd_image.provenance.id
 
         # get the PSF:
-        prov = Provenance(
-            process='extraction',
-            parameters=pipe.extractor.pars.get_critical_pars(),
-            upstreams=[coadd_image.provenance],
-            code_version=code_version,
-            is_testing=True,
-        )
-        coadd_image.psf = PSF.copy_from_cache(cache_dir, cache_base_name + f'.psf_{prov.id[:6]}.fits')
-        coadd_image.psf.provenance = prov
+        coadd_image.psf = PSF.copy_from_cache(cache_dir, cache_base_name + f'.psf_{psf_prov.id[:6]}.fits')
+        coadd_image.psf.provenance = psf_prov
         assert coadd_image.psf.provenance_id == coadd_image.psf.provenance.id
 
         # get the source list:
-        prov = Provenance(
-            process='extraction',
-            parameters=pipe.extractor.pars.get_critical_pars(),
-            upstreams=[coadd_image.provenance],
-            code_version=code_version,
-            is_testing=True,
+        coadd_image.sources = SourceList.copy_from_cache(
+            cache_dir, cache_base_name + f'.sources_{sources_prov.id[:6]}.fits'
         )
-        coadd_image.sources = SourceList.copy_from_cache(cache_dir, cache_base_name + f'.sources{prov.id[:6]}.fits')
-        coadd_image.sources.provenance = prov
+        coadd_image.sources.provenance = sources_prov
         assert coadd_image.sources.provenance_id == coadd_image.sources.provenance.id
 
         # get the WCS:
         coadd_image.wcs = WorldCoordinates.copy_from_cache(cache_dir, cache_base_name + '.wcs')
-        coadd_image.wcs.provenance = Provenance(
-            process='astro_cal',
-            parameters=pipe.astro_cal.pars.get_critical_pars(),
-            upstreams=[coadd_image.sources.provenance],
-            code_version=code_version,
-            is_testing=True,
-        )
+        coadd_image.wcs.provenance = wcs_prov
+        coadd_image.sources.wcs = coadd_image.wcs
         assert coadd_image.wcs.provenance_id == coadd_image.wcs.provenance.id
 
         # get the zero point:
         coadd_image.zp = ZeroPoint.copy_from_cache(cache_dir, cache_base_name + '.zp')
-        coadd_image.zp.provenance = Provenance(
-            process='photo_cal',
-            parameters=pipe.photo_cal.pars.get_critical_pars(),
-            upstreams=[coadd_image.sources.provenance, coadd_image.wcs.provenance],
-            code_version=code_version,
-            is_testing=True,
-        )
+        coadd_image.zp.provenance = zp_prov
+        coadd_image.sources.zp = coadd_image.zp
         assert coadd_image.zp.provenance_id == coadd_image.zp.provenance.id
+
+        coadd_image._aligned_images = ptf_aligned_images
 
     else:  # make a new reference image
         coadd_image = pipe.run(ptf_reference_images, ptf_aligned_images)
         coadd_image.provenance.is_testing = True
         pipe.datastore.save_and_commit()
+        coadd_image = pipe.datastore.image
 
         # save all products into cache:
         pipe.datastore.image.copy_to_cache(cache_dir)
@@ -416,7 +437,7 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
         pipe.datastore.zp.copy_to_cache(cache_dir, cache_base_name + '.zp.json')
 
     with SmartSession() as session:
-        coadd_image = coadd_image.recursive_merge(session)
+        coadd_image = coadd_image.merge_all(session)
 
         ref = Reference(image=coadd_image)
         ref.make_provenance()

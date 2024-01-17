@@ -1381,7 +1381,7 @@ class DataStore:
                 self.image = self.image.merge_all(session)
                 for att in ['sources', 'psf', 'wcs', 'zp']:
                     setattr(self, att, None)  # avoid automatically loading the image with non-merged products
-                for att in ['exposure', 'sources', 'psf', 'wcs', 'zp']:
+                for att in ['exposure', 'sources', 'psf', 'wcs', 'zp', '_aligned_images']:
                     if getattr(self.image, att, None) is not None:
                         setattr(self, att, getattr(self.image, att))
 

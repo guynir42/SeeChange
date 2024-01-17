@@ -1,5 +1,6 @@
 import pytest
 import pathlib
+import uuid
 
 import numpy as np
 import sqlalchemy as sa
@@ -13,6 +14,7 @@ def test_preprocessing(decam_exposure, test_config, preprocessor, decam_default_
     # The decam_default_calibrators fixture is included so that
     # _get_default_calibrators won't be called as a side effect of calls
     # to Preprocessor.run().  (To avoid committing.)
+    preprocessor.pars.test_parameter = uuid.uuid4().hex  # make a new Provenance for this temporary image
     ds = preprocessor.run( decam_exposure, 'N1' )
     assert preprocessor.has_recalculated
 

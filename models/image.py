@@ -116,6 +116,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         secondary=image_upstreams_association_table,
         primaryjoin='images.c.id == image_upstreams_association.c.upstream_id',
         secondaryjoin='images.c.id == image_upstreams_association.c.downstream_id',
+        overlaps="upstream_images",
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
         order_by='images.c.mjd',  # in chronological order of exposure start time
@@ -492,6 +493,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             new_image.zp = new_image.sources.zp
             new_image.cutouts = new_image.sources.cutouts
             new_image.measurements = new_image.sources.measurements
+            new_image._aligned_images = self._aligned_images
 
         if self.psf is not None:
             self.psf.image = new_image
