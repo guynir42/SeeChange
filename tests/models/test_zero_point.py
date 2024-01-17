@@ -82,9 +82,11 @@ def test_zeropoint_committing(ztf_datastore_uncommitted, provenance_base, proven
             if 'zp' in locals():
                 if sa.inspect(zp).persistent:
                     session.delete(zp)
+                    image.zp = None
             if 'zp2' in locals():
                 if sa.inspect(zp2).persistent:
                     session.delete(zp2)
+                    image.zp = None
 
             if 'image' in locals():
                 image.delete_from_disk_and_database(session=session, commit=False)

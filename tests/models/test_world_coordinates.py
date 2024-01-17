@@ -95,12 +95,15 @@ def test_world_coordinates( ztf_datastore_uncommitted, provenance_base, provenan
                 # wcobj.delete_from_disk_and_database(session=session)
                 if sa.inspect(wcobj).persistent:
                     session.delete(wcobj)
+                    image.wcs = None
+                    image.sources.wcs = None
             if 'wcobj2' in locals():
                 # wcobj2.delete_from_disk_and_database(session=session)
                 if sa.inspect(wcobj2).persistent:
                     session.delete(wcobj2)
+                    image.wcs = None
+                    image.sources.wcs = None
+            session.commit()
 
             if 'image' in locals():
-                image.delete_from_disk_and_database(session=session, commit=False)
-
-            session.commit()
+                image.delete_from_disk_and_database(session=session, commit=True)
