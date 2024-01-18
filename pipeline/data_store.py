@@ -1429,13 +1429,13 @@ class DataStore:
         with SmartSession( session, self.session ) as session:
             autoflush_state = session.autoflush
             try:
-                session.autoflush = False
                 obj_list = self.get_all_data_products(output='list', omit_exposure=True)
                 for i, obj in enumerate(obj_list):  # first make sure all are merged
-                    obj_list[i] = session.merge(obj)
+                    if obj.id is not None:  # don't merge new objects, as that just "adds" them to DB!
+                        obj_list[i] = session.merge(obj)
 
                 # no flush to prevent some foreign keys from being voided before all objects are deleted
-
+                session.autoflush = False
                 for obj in obj_list:  # now do the deleting without flushing
                     if isinstance(obj, FileOnDiskMixin):
                         obj.delete_from_disk_and_database(session=session, commit=False)
