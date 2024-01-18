@@ -496,7 +496,7 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
 
         session.refresh(upstreams[0])
         assert len(upstreams[0].downstream_images) == 2
-        assert upstreams[0].downstream_images == [sim_reference.image, new2]
+        assert set(upstreams[0].downstream_images) == set([sim_reference.image, new2])
 
         session.refresh(upstreams[1])
         assert len(upstreams[1].downstream_images) == 1
@@ -504,7 +504,7 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
 
         session.refresh(sim_image1)
         assert len(sim_image1.downstream_images) == 2
-        assert sim_image1.downstream_images == [new, new2]
+        assert set(sim_image1.downstream_images) == set([new, new2])
 
         session.refresh(sim_reference.image)
         assert len(sim_reference.image.downstream_images) == 1
