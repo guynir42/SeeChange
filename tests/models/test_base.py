@@ -182,6 +182,8 @@ def test_fileondisk_save_singlefile( diskfile, archive, test_config, data_dir ):
     assert md5sum1 != md5sum3
 
     # Save to the disk, make sure it doesn't go to the archive
+    if os.path.isfile(os.path.join(archive_dir, diskfile.filepath)):
+        os.remove(os.path.join(archive_dir, diskfile.filepath))
     diskfile.save( data1, no_archive=True )
     assert diskfile.filepath_extensions is None
     assert diskfile.md5sum_extensions is None
@@ -354,9 +356,9 @@ def test_fileondisk_save_multifile( diskfile, archive, test_config):
         with open( paths[1], 'rb' ) as ifp:
             assert md5sum2 == hashlib.md5( ifp.read() ).hexdigest()
         with pytest.raises( FileNotFoundError ):
-            ifp = open( f'{archive_dir}{diskfile.filepath}_1.dat', 'rb')
+            ifp = open( os.path.join(archive_dir, diskfile.filepath) + '_1.dat', 'rb')
             ifp.close()
-        with open( f'{archive_dir}{diskfile.filepath}_2.dat', 'rb' ) as ifp:
+        with open( os.path.join(archive_dir, diskfile.filepath) + '_2.dat', 'rb' ) as ifp:
             assert md5sum2 == hashlib.md5( ifp.read() ).hexdigest()
 
         # Verify that if we save the first extension again, but without noarchive,
@@ -366,15 +368,17 @@ def test_fileondisk_save_multifile( diskfile, archive, test_config):
         assert diskfile.md5sum_extensions == [ uuid.UUID(md5sum1), uuid.UUID(md5sum2) ]
         assert diskfile.md5sum is None
         paths = diskfile.get_fullpath()
-        assert paths == [ f'{diskfile.local_path}/{diskfile.filepath}_1.dat',
-                          f'{diskfile.local_path}/{diskfile.filepath}_2.dat' ]
+        assert paths == [
+            os.path.join(diskfile.local_path, diskfile.filepath) + '_1.dat',
+            os.path.join(diskfile.local_path, diskfile.filepath) + '_2.dat',
+        ]
         with open( paths[0], 'rb' ) as ifp:
             assert md5sum1 == hashlib.md5( ifp.read() ).hexdigest()
         with open( paths[1], 'rb' ) as ifp:
             assert md5sum2 == hashlib.md5( ifp.read() ).hexdigest()
-        with open( f'{archive_dir}{diskfile.filepath}_1.dat', 'rb' ) as ifp:
+        with open( os.path.join(archive_dir, diskfile.filepath) + '_1.dat', 'rb' ) as ifp:
             assert md5sum1 == hashlib.md5( ifp.read() ).hexdigest()
-        with open( f'{archive_dir}{diskfile.filepath}_2.dat', 'rb' ) as ifp:
+        with open( os.path.join(archive_dir, diskfile.filepath) + '_2.dat', 'rb' ) as ifp:
             assert md5sum2 == hashlib.md5( ifp.read() ).hexdigest()
 
         # Make sure we can delete without purging the archive
@@ -383,23 +387,27 @@ def test_fileondisk_save_multifile( diskfile, archive, test_config):
         assert diskfile.md5sum_extensions == [ uuid.UUID(md5sum1), uuid.UUID(md5sum2) ]
         assert diskfile.md5sum is None
         paths = diskfile.get_fullpath()
-        assert paths == [ f'{diskfile.local_path}/{diskfile.filepath}_1.dat',
-                          f'{diskfile.local_path}/{diskfile.filepath}_2.dat' ]
+        assert paths == [
+            os.path.join(diskfile.local_path, diskfile.filepath) + '_1.dat',
+            os.path.join(diskfile.local_path, diskfile.filepath) + '_2.dat',
+        ]
         with pytest.raises( FileNotFoundError ):
             ifp = open( paths[0], 'rb' )
             ifp.close()
         with pytest.raises( FileNotFoundError ):
             ifp = open( paths[1], 'rb' )
             ifp.close()
-        with open( f'{archive_dir}{diskfile.filepath}_1.dat', 'rb' ) as ifp:
+        with open( os.path.join(archive_dir, diskfile.filepath) + '_1.dat', 'rb' ) as ifp:
             assert md5sum1 == hashlib.md5( ifp.read() ).hexdigest()
-        with open( f'{archive_dir}{diskfile.filepath}_2.dat', 'rb' ) as ifp:
+        with open( os.path.join(archive_dir, diskfile.filepath) + '_2.dat', 'rb' ) as ifp:
             assert md5sum2 == hashlib.md5( ifp.read() ).hexdigest()
 
         # Make sure we can get the file back from the archive
         paths = diskfile.get_fullpath( nofile=False )
-        assert paths == [ f'{diskfile.local_path}/{diskfile.filepath}_1.dat',
-                          f'{diskfile.local_path}/{diskfile.filepath}_2.dat' ]
+        assert paths == [
+            os.path.join(diskfile.local_path, diskfile.filepath) + '_1.dat',
+            os.path.join(diskfile.local_path, diskfile.filepath) + '_2.dat',
+        ]
         with open( paths[0], 'rb' ) as ifp:
             assert md5sum1 == hashlib.md5( ifp.read() ).hexdigest()
         with open( paths[1], 'rb' ) as ifp:
@@ -420,10 +428,10 @@ def test_fileondisk_save_multifile( diskfile, archive, test_config):
             ifp = open( paths[1], 'rb' )
             ifp.close()
         with pytest.raises( FileNotFoundError ):
-            ifp = open( f'{archive_dir}{diskfile.filepath}_1.dat', 'rb' )
+            ifp = open( os.path.join(archive_dir, diskfile.filepath) + '_1.dat', 'rb' )
             ifp.close()
         with pytest.raises( FileNotFoundError ):
-            ifp = open( f'{archive_dir}{diskfile.filepath}_2.dat', 'rb' )
+            ifp = open( os.path.join(archive_dir, diskfile.filepath) + '_2.dat', 'rb' )
             ifp.close()
 
     # TODO : test various combinations of overwrite, exists_ok, and verify_md5

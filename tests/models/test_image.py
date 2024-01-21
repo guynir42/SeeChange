@@ -148,7 +148,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             im.save( no_archive=True )
             assert im.md5sum is None
             with pytest.raises(FileNotFoundError):
-                ifp = open( f'{archive_dir}{im.filepath}', 'rb' )
+                ifp = open( os.path.join(archive_dir, im.filepath), 'rb' )
                 ifp.close()
             im.remove_data_from_disk()
 
@@ -159,7 +159,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
                 localmd5.update( ifp.read() )
             assert localmd5.hexdigest() == im.md5sum.hex
             archivemd5 = hashlib.md5()
-            with open( f'{archive_dir}{im.filepath}', 'rb' ) as ifp:
+            with open( os.path.join(archive_dir, im.filepath), 'rb' ) as ifp:
                 archivemd5.update( ifp.read() )
             assert archivemd5.hexdigest() == im.md5sum.hex
 
@@ -186,7 +186,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             # Make sure we can purge the archive
             im.delete_from_disk_and_database(session=session, commit=True)
             with pytest.raises(FileNotFoundError):
-                ifp = open( f'{archive_dir}{im.filepath}', 'rb' )
+                ifp = open( os.path.join(archive_dir, im.filepath), 'rb' )
                 ifp.close()
             assert im.md5sum is None
 
@@ -241,7 +241,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
                     m = hashlib.md5()
                     m.update( ifp.read() )
                     assert m.hexdigest() == localmd5s[fullpath].hexdigest()
-                with open( f'{archive_dir}{im.filepath}{ext}', 'rb' ) as ifp:
+                with open( os.path.join(archive_dir, im.filepath) + ext, 'rb' ) as ifp:
                     m = hashlib.md5()
                     m.update( ifp.read() )
                     assert m.hexdigest() == localmd5s[fullpath].hexdigest()
