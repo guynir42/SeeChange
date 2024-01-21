@@ -255,13 +255,23 @@ def archive(test_config):
     if archive_specs is None:
         raise ValueError( "archive in config is None" )
     archive = Archive( **archive_specs )
+
+    if archive.local_read_dir is not None:
+        archivebase = archive.local_read_dir
+    elif os.getenv('SEECHANGE_TEST_ARCHIVE_DIR') is not None:
+        archivebase = os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')
+    else:
+        raise ValueError('No archive.local_read_dir in config, and no SEECHANGE_TEST_ARCHIVE_DIR env variable set')
+
+    archivebase = os.path.join( archivebase, test_config.value('archive.path_base') )  # /test is the usuall subfolder
+    archive.test_folder_path = archivebase  # track the place where these files actually go in the test suite
+
     yield archive
 
     try:
         # To tear down, we need to blow away the archive server's directory.
         # For the test suite, we've also mounted that directory locally, so
         # we can do that
-        archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
         try:
             shutil.rmtree( archivebase )
         except FileNotFoundError:

@@ -1223,7 +1223,13 @@ class FileOnDiskMixin:
                         raise ValueError( f"Archive md5sum for {logfilepath} does not match saved data!" )
 
         if mustupload:
-            remmd5 = self.archive.upload( localpath, relpath.parent, relpath.name, overwrite=overwrite, md5=origmd5 )
+            remmd5 = self.archive.upload(
+                localpath=localpath,
+                remotedir=relpath.parent,
+                remotename=relpath.name,
+                overwrite=overwrite,
+                md5=origmd5
+            )
             remmd5 = UUID( remmd5 )
             if curextensions is not None:
                 extmd5s[extensiondex] = remmd5
