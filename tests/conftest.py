@@ -263,22 +263,23 @@ def archive(test_config):
     else:
         raise ValueError('No archive.local_read_dir in config, and no SEECHANGE_TEST_ARCHIVE_DIR env variable set')
 
-    archivebase = os.path.join( archivebase, test_config.value('archive.path_base') )  # /test is the usuall subfolder
+    # archive.path_base is usually /test
+    archivebase = pathlib.Path(os.path.join( archivebase, test_config.value('archive.path_base') ))
     archive.test_folder_path = archivebase  # track the place where these files actually go in the test suite
 
     yield archive
 
-    try:
-        # To tear down, we need to blow away the archive server's directory.
-        # For the test suite, we've also mounted that directory locally, so
-        # we can do that
-        try:
-            shutil.rmtree( archivebase )
-        except FileNotFoundError:
-            pass
-
-    except Exception as e:
-        warnings.warn(str(e))
+    # try:
+    #     # To tear down, we need to blow away the archive server's directory.
+    #     # For the test suite, we've also mounted that directory locally, so
+    #     # we can do that
+    #     try:
+    #         shutil.rmtree( archivebase )
+    #     except FileNotFoundError:
+    #         pass
+    #
+    # except Exception as e:
+    #     warnings.warn(str(e))
 
 
 @pytest.fixture( scope="module" )

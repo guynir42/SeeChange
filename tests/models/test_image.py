@@ -135,7 +135,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
     im.data = np.float32( im.raw_data )
     im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
 
-    archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
+    archive_dir = archive.test_folder_path
     single_fileness = test_config.value('storage.images.single_file')
 
     try:
@@ -148,7 +148,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             im.save( no_archive=True )
             assert im.md5sum is None
             with pytest.raises(FileNotFoundError):
-                ifp = open( f'{archivebase}{im.filepath}', 'rb' )
+                ifp = open( f'{archive_dir}{im.filepath}', 'rb' )
                 ifp.close()
             im.remove_data_from_disk()
 
@@ -159,7 +159,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
                 localmd5.update( ifp.read() )
             assert localmd5.hexdigest() == im.md5sum.hex
             archivemd5 = hashlib.md5()
-            with open( f'{archivebase}{im.filepath}', 'rb' ) as ifp:
+            with open( f'{archive_dir}{im.filepath}', 'rb' ) as ifp:
                 archivemd5.update( ifp.read() )
             assert archivemd5.hexdigest() == im.md5sum.hex
 
@@ -186,7 +186,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             # Make sure we can purge the archive
             im.delete_from_disk_and_database(session=session, commit=True)
             with pytest.raises(FileNotFoundError):
-                ifp = open( f'{archivebase}{im.filepath}', 'rb' )
+                ifp = open( f'{archive_dir}{im.filepath}', 'rb' )
                 ifp.close()
             assert im.md5sum is None
 
@@ -206,7 +206,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
     im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint16)
     im.weight = None
 
-    archivebase = f"{test_config.value('archive.local_read_dir')}/{test_config.value('archive.path_base')}"
+    archive_dir = archive.test_folder_path
     single_fileness = test_config.value('storage.images.single_file')
 
     try:
@@ -241,7 +241,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
                     m = hashlib.md5()
                     m.update( ifp.read() )
                     assert m.hexdigest() == localmd5s[fullpath].hexdigest()
-                with open( f'{archivebase}{im.filepath}{ext}', 'rb' ) as ifp:
+                with open( f'{archive_dir}{im.filepath}{ext}', 'rb' ) as ifp:
                     m = hashlib.md5()
                     m.update( ifp.read() )
                     assert m.hexdigest() == localmd5s[fullpath].hexdigest()
