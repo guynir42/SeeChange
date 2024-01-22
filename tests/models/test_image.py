@@ -16,6 +16,10 @@ import util.config as config
 from models.base import SmartSession, FileOnDiskMixin
 from models.image import Image
 from models.enums_and_bitflags import image_preprocessing_inverse, string_to_bitflag
+from models.psf import PSF
+from models.source_list import SourceList
+from models.world_coordinates import WorldCoordinates
+from models.zero_point import ZeroPoint
 
 from tests.conftest import rnd_str
 from tests.fixtures.simulated import ImageCleanup
@@ -1302,5 +1306,42 @@ def test_image_multifile(sim_image_uncommitted, provenance_base, test_config):
         test_config.set_value('storage.images.single_file', single_fileness)
 
 
+def test_image_products_are_deleted(ptf_datastore, data_dir, archive):
+    ds = ptf_datastore  # shorthand
 
+    # check the datastore comes with all these objects
+    assert isinstance(ds.image, Image)
+    assert isinstance(ds.psf, PSF)
+    assert isinstance(ds.sources, SourceList)
+    assert isinstance(ds.wcs, WorldCoordinates)
+    assert isinstance(ds.zp, ZeroPoint)
+    # TODO: add more data types?
 
+    # make sure the image has the same objects
+    im = ds.image
+    assert im.psf == ds.psf
+    assert im.sources == ds.sources
+    assert im.wcs == ds.wcs
+    assert im.zp == ds.zp
+
+    # make sure the files are there
+    local_files = []
+    archive_files = []
+    for obj in [im, im.psf, im.sources]:  # TODO: add WCS when it becomes a FileOnDiskMixin
+        for file in obj.get_fullpath(as_list=True):
+            archive_file = file[len(obj.local_path)+1:]  # grap the end of the path only
+            archive_file = os.path.join(archive.test_folder_path, archive_file)  # prepend the archive path
+            assert os.path.isfile(file)
+            assert os.path.isfile(archive_file)
+            local_files.append(file)
+            archive_files.append(archive_file)
+
+    # delete the image and all its downstreams
+    im.delete_from_disk_and_database(remove_folders=True, remove_downstream_data=True)
+
+    # make sure the files are gone
+    for file in local_files:
+        assert not os.path.isfile(file)
+
+    for file in archive_files:
+        assert not os.path.isfile(file)

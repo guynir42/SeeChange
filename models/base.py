@@ -1285,10 +1285,45 @@ class FileOnDiskMixin:
                         d.remove_data_from_disk(remove_folders=remove_folders, remove_downstream_data=True)
 
             except NotImplementedError as e:
-                pass  # if this object does not implement get downstreams, it is ok
+                pass  # if this object does not implement get_downstreams, it is ok
+
+    def delete_from_archive(self, remove_downstream_data=False):
+        """Delete the file from the archive, if it exists.
+        This will not remove the file from local disk, nor
+        from the database.  Use delete_from_disk_and_database()
+        to do that.
+
+        Parameters
+        ----------
+        remove_downstream_data: bool
+            If True, will also remove any downstream data.
+            Will recursively call get_downstreams() and find any objects
+            that have remove_data_from_disk() implemented, and call it.
+            Default is False.
+        """
+        if remove_downstream_data:
+            try:
+                downstreams = self.get_downstreams()
+                for d in downstreams:
+                    if hasattr(d, 'delete_from_archive'):
+                        d.delete_from_archive(remove_downstream_data=True)  # TODO: do we need remove_folders?
+
+            except NotImplementedError as e:
+                pass  # if this object does not implement get_downstreams, it is ok
+
+        if self.filepath is not None:
+            if self.filepath_extensions is None:
+                self.archive.delete( self.filepath, okifmissing=True )
+            else:
+                for ext in self.filepath_extensions:
+                    self.archive.delete( f"{self.filepath}{ext}", okifmissing=True )
+        # make sure these are set to null just in case we fail
+        # to commit later on, we will at least know something is wrong
+        self.md5sum = None
+        self.md5sum_extensions = None
 
     def delete_from_disk_and_database(
-            self, session=None, commit=True, remove_folders=True, remove_downstream_data=False
+            self, session=None, commit=True, remove_folders=True, remove_downstream_data=False, archive=True,
     ):
         """
         Delete the data from disk, archive and the database.
@@ -1322,8 +1357,10 @@ class FileOnDiskMixin:
             If True, will also remove any downstream data.
             Will recursively call get_downstreams() and find any objects
             that have remove_data_from_disk() implemented, and call it.
-            Will only remove local data, not archive data.
             Default is False.
+        archive: bool
+            If True, will also delete the file from the archive.
+            Default is True.
         """
 
         if session is None and not commit:
@@ -1331,12 +1368,8 @@ class FileOnDiskMixin:
 
         self.remove_data_from_disk(remove_folders=remove_folders, remove_downstream_data=remove_downstream_data)
 
-        if self.filepath is not None:
-            if self.filepath_extensions is None:
-                self.archive.delete( self.filepath, okifmissing=True )
-            else:
-                for ext in self.filepath_extensions:
-                    self.archive.delete( f"{self.filepath}{ext}", okifmissing=True )
+        if archive:
+            self.delete_from_archive(remove_downstream_data=remove_downstream_data)
 
         # make sure these are set to null just in case we fail
         # to commit later on, we will at least know something is wrong

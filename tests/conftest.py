@@ -108,18 +108,6 @@ def data_dir():
 
 
 @pytest.fixture(scope="session")
-def archive_dir(test_config):
-    if test_config.value('archive') is None:
-        raise ValueError("archive in config is None")
-    if test_config.value('archive.local_read_dir', None) is not None:
-        return test_config.value('archive.local_read_dir')
-    if os.getenv('SEECHANGE_TEST_ARCHIVE_DIR') is not None:
-        return os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')
-
-    raise ValueError('No archive.local_read_dir in config, and no SEECHANGE_TEST_ARCHIVE_DIR env variable set')
-
-
-@pytest.fixture(scope="session")
 def blocking_plots():
     """
     Control how and when plots will be generated.
