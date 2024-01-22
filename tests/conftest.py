@@ -78,6 +78,16 @@ def pytest_sessionfinish(session, exitstatus):
 
         # remove empty folders from the archive
         if ARCHIVE_PATH is not None:
+            # remove catalog excerpts manually, as they are meant to survive
+            with SmartSession() as session:
+                catexps = session.scalars(sa.select(CatalogExcerpt)).all()
+                for catexp in catexps:
+                    if os.path.isfile(catexp.get_fullpath()):
+                        os.remove(catexp.get_fullpath())
+                    archive_file = os.path.join(ARCHIVE_PATH, catexp.filepath)
+                    if os.path.isfile(archive_file):
+                        os.remove(archive_file)
+
             remove_empty_folders( ARCHIVE_PATH, remove_root=False )
 
             # check that there's nothing left in the archive after tests cleanup
