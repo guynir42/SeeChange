@@ -291,6 +291,8 @@ def test_write_psfex_psf( ztf_filepaths_image_sources_psf ):
         psffullpath.unlink( missing_ok=True )
         psfxmlfullpath.unlink( missing_ok=True )
         sourcesfullpath.unlink( missing_ok=True )
+        archive.delete(psfpath, okifmissing=True)
+        archive.delete(psfxmlpath, okifmissing=True)
 
 
 @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )

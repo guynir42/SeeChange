@@ -16,6 +16,7 @@ from models.catalog_excerpt import CatalogExcerpt
 from models.exposure import Exposure
 
 from util.archive import Archive
+from util.util import remove_empty_folders
 
 pytest_plugins = [
     'tests.fixtures.simulated',
@@ -25,6 +26,7 @@ pytest_plugins = [
     'tests.fixtures.pipeline_objects',
 ]
 
+ARCHIVE_PATH = None
 
 # this fixture should be the first thing loaded by the test suite
 # (session is the pytest session, not the SQLAlchemy session)
@@ -71,8 +73,18 @@ def pytest_sessionfinish(session, exitstatus):
         dbsession.commit()
 
         # comment this line out if you just want tests to pass quietly
-        # if any_objects:
-        #     raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
+        if any_objects:
+            raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
+
+        # remove empty folders from the archive
+        if ARCHIVE_PATH is not None:
+            remove_empty_folders( ARCHIVE_PATH, remove_root=False )
+
+            # check that there's nothing left in the archive after tests cleanup
+            if os.path.isdir(ARCHIVE_PATH):
+                files = os.listdir(ARCHIVE_PATH)
+                if len(files) > 0:
+                    raise RuntimeError(f'There are files left in the archive after tests cleanup: {files}')
 
 
 # data that is included in the repo and should be available for tests
@@ -237,24 +249,30 @@ def provenance_preprocessing(code_version):
         session.commit()
 
 
-@pytest.fixture
-def archive(test_config):
-    archive_specs = test_config.value('archive')
-    if archive_specs is None:
-        raise ValueError( "archive in config is None" )
-    archive = Archive( **archive_specs )
-
-    if archive.local_read_dir is not None:
-        archivebase = archive.local_read_dir
+@pytest.fixture(scope="session", autouse=True)
+def archive_path(test_config):
+    if test_config.value('archive.local_read_dir', None) is not None:
+        archivebase = test_config.value('archive.local_read_dir')
     elif os.getenv('SEECHANGE_TEST_ARCHIVE_DIR') is not None:
         archivebase = os.getenv('SEECHANGE_TEST_ARCHIVE_DIR')
     else:
         raise ValueError('No archive.local_read_dir in config, and no SEECHANGE_TEST_ARCHIVE_DIR env variable set')
 
     # archive.path_base is usually /test
-    archivebase = pathlib.Path(os.path.join( archivebase, test_config.value('archive.path_base') ))
-    archive.test_folder_path = archivebase  # track the place where these files actually go in the test suite
+    archivebase = pathlib.Path(os.path.join(archivebase, test_config.value('archive.path_base')))
+    global ARCHIVE_PATH
+    ARCHIVE_PATH = archivebase
+    return archivebase
 
+
+@pytest.fixture(scope="session")
+def archive(test_config, archive_path):
+    archive_specs = test_config.value('archive')
+    if archive_specs is None:
+        raise ValueError( "archive in config is None" )
+    archive = Archive( **archive_specs )
+
+    archive.test_folder_path = archive_path  # track the place where these files actually go in the test suite
     yield archive
 
     # try:

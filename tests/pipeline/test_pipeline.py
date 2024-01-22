@@ -132,17 +132,13 @@ def test_parameters( test_config ):
 
 
 # TODO: need to finish this test (i.e., finish subtraction, source extraction from sub image, etc)
-def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators):
+def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, archive):
     """Test that the pipeline runs end-to-end."""
     exposure = decam_exposure
 
     ref = decam_reference
     sec_id = ref.section_id
     try:  # cleanup the file at the end
-        # with SmartSession() as session:
-        #     ref = ref.recursive_merge(session)
-        #     exposure = exposure.recursive_merge(session)
-
         p = Pipeline()
         assert p.extractor.pars.threshold != 3.14
         assert p.detector.pars.threshold != 3.14
@@ -215,4 +211,4 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators):
         # added this cleanup to make sure the temp data folder is cleaned up
         # this should be removed after we add datastore failure modes (issue #150)
         shutil.rmtree(os.path.join(os.path.dirname(exposure.get_fullpath()), '115'), ignore_errors=True)
-
+        shutil.rmtree(os.path.join(archive.test_folder_path, '115'), ignore_errors=True)

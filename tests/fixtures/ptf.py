@@ -142,7 +142,7 @@ def ptf_datastore(datastore_factory, ptf_exposure, cache_dir, ptf_bad_pixel_map)
         bad_pixel_map=ptf_bad_pixel_map,
     )
     yield ds
-    # ds.delete_everything()
+    ds.delete_everything()
 
 
 @pytest.fixture(scope='session')

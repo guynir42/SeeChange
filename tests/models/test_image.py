@@ -12,7 +12,6 @@ from astropy.io import fits
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
-import util.config as config
 from models.base import SmartSession, FileOnDiskMixin
 from models.image import Image
 from models.enums_and_bitflags import image_preprocessing_inverse, string_to_bitflag
@@ -1189,6 +1188,7 @@ def test_image_filename_conventions(sim_image1, test_config):
     for f in sim_image1.get_fullpath(as_list=True):
         assert os.path.isfile(f)
         os.remove(f)
+    original_filepath = sim_image1.filepath
 
     # try to set the name convention to None, to load the default hard-coded one
     convention = test_config.value('storage.images.name_convention')
@@ -1230,6 +1230,7 @@ def test_image_filename_conventions(sim_image1, test_config):
 
     finally:  # return to the original convention
         test_config.set_value('storage.images.name_convention', convention)
+        sim_image1.filepath = original_filepath  # this will allow the image to delete itself in the teardown
 
 
 def test_image_multifile(sim_image_uncommitted, provenance_base, test_config):

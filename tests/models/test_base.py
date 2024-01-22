@@ -88,13 +88,7 @@ def diskfile( diskfiletable ):
     df = DiskFile()
     yield df
 
-    with SmartSession() as session:
-        df = session.merge( df )
-        df.remove_data_from_disk( remove_folders=True )
-        if sa.inspect( df ).persistent:
-            session.delete( df )
-        session.expunge( df )
-        session.commit()
+    df.delete_from_disk_and_database()
 
 
 def test_fileondisk_save_failuremodes( diskfile ):
