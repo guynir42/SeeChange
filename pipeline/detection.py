@@ -25,7 +25,9 @@ class ParsDetector(Parameters):
     def __init__(self, **kwargs):
         super().__init__()
 
-        self.method = self.add_par( 'method', 'sextractor', str, 'Method to use (sextractor, sep)', critical=True )
+        self.method = self.add_par(
+            'method', 'sextractor', str, 'Method to use (sextractor, sep, filter)', critical=True
+        )
 
         self.measure_psf = self.add_par(
             'measure_psf',
@@ -41,8 +43,9 @@ class ParsDetector(Parameters):
             'psf',
             None,
             ( PSF, int, None ),
-            ( 'Use this PSF; pass the PSF object, or its integer id. '
-              'If None, will not do PSF photometry.  Ignored if measure_psf is True.' )
+            'Use this PSF; pass the PSF object, or its integer id. '
+            'If None, will not do PSF photometry.  Ignored if measure_psf is True.' ,
+            critical=True
         )
 
         self.apers = self.add_par(
@@ -72,19 +75,29 @@ class ParsDetector(Parameters):
         )
         self.add_alias( 'aperture_unit', 'aperunit' )
 
+        self.separation_fwhms = self.add_par(
+            'separation_fwhms',
+            1.0,
+            float,
+            'Minimum separation between sources in units of FWHM',
+            critical=True
+        )
+
         self.threshold = self.add_par(
             'threshold',
             3.0,
             [float, int],
             'The number of standard deviations above the background '
-            'to use as the threshold for detecting a source. '
+            'to use as the threshold for detecting a source. ',
+            critical=True
         )
 
         self.subtraction = self.add_par(
             'subtraction',
             False,
             bool,
-            'Whether this is expected to run on a subtraction image or a regular image. '
+            'Whether this is expected to run on a subtraction image or a regular image. ',
+            critical=True
         )
 
         self._enforce_no_new_attrs = True
@@ -99,7 +112,39 @@ class ParsDetector(Parameters):
 
 
 class Detector:
-    """Extract sources (and possibly a psf) from images or subtraction images."""
+    """Extract sources (and possibly a psf) from images or subtraction images.
+
+    There are a few different ways to get the sources from an image.
+    The most common is to use SExtractor, which is the default we use for direct images.
+    There is also "sep", which is a python-based equivalent (sort of) of SExtractor,
+    but it is not fully compatible and not fully supported.
+    Finally, you can use a matched-filter approach, meaning that you cross-correlate
+    the image with the PSF and find everything above some threshold.
+    There are some subtleties involved, like what to do if multiple pixels
+    (connected or just close to each other) are above threshold.
+    In some cases, like after running ZOGY, the image already contains a "score" image,
+    which is just the normalized result of running a matched-filter.
+    In that case, the "filter" method of this class will just use the score image
+    instead of re-running PSF matched-filtering.
+
+    It should also be noted that using the "filter" method does not find the PSF
+    from the image (whereas the SExtractor method does). This is one of the main reasons
+    SExtractor is used for detecting sources on the direct images.
+    On the subtraction image, on the other hand, you can use the "filter" method
+    and either use the PSF from ZOGY or just assume the subtraction image's PSF is
+    the same as the direct image's PSF.
+
+    This is also why when you use this class on the subtraction image, it will
+    be initialized with pars.measure_psf=False.
+
+    We distinguish between finding sources in a regular image, calling it "extraction"
+    (we are extracting many sources of static objects, mostly) and finding sources
+    in difference images, calling it "detection" (identifying transient sources that
+    may or may not exist in an image). The pars.subtraction parameter is used to
+    define a Detection object to use in either of these cases, with a completely
+    different set of parameters for each object.
+
+    """
 
     def __init__(self, **kwargs):
         """Initialize Detector.
@@ -165,7 +210,6 @@ class Detector:
 
             if detections is None:
                 self.has_recalculated = True
-                raise NotImplementedError( "This needs to be updated for detection on a subtraction." )
 
                 # load the subtraction image from memory
                 # or load using the provenance given in the
@@ -180,11 +224,15 @@ class Detector:
 
                 # TODO -- should probably pass **kwargs along to extract_sources
                 #  in any event, need a way of passing parameters
+                #  Question: why is it not enough to just define what you need in the Parameters object?
+                #  Related to issue #50
                 if self.pars.method == 'sep':
                     detections = self.extract_sources_sep(image)
                 elif self.pars.method == 'sextractor':
                     psffile = None if self.pars.psf is None else self.pars.psf.get_fullpath()
                     detections, _ = self.extract_sources_sextractor( image, psffile=psffile )
+                elif self.pars.method == 'filter':
+                    detections = self.extract_sources_filter(image)
                 else:
                     raise ValueError( f"Unknown source extraction method: {self.pars.method}" )
 
@@ -213,7 +261,13 @@ class Detector:
                 if image is None:
                     raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
-                sources, psf = self.extract_sources( image )
+                if self.pars.method == 'sep':
+                    sources, psf = self.extract_sources_sep(image, *args, **kwargs), None
+                elif self.pars.method == 'sextractor':
+                    sources, psf = self.extract_sources_sextractor(image, *args, **kwargs)
+                else:
+                    raise ValueError("Unknown extraction method {self.pars.method}")
+                # sources, psf = self.extract_sources( image )
                 sources.image = image
                 if sources.provenance is None:
                     sources.provenance = prov
