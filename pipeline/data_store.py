@@ -48,6 +48,29 @@ class DataStore:
     to be fetched from the database, and keep a cached version of the products for
     use downstream in the pipeline.
     """
+    attributes_to_save = [
+        'exposure',
+        'image',
+        'sources',
+        'psf',
+        'wcs',
+        'zp',
+        'sub_image',
+        'detections',
+        'cutouts',
+        'measurements'
+    ]
+
+    attributes_to_clear = [
+        'ref_image',
+        'sub_image',
+        'reference',
+        'exposure_id',
+        'section_id',
+        'image_id',
+        'session',
+    ]
+
     @staticmethod
     def from_args(*args, **kwargs):
         """
@@ -77,37 +100,36 @@ class DataStore:
     def __init__(self, *args, **kwargs):
         """
         See the parse_args method for details on how to initialize this object.
+
+        Please make sure to add any new attributes to the attributes_to_save list.
         """
         # these are data products that can be cached in the store
         self._exposure = None  # single image, entire focal plane
         self._section = None  # SensorSection
 
-        self._init_data_products()
+        self.upstream_provs = None  # provenances to override the upstreams if no upstream objects exist
 
-        # The database session parsed in parse_args; it could still be None even after parse_args
-        self.session = None
-        self.parse_args(*args, **kwargs)
-
-    def _init_data_products( self ):
+        # these all need to be added to the attributes_to_save list
         self.image = None  # single image from one sensor section
         self.sources = None  # extracted sources (a SourceList object, basically a catalog)
-        self.psf = None   # psf determined from the extracted sources
+        self.psf = None  # psf determined from the extracted sources
         self.wcs = None  # astrometric solution
         self.zp = None  # photometric calibration
-        self.ref_image = None  # to be used to make subtractions
-        self.sub_image = None  # subtracted image
         self.detections = None  # a SourceList object for sources detected in the subtraction image
         self.cutouts = None  # cutouts around sources
         self.measurements = None  # photometry and other measurements for each source
 
-        self.upstream_provs = None  # provenances to override the upstreams if no upstream objects exist
+        # these need to be added to the attributes_to_clear list
+        self.ref_image = None  # to be used to make subtractions
+        self.sub_image = None  # subtracted image
         self.reference = None  # the Reference object needed to make subtractions
-
-        # these are identifiers used to find the data products in the database
         self.exposure_id = None  # use this and section_id to find the raw image
         self.section_id = None  # corresponds to SensorSection.identifier (*not* .id)
-                                # use this and exposure_id to find the raw image
         self.image_id = None  # use this to specify an image already in the database
+
+        # The database session parsed in parse_args; it could still be None even after parse_args
+        self.session = None
+        self.parse_args(*args, **kwargs)
 
     @property
     def exposure( self ):
@@ -1310,21 +1332,8 @@ class DataStore:
             Note that this method calls session.commit()
 
         """
-        attributes = [
-            'exposure',
-            'image',
-            'sources',
-            'psf',
-            'wcs',
-            'zp',
-            'sub_image',
-            'detections',
-            'cutouts',
-            'measurements'
-        ]
-
         # save to disk whatever is FileOnDiskMixin
-        for att in attributes:
+        for att in self.attributes_to_save:
             obj = getattr(self, att, None)
             if obj is None:
                 continue
@@ -1453,4 +1462,8 @@ class DataStore:
                 session.autoflush = autoflush_state
 
         # Make sure all data products are None so that they aren't used again now that they're gone
-        self._init_data_products()
+        for att in self.attributes_to_save:
+            setattr(self, att, None)
+
+        for att in self.attributes_to_clear:
+            setattr(self, att, None)

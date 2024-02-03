@@ -1600,7 +1600,7 @@ class Instrument:
         Parameters
         ----------
         header: fits.Header
-          The header of the image in question; use Image.header not Image.info.
+          The header of the image in question.
 
         Returns
         ------

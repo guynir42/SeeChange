@@ -391,7 +391,7 @@ def fetch_GaiaDR3_excerpt( image, minstars=50, maxmags=22, magrange=None, sessio
                     if existing_catexp is None:
                         session.add( catexp )  # add if it doesn't exist
                     else:
-                        catexp = existing_catexp  # use the existing one
+                        raise RuntimeError('CatalogExcerpt already exists in the database!')
                     session.commit()
                     break
                 else:
