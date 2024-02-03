@@ -4,7 +4,9 @@ import subprocess
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
+from scipy import ndimage
 import sqlalchemy as sa
+
 
 import sep
 
@@ -19,6 +21,8 @@ from models.base import FileOnDiskMixin, CODE_ROOT, _logger
 from models.image import Image
 from models.psf import PSF
 from models.source_list import SourceList
+
+from improc.photometry import iterative_photometry
 
 
 class ParsDetector(Parameters):
@@ -234,7 +238,7 @@ class Detector:
                 elif self.pars.method == 'filter':
                     detections = self.extract_sources_filter(image)
                 else:
-                    raise ValueError( f"Unknown source extraction method: {self.pars.method}" )
+                    raise ValueError( f'Unknown source extraction method: "{self.pars.method}"' )
 
                 detections.image = image
 
@@ -261,12 +265,15 @@ class Detector:
                 if image is None:
                     raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
+                psf = None
                 if self.pars.method == 'sep':
-                    sources, psf = self.extract_sources_sep(image, *args, **kwargs), None
+                    sources = self.extract_sources_sep(image, *args, **kwargs)
                 elif self.pars.method == 'sextractor':
                     sources, psf = self.extract_sources_sextractor(image, *args, **kwargs)
+                elif self.pars.method == 'filter':
+                    raise ValueError( 'Cannot use "filter" method on regular image!' )
                 else:
-                    raise ValueError("Unknown extraction method {self.pars.method}")
+                    raise ValueError(f'Unknown extraction method "{self.pars.method}"')
                 # sources, psf = self.extract_sources( image )
                 sources.image = image
                 if sources.provenance is None:
@@ -274,6 +281,7 @@ class Detector:
                 else:
                     if sources.provenance.id != prov.id:
                         raise ValueError('Provenance mismatch for sources and provenance!')
+
                 psf.image_id = image.id
                 if psf.provenance is None:
                     psf.provenance = prov
@@ -288,29 +296,6 @@ class Detector:
 
         # make sure this is returned to be used in the next step
         return ds
-
-    def extract_sources( self, image, *args, **kwargs ):
-        """Extract sources.
-
-        Parmaters
-        ---------
-          image: Image
-             The image object to extract sources from
-
-        Returns
-        -------
-          sourcelist, psf
-             sourcelist : a SourceList
-             psf : a PSF (or None if the method doesn't support this)
-
-        """
-
-        if self.pars.method == 'sep':
-            return self.extract_sources_sep( image, *args, **kwargs ), None
-        elif self.pars.method == 'sextractor':
-            return self.extract_sources_sextractor( image, *args, **kwargs )
-        else:
-            raise ValueError( "Unknown extraction method {self.pars.method}" )
 
     def extract_sources_sextractor( self, image, *args, psffile=None, **kwargs ):
         tempnamebase = ''.join( random.choices( 'abcdefghijklmnopqrstuvwxyz', k=10 ) )
@@ -759,6 +744,77 @@ class Detector:
         sources = SourceList(image=image, data=objects, format='sepnpy')
 
         return sources
+
+    def extract_sources_filter(self, image):
+        """Find sources in an image using the matched-filter method.
+
+        If the image has a "score" array, will use that.
+        If not, will apply the PSF of the image to make a score array.
+
+        Sources are detected as points in the score image that are
+        above the given threshold. If points are too close, they
+        will be merged into a single source.
+        The output SourceList will include the aperture and PSF photometry,
+        and the x,y positions will be given using the source centroid.
+
+        # TODO: should we do iterative PSF tapered centroiding?
+
+        Parameters
+        ----------
+        image: Image
+            The image to extract sources from. Must have a score, or a PSF,
+            that can be gotten from one of these places (in order):
+            - a PSF object loaded on the Image object.
+            - a zogy_psf attribute attached to the Image object.
+            - a PSF object of the new_image attribute of the Image object.
+
+        Returns
+        -------
+        sources: SourceList
+            The list of sources detected in the image.
+            This contains a table where each row represents
+            one source that was detected, along with all its properties.
+
+        """
+        score = image.score
+
+        if score is None:
+            pass
+
+        psf_image = None
+        if image.psf is not None:
+            psf_image = image.psf.get_clip()
+        elif image.zogy_psf is not None:
+            psf_image = image.zogy_psf
+
+        fwhm = image.fwhm_estimate
+        if fwhm is None:
+            fwhm = image.new_image.fwhm_estimate
+
+        if fwhm is None:
+            raise RuntimeError("Cannot find a FWHM estimate from the given image or its new_image attribute.")
+
+        # get the map of detections:
+        map = score > self.pars.threshold
+
+        # dilate the map to merge nearby peaks
+        fwhm_pixels = max(int(np.ceil(fwhm / image.instrument_object.pixel_scale)), 3)
+        map = ndimage.binary_dilation(map, structure=np.ones((fwhm_pixels, fwhm_pixels))).astype(map.dtype)
+
+        # label the map to get the number of sources
+        labels, num_sources = ndimage.label(map)
+        all_idx = np.arange(1, num_sources + 1)
+        # get the x,y positions of the sources (rough estimate)
+        xys = ndimage.center_of_mass(image.data, labels, all_idx)
+        x = np.array([xy[1] for xy in xys])
+        y = np.array([xy[0] for xy in xys])
+        label_fluxes = ndimage.sum(image.data, labels, all_idx)  # sum image values where labeled
+
+        # run aperture and iterative PSF photometry
+        iter_phot = partial(iterative_photometry, )
+        fluxes = ndimage.labeled_comprehension(image.data, labels, all_idx, iter_phot, float, np.nan)
+
+
 
 
 if __name__ == '__main__':
