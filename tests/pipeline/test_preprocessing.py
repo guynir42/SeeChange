@@ -1,5 +1,6 @@
 import pytest
 import pathlib
+import uuid
 
 import numpy as np
 import sqlalchemy as sa
@@ -15,6 +16,7 @@ def test_preprocessing(
     # The decam_default_calibrators fixture is included so that
     # _get_default_calibrators won't be called as a side effect of calls
     # to Preprocessor.run().  (To avoid committing.)
+    preprocessor.pars.test_parameter = uuid.uuid4().hex  # make a new Provenance for this temporary image
     ds = preprocessor.run( decam_exposure, 'N1' )
     assert preprocessor.has_recalculated
 
@@ -35,8 +37,8 @@ def test_preprocessing(
     #  from the raw image header.  (If not, when the file gets
     #  written out as floats, they'll be there and will screw
     #  things up.)
-    assert 'BSCALE' not in ds.image.raw_header
-    assert 'BZERO' not in ds.image.raw_header
+    assert 'BSCALE' not in ds.image.header
+    assert 'BZERO' not in ds.image.header
 
     # Flatfielding should have improved the sky noise, though for DECam
     # it looks like this is a really small effect.  I've picked out a

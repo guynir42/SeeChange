@@ -204,7 +204,7 @@ def provenance_base(code_version):
             upstreams=[],
             is_testing=True,
         )
-        p = p.recursive_merge(session)
+        p = session.merge(p)
 
         session.commit()
 
@@ -218,7 +218,7 @@ def provenance_base(code_version):
 @pytest.fixture
 def provenance_extra( provenance_base ):
     with SmartSession() as session:
-        provenance_base = provenance_base.recursive_merge(session)
+        provenance_base = session.merge(provenance_base)
         p = Provenance(
             process="test_base_process",
             code_version=provenance_base.code_version,
@@ -226,7 +226,7 @@ def provenance_extra( provenance_base ):
             upstreams=[provenance_base],
             is_testing=True,
         )
-        p = p.recursive_merge(session)
+        p = session.merge(p)
         session.commit()
 
     yield p
@@ -249,7 +249,7 @@ def provenance_preprocessing(code_version):
             is_testing=True,
         )
 
-        p = p.recursive_merge(session)
+        p = session.merge(p)
         session.commit()
 
     yield p

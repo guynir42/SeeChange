@@ -189,7 +189,8 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
 
                 obj = getattr(ds, attributes[-j-1])
                 with SmartSession() as session:
-                    obj = obj.recursive_merge(session=session)
+                    # obj = obj.recursive_merge(session=session)
+                    obj = session.merge(obj)
                     if isinstance(obj, FileOnDiskMixin):
                         obj.delete_from_disk_and_database(session=session, commit=True)
 
