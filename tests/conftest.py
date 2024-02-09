@@ -269,7 +269,7 @@ def archive_path(test_config):
         raise ValueError('No archive.local_read_dir in config, and no SEECHANGE_TEST_ARCHIVE_DIR env variable set')
 
     # archive.path_base is usually /test
-    archivebase = archivebase / pathlib.Path(test_config.value('archive.path_base'))
+    archivebase = pathlib.Path(archivebase) / pathlib.Path(test_config.value('archive.path_base'))
     global ARCHIVE_PATH
     ARCHIVE_PATH = archivebase
     return archivebase
