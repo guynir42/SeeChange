@@ -431,3 +431,43 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
         ref_in_db = session.scalars(sa.select(Reference).where(Reference.id == ref.id)).first()
         assert ref_in_db is None  # should have been deleted by cascade when image is deleted
 
+
+@pytest.fixture
+def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, cache_dir):
+
+    cache_dir = os.path.join(cache_dir, 'PTF')
+    cache_path = os.path.join(cache_dir, '187/PTF_20100216_075004_11_R_Diff_APUPTJ_u-qy3s5y.image.fits.json')
+
+    if os.path.isfile(cache_path):  # try to load this from cache
+        im = Image.copy_from_cache(cache_dir, cache_path)
+        im.upstream_images = [ptf_ref.image, ptf_supernova_images[0]]
+        prov = Provenance(
+            process='subtraction',
+            parameters=subtractor.pars.get_critical_pars(),
+            upstreams=im.get_upstream_provenances(),
+            code_version=ptf_ref.image.provenance.code_version,
+            is_testing=True,
+        )
+        im.provenance = prov
+
+    else:  # cannot find it on cache, need to produce it, using other fixtures
+        # this is loaded automatically by datastore, but still needs to be loaded as a fixture
+        # ptf_ref = request.getfixturevalue('ptf_ref')
+
+        # ptf_supernova_images = request.getfixturevalue('ptf_supernova_images')
+        # subtractor = request.getfixturevalue('subtractor')
+
+        ds = subtractor.run(ptf_supernova_images[0])
+        ds.sub_image.save()
+
+        ds.sub_image.copy_to_cache(cache_dir)
+        im = ds.sub_image
+
+    # save the subtraction image to DB and the upstreams (if they are not already there)
+    with SmartSession() as session:
+        im = session.merge(im)
+        session.commit()
+
+    yield im
+
+    im.delete_from_disk_and_database(remove_downstream_data=True)

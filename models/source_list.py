@@ -180,12 +180,12 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
     @data.setter
     def data(self, value):
-        # TODO: add astropy table?
+
         if isinstance(value, pd.DataFrame):
             value = value.to_records(index=False)
 
-        if not isinstance(value, np.ndarray) or value.dtype.names is None:
-            raise TypeError("data must be a pandas DataFrame or numpy recarray")
+        if not isinstance(value, (np.ndarray, astropy.table.Table)) or value.dtype.names is None:
+            raise TypeError("data must be a pandas.DataFrame, astropy.table.Table or numpy.recarray")
 
         self._data = value
         self.num_sources = len(value)

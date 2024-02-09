@@ -1,13 +1,14 @@
 import pathlib
 import random
 import subprocess
+from functools import partial
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
 from scipy import ndimage
 import sqlalchemy as sa
 
-
+import astropy.table
 import sep
 
 from astropy.io import fits, votable
@@ -22,7 +23,7 @@ from models.image import Image
 from models.psf import PSF
 from models.source_list import SourceList
 
-from improc.photometry import iterative_photometry
+from improc.tools import sigma_clipping
 
 
 class ParsDetector(Parameters):
@@ -210,6 +211,10 @@ class Detector:
 
         # try to find the sources/detections in memory or in the database:
         if self.pars.subtraction:
+            if ds.sub_image is None and ds.image is not None and ds.image.is_sub:
+                ds.sub_image = ds.image
+                ds.image = ds.sub_image.new_image  # back-fill the image from the sub_image
+
             detections = ds.get_detections(prov, session=session)
 
             if detections is None:
@@ -663,6 +668,7 @@ class Detector:
                                 '-WRITE_XML', 'Y',
                                 '-XML_NAME', psfxmlfile,
                                 '-XML_URL', 'file:///usr/share/psfex/psfex.xsl',
+                                # '-PSFVAR_DEGREES', '4',  # polynomial order for PSF fitting across image
                                 sourcefile ]
                     res = subprocess.run( command, cwd=sourcefile.parent, capture_output=True )
                     if res.returncode == 0:
@@ -764,9 +770,11 @@ class Detector:
         image: Image
             The image to extract sources from. Must have a score, or a PSF,
             that can be gotten from one of these places (in order):
-            - a PSF object loaded on the Image object.
+            - a PSF object loaded on the Image object itself.
             - a zogy_psf attribute attached to the Image object.
             - a PSF object of the new_image attribute of the Image object.
+            If the image also has a zogy_alpha attribute, it will be used
+            to extract the PSF photometry.
 
         Returns
         -------
@@ -776,45 +784,87 @@ class Detector:
             one source that was detected, along with all its properties.
 
         """
-        score = image.score
+        score = image.score.copy()
 
         if score is None:
-            pass
+            raise NotImplementedError('Still need to add the matched-filter cross correlation! ')
 
         psf_image = None
         if image.psf is not None:
             psf_image = image.psf.get_clip()
-        elif image.zogy_psf is not None:
+        elif getattr(image, 'zogy_psf', None) is not None:
             psf_image = image.zogy_psf
 
         fwhm = image.fwhm_estimate
         if fwhm is None:
             fwhm = image.new_image.fwhm_estimate
+        if fwhm is None and image.psf is not None:
+            fwhm = image.psf.fwhm_pixels
+        if fwhm is None and image.new_image.psf is not None:
+            fwhm = image.new_image.psf.fwhm_pixels
 
         if fwhm is None:
             raise RuntimeError("Cannot find a FWHM estimate from the given image or its new_image attribute.")
 
-        # get the map of detections:
-        map = score > self.pars.threshold
+        # typical scale of PSF is X times the FWHM
+        fwhm_pixels = max(int(np.ceil(fwhm * self.pars.separation_fwhms / image.instrument_object.pixel_scale)), 1)
+        # remove flagged pixels
+        score[image.flags > 0] = np.nan
+
+        # remove the edges
+        border = fwhm_pixels * 2
+        score[:border, :] = np.nan
+        score[-border:, :] = np.nan
+        score[:, :border] = np.nan
+        score[:, -border:] = np.nan
+
+        # normalize the score based on sigma_clipping
+        # TODO: we should check if we still need this after b/g subtraction on the input images
+        mu, sigma = sigma_clipping(score)
+        score = (score - mu) / sigma
+        det_map = abs(score) > self.pars.threshold  # catch negative peaks too (can get rid of them later)
 
         # dilate the map to merge nearby peaks
-        fwhm_pixels = max(int(np.ceil(fwhm / image.instrument_object.pixel_scale)), 3)
-        map = ndimage.binary_dilation(map, structure=np.ones((fwhm_pixels, fwhm_pixels))).astype(map.dtype)
+        struct = np.ones((1 + 2 * fwhm_pixels, 1 + 2 * fwhm_pixels))
+        det_map = ndimage.binary_dilation(det_map, structure=struct).astype(det_map.dtype)
 
         # label the map to get the number of sources
-        labels, num_sources = ndimage.label(map)
+        labels, num_sources = ndimage.label(det_map)
         all_idx = np.arange(1, num_sources + 1)
         # get the x,y positions of the sources (rough estimate)
-        xys = ndimage.center_of_mass(image.data, labels, all_idx)
+        xys = ndimage.center_of_mass(abs(image.data), labels, all_idx)
         x = np.array([xy[1] for xy in xys])
         y = np.array([xy[0] for xy in xys])
         label_fluxes = ndimage.sum(image.data, labels, all_idx)  # sum image values where labeled
 
         # run aperture and iterative PSF photometry
-        iter_phot = partial(iterative_photometry, )
-        fluxes = ndimage.labeled_comprehension(image.data, labels, all_idx, iter_phot, float, np.nan)
+        fluxes = ndimage.labeled_comprehension(image.psfflux, labels, all_idx, np.max, float, np.nan)
 
+        region_sizes = [np.sum(labels == i) for i in all_idx]
 
+        def peak_score(arr):
+            """Find the best score, whether positive or negative. """
+            return arr[np.unravel_index(np.nanargmax(abs(arr)), arr.shape)]
+
+        scores = ndimage.labeled_comprehension(score, labels, all_idx, peak_score, float, np.nan)
+
+        def count_nans(arr):
+            return np.sum(np.isnan(arr))
+
+        num_flagged = ndimage.labeled_comprehension(score, labels, all_idx, count_nans, int, 0)
+
+        # TODO: add a correct aperture photometry, instead of the label_fluxes which only sums the labeled pixels
+
+        tab = astropy.table.Table(
+            [x, y, label_fluxes, fluxes, region_sizes, num_flagged, scores],
+            names=('x', 'y', 'flux', 'psf_flux', 'num_pixels', 'num_flagged', 'score'),
+            meta={'fwhm': fwhm, 'threshold': self.pars.threshold}
+        )
+
+        sources = SourceList(data=tab, format='filter', num_sources=num_sources)
+        sources.labelled_regions = labels  # this is not saved with the SourceList, but added for debugging/testing!
+
+        return sources
 
 
 if __name__ == '__main__':

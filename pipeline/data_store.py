@@ -34,7 +34,7 @@ UPSTREAM_OBJECTS = {
     'extraction': 'sources',
     'astro_cal': 'wcs',
     'photo_cal': 'zp',
-    'reference': 'ref-image',
+    'reference': 'reference',
     'subtraction': 'sub_image',
     'detection': 'detections',
     'cutting': 'cutouts',
@@ -94,7 +94,7 @@ class DataStore:
         self.psf = None   # psf determined from the extracted sources
         self.wcs = None  # astrometric solution
         self.zp = None  # photometric calibration
-        self.ref_image = None  # to be used to make subtractions
+        self.reference = None  # the Reference object needed to make subtractions
         self.sub_image = None  # subtracted image
         self.detections = None  # a SourceList object for sources detected in the subtraction image
         self.cutouts = None  # cutouts around sources
@@ -129,6 +129,18 @@ class DataStore:
                     self.exposure.instrument_object.fetch_sections()
                     self._section = self.exposure.instrument_object.get_section( self.section_id )
         return self._section
+
+    @property
+    def ref_image( self ):
+        if self.reference is not None:
+            return self.reference.image
+        return None
+
+    @ref_image.setter
+    def ref_image( self, value ):
+        if self.reference is None:
+            self.reference = Reference()
+        self.reference.image = value
 
     def parse_args(self, *args, **kwargs):
         """

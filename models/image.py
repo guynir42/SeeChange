@@ -424,17 +424,33 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         """Get a dict with the allowed values of badness that can be assigned to this object"""
         return image_badness_inverse
 
+    saved_extensions = [
+        'data',
+        'flags',
+        'weight',
+        'background',  # TODO: remove this when adding the Background object (issue #186)
+        'score',  # the matched-filter score of the image (e.g., from ZOGY)
+        'psfflux',  # the PSF-fitted equivalent flux of the image (e.g., from ZOGY)
+        'psffluxerr', # the error in the PSF-fitted equivalent flux of the image (e.g., from ZOGY)
+    ]
+
     def __init__(self, *args, **kwargs):
         FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
 
         self.raw_data = None  # the raw exposure pixels (2D float or uint16 or whatever) not saved to disk!
         self._raw_header = None  # the header data taken directly from the FITS file
+
+        # these properties must be added to the saved_extensions list of the Image
         self._data = None  # the underlying pixel data array (2D float array)
         self._flags = None  # the bit-flag array (2D int array)
         self._weight = None  # the inverse-variance array (2D float array)
         self._background = None  # an estimate for the background flux (2D float array)
         self._score = None  # the image after filtering with the PSF and normalizing to S/N units (2D float array)
+        self._psfflux = None  # the PSF-fitted equivalent flux of the image (2D float array)
+        self._psffluxerr = None  # the error in the PSF-fitted equivalent flux of the image (2D float array)
+
+        # additional data products that could go with the Image
         self.sources = None  # the sources extracted from this Image (optionally loaded)
         self.psf = None  # the point-spread-function object (optionally loaded)
         self.wcs = None  # the WorldCoordinates object (optionally loaded)
@@ -468,11 +484,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         FileOnDiskMixin.init_on_load(self)
         self.raw_data = None
         self._raw_header = None
-        self._data = None
-        self._flags = None
-        self._weight = None
-        self._background = None
-        self._score = None
+
+        for att in self.saved_extensions:
+            setattr(self, f'_{att}', None)
+
         self.sources = None
         self.psf = None
         self.wcs = None
@@ -657,12 +672,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         The filepath is set to None and should be manually set to a new (unique)
         value so as not to overwrite the original.
         """
-        copy_attributes = [
-            'data',
-            'weight',
-            'flags',
-            'score',
-            'background',
+        copy_attributes = cls.saved_extensions + [
             'header',
             'raw_header',
         ]
@@ -894,7 +904,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         # Note that "data" is not filled by this method, also the provenance is empty!
         return output
-
 
     def _make_aligned_images(self):
         """Align the upstream_images to one of the images pointed to by image_index.
@@ -1214,11 +1223,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             #  this should be configurable and will affect how we make the self.filepath and extensions.
 
             # save the other extensions
-            array_list = ['flags', 'weight', 'background', 'score']
-            # TODO: the list of extensions should be saved somewhere more central
-
             if single_file or ( not only_image ):
-                for array_name in array_list:
+                for array_name in self.saved_extensions:
+                    if array_name == 'data':
+                        continue
                     array = getattr(self, array_name)
                     if array is not None:
                         extpath = save_fits_image_file(
@@ -1263,7 +1271,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         Load the image data from disk.
         This includes the _data property,
         but can also load the _flags, _weight,
-        _background, _score, and _psf properties.
+        _background, _score, _psfflux and _psffluxerr properties.
 
         """
 
@@ -1278,11 +1286,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             if not os.path.isfile(filename):
                 raise FileNotFoundError(f"Could not find the image file: {filename}")
             self._data, self._raw_header = read_fits_image(filename, ext='image', output='both')
-            self._flags = read_fits_image(filename, ext='flags')
-            self._weight = read_fits_image(filename, ext='weight')
-            self._background = read_fits_image(filename, ext='background')
-            self._score = read_fits_image(filename, ext='score')
-            # TODO: add more if needed!
+            for att in self.saved_extensions:
+                if att == 'data':
+                    continue
+                array = read_fits_image(filename, ext=att)
+                setattr(self, f'_{att}', array)
 
         else:  # load each data array from a separate file
             if self.filepath_extensions is None:
@@ -1293,7 +1301,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 gotflags = False
                 for extension, filename in zip( self.filepath_extensions, self.get_fullpath(as_list=True) ):
                     if not os.path.isfile(filename):
-                        raise FileNotFoundError(f"Could not find the image file: {filename}")
+                        raise FileNotFoundError(f"Could not find the image extension file: {filename}")
                     if extension == '.image.fits':
                         self._data, self._raw_header = read_fits_image(filename, output='both')
                         gotim = True
@@ -1303,10 +1311,18 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     elif extension == '.flags.fits':
                         self._flags = read_fits_image(filename, output='data')
                         gotflags = True
-                    elif extension == '.score.fits':
-                        self._score = read_fits_image(filename, output='data')
-                    else:
-                        raise ValueError( f'Unknown image extension {extension}' )
+                    else:  # other extensions like score and psfflux
+                        stripped_ext = extension
+                        if stripped_ext.startswith('.'):
+                            stripped_ext = stripped_ext[1:]
+                        if stripped_ext.endswith('.fits'):
+                            stripped_ext = stripped_ext[:-5]
+                        if stripped_ext in self.saved_extensions:
+                            # e.g., for extension .score.fits, self._score = read_fits_image(filename, output='data')
+                            setattr(self, f'_{stripped_ext}', read_fits_image(filename, output='data'))
+                        else:
+                            raise ValueError( f'Unknown image extension {extension}' )
+
                 if not ( gotim and gotweight and gotflags ):
                     raise FileNotFoundError( "Failed to load at least one of image, weight, flags" )
 
@@ -1687,6 +1703,32 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     @score.setter
     def score(self, value):
         self._score = value
+
+    @property
+    def psfflux(self):
+        """
+        The flux of the PSF (2D float array).
+        """
+        if self._data is None and self.filepath is not None:
+            self.load()
+        return self._psfflux
+
+    @psfflux.setter
+    def psfflux(self, value):
+        self._psfflux = value
+
+    @property
+    def psffluxerr(self):
+        """
+        The error on the flux of the PSF (2D float array).
+        """
+        if self._data is None and self.filepath is not None:
+            self.load()
+        return self._psffluxerr
+
+    @psffluxerr.setter
+    def psffluxerr(self, value):
+        self._psffluxerr = value
 
 
 if __name__ == '__main__':
