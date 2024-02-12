@@ -73,8 +73,8 @@ def pytest_sessionfinish(session, exitstatus):
         dbsession.commit()
 
         # comment this line out if you just want tests to pass quietly
-        # if any_objects:
-        #     raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
+        if any_objects:
+            raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
 
         # remove empty folders from the archive
         if ARCHIVE_PATH is not None:
@@ -91,10 +91,10 @@ def pytest_sessionfinish(session, exitstatus):
             remove_empty_folders( ARCHIVE_PATH, remove_root=False )
 
             # check that there's nothing left in the archive after tests cleanup
-            # if os.path.isdir(ARCHIVE_PATH):
-            #     files = os.listdir(ARCHIVE_PATH)
-            #     if len(files) > 0:
-            #         raise RuntimeError(f'There are files left in the archive after tests cleanup: {files}')
+            if os.path.isdir(ARCHIVE_PATH):
+                files = os.listdir(ARCHIVE_PATH)
+                if len(files) > 0:
+                    raise RuntimeError(f'There are files left in the archive after tests cleanup: {files}')
 
 
 # data that is included in the repo and should be available for tests
