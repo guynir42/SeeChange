@@ -1,5 +1,6 @@
 import pytest
 import pathlib
+import uuid
 
 import numpy as np
 import sqlalchemy as sa
@@ -9,10 +10,13 @@ from models.base import FileOnDiskMixin, SmartSession
 from models.image import Image
 
 
-def test_preprocessing(provenance_decam_prep, decam_exposure, test_config, preprocessor, decam_default_calibrators):
+def test_preprocessing(
+        provenance_decam_prep, decam_exposure, test_config, preprocessor, decam_default_calibrators, archive
+):
     # The decam_default_calibrators fixture is included so that
     # _get_default_calibrators won't be called as a side effect of calls
     # to Preprocessor.run().  (To avoid committing.)
+    preprocessor.pars.test_parameter = uuid.uuid4().hex  # make a new Provenance for this temporary image
     ds = preprocessor.run( decam_exposure, 'N1' )
     assert preprocessor.has_recalculated
 
@@ -33,8 +37,8 @@ def test_preprocessing(provenance_decam_prep, decam_exposure, test_config, prepr
     #  from the raw image header.  (If not, when the file gets
     #  written out as floats, they'll be there and will screw
     #  things up.)
-    assert 'BSCALE' not in ds.image.raw_header
-    assert 'BZERO' not in ds.image.raw_header
+    assert 'BSCALE' not in ds.image.header
+    assert 'BZERO' not in ds.image.header
 
     # Flatfielding should have improved the sky noise, though for DECam
     # it looks like this is a really small effect.  I've picked out a
@@ -60,9 +64,7 @@ def test_preprocessing(provenance_decam_prep, decam_exposure, test_config, prepr
     try:
         ds.save_and_commit()
         basepath = pathlib.Path( FileOnDiskMixin.local_path ) / ds.image.filepath
-        archpath = pathlib.Path(test_config.value('archive.local_read_dir'))
-        archpath /= pathlib.Path(test_config.value('archive.path_base'))
-        archpath /= ds.image.filepath
+        archpath = archive.test_folder_path / ds.image.filepath
 
         for suffix, compimage in zip( [ '.image.fits', '.weight.fits', '.flags.fits' ],
                                       [ ds.image.data, ds.image._weight, ds.image._flags ] ):
