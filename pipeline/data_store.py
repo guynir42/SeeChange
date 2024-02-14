@@ -1432,7 +1432,7 @@ class DataStore:
         """Delete everything associated with this sub-image.
 
         All data products in the data store are removed from the DB,
-        and all files on disk are deleted.
+        and all files on disk and in the archive are deleted.
 
         NOTE: does *not* delete the exposure.  (There may well be other
         data stores out there with different images from the same
@@ -1461,7 +1461,7 @@ class DataStore:
 
                 for obj in obj_list:  # now do the deleting without flushing
                     if isinstance(obj, FileOnDiskMixin):
-                        obj.delete_from_disk_and_database(session=session, commit=False)
+                        obj.delete_from_disk_and_database(session=session, commit=False, archive=True)
                     if obj in session and sa.inspect(obj).pending:
                         session.expunge(obj)
                     if obj in session and sa.inspect(obj).persistent:

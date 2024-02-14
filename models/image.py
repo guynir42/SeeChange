@@ -40,6 +40,9 @@ from models.enums_and_bitflags import (
 
 import util.config as config
 
+from improc.tools import sigma_clipping
+
+
 # links many-to-many Image to all the Images used to create it
 image_upstreams_association_table = sa.Table(
     'image_upstreams_association',
@@ -439,7 +442,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         self._aligner = None  # an ImageAligner object (lazy loaded using the provenance parameters)
         self._aligned_images = None  # a list of Images that are aligned to one image (lazy calculated, not committed)
-        self._combined_filepath = None  # a filepath built from invent_filepath and a hash of the upstream images
+        self._nandata = None
 
         self._instrument_object = None
         self._bitflag = 0
@@ -479,7 +482,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         self._aligner = None
         self._aligned_images = None
-        self._combined_filepath = None
+        self._nandata = None
 
         self._instrument_object = None
         this_object_session = orm.Session.object_session(self)
@@ -695,6 +698,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         """
         copy_attributes = cls.saved_extensions + [
             'header',
+            'info',
         ]
         simple_attributes = [
             'ra',
@@ -1668,6 +1672,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @data.setter
     def data(self, value):
+        self._nandata = None
         self._data = value
 
     @property
@@ -1695,6 +1700,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @flags.setter
     def flags(self, value):
+        self._nandata = None
         self._flags = value
 
     @property
@@ -1761,6 +1767,39 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     @psffluxerr.setter
     def psffluxerr(self, value):
         self._psffluxerr = value
+
+    @property
+    def nandata(self):
+        """The image data, only masked with NaNs wherever the flag is not zero. """
+        if self._nandata is None:
+            self._nandata = self.data.copy()
+            if self.flags is not None:
+                self._nandata[self.flags != 0] = np.nan
+        return self._nandata
+
+    @nandata.setter
+    def nandata(self, value):
+        self._nandata = value
+
+    def show(self, **kwargs):
+        """
+        Display the image using the matplotlib imshow function.
+
+        Parameters
+        ----------
+        **kwargs: passed on to matplotlib.pyplot.imshow()
+            Additional keyword arguments to pass to imshow.
+        """
+        import matplotlib.pyplot as plt
+        mu, sigma = sigma_clipping(self.data)
+        defaults = {
+            'cmap': 'gray',
+            # 'origin': 'lower',
+            'vmin': mu - 3 * sigma,
+            'vmax': mu + 5 * sigma,
+        }
+        defaults.update(kwargs)
+        plt.imshow(self.nandata, **defaults)
 
 
 if __name__ == '__main__':
