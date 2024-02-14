@@ -148,7 +148,10 @@ class Subtractor:
         # do some additional processing of the new image
         mu, sigma = sigma_clipping(new_image_data)
         new_image_data = (new_image_data - mu) / sigma  # TODO: skip this if we already background subtracted
-        new_image_noise = new_image_noise / sigma
+        if new_image_noise is not None:
+            new_image_noise = new_image_noise / sigma
+        else:
+            new_image_noise = 1.0  # TODO: this can go away after we verify images always have background estimates!
         new_image_flux_zp = new_image_flux_zp / sigma
 
         new_image_data = self.inpainter.run(new_image_data, new_image.flags, new_image.weight)
