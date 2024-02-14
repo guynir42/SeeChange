@@ -9,7 +9,7 @@ import astropy.units as u
 
 from improc.tools import sigma_clipping, make_gaussian, make_cutouts
 
-os.environ['INTERACTIVE'] = '1'  # for diagnostics only
+# os.environ['INTERACTIVE'] = '1'  # for diagnostics only
 
 CUTOUT_SIZE = 15
 BIG_CUTOUT_SIZE = 51
