@@ -1352,9 +1352,9 @@ class DataStore:
             if obj is None:
                 continue
 
-            if isinstance(obj, list):  # handle cutouts and measurements
+            if isinstance(obj, list) and len(obj) > 0:  # handle cutouts and measurements
                 # TODO: the measurements is not a problem because they are probably not going to live on disk.
-                #  The cuouts, on the other hand, should probably be saved together as a list into one file.
+                #  The cutouts, on the other hand, should probably be saved together as a list into one file.
                 #  We should implement something to do that sort of batch save on the cutouts.
                 raise NotImplementedError( 'Saving lists of objects (cutouts) is not implemented yet.' )
 
@@ -1403,8 +1403,8 @@ class DataStore:
             if self.image is not None:
                 self.image = self.image.merge_all(session)
                 for att in ['sources', 'psf', 'wcs', 'zp']:
-                    setattr(self, att, None)  # avoid automatically loading the image with non-merged products
-                for att in ['exposure', 'sources', 'psf', 'wcs', 'zp', '_aligned_images']:
+                    setattr(self, att, None)  # avoid automatically appending to the image self's non-merged products
+                for att in ['exposure', 'sources', 'psf', 'wcs', 'zp']:
                     if getattr(self.image, att, None) is not None:
                         setattr(self, att, getattr(self.image, att))
 
@@ -1415,11 +1415,11 @@ class DataStore:
                 self.image_id = self.image.id
 
             if self.sub_image is not None:
+                self.sub_image.new_image = self.image  # update with the now-merged image
                 self.sub_image = self.sub_image.merge_all(session)  # merges the upstream_images and downstream products
-                self.ref.id = self.sub_image.ref_image_id  # just to make sure the ref has an ID for merging
-                for att in ['detections', 'cutouts', 'measurements']:
-                    if getattr(self.sub_image, att, None) is not None:
-                        setattr(self, att, getattr(self.sub_image, att))
+                self.ref_image.id = self.sub_image.ref_image_id  # just to make sure the ref has an ID for merging
+                self.detections = self.sub_image.sources
+                # TODO: handle cutouts and measurements
 
             self.psf = self.image.psf
             self.sources = self.image.sources

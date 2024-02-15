@@ -235,15 +235,7 @@ class Detector:
                 #  in any event, need a way of passing parameters
                 #  Question: why is it not enough to just define what you need in the Parameters object?
                 #  Related to issue #50
-                if self.pars.method == 'sep':
-                    detections = self.extract_sources_sep(image)
-                elif self.pars.method == 'sextractor':
-                    psffile = None if self.pars.psf is None else self.pars.psf.get_fullpath()
-                    detections, _ = self.extract_sources_sextractor( image, psffile=psffile )
-                elif self.pars.method == 'filter':
-                    detections = self.extract_sources_filter(image)
-                else:
-                    raise ValueError( f'Unknown source extraction method: "{self.pars.method}"' )
+                detections, _ = self.extract_sources( image )
 
                 detections.image = image
 
@@ -253,6 +245,7 @@ class Detector:
                     if detections.provenance.id != prov.id:
                         raise ValueError('Provenance mismatch for detections and provenance!')
 
+            ds.sub_image.sources = detections
             ds.detections = detections
 
         else:  # regular image
@@ -270,16 +263,7 @@ class Detector:
                 if image is None:
                     raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
-                psf = None
-                if self.pars.method == 'sep':
-                    sources = self.extract_sources_sep(image, *args, **kwargs)
-                elif self.pars.method == 'sextractor':
-                    sources, psf = self.extract_sources_sextractor(image, *args, **kwargs)
-                elif self.pars.method == 'filter':
-                    raise ValueError( 'Cannot use "filter" method on regular image!' )
-                else:
-                    raise ValueError(f'Unknown extraction method "{self.pars.method}"')
-                # sources, psf = self.extract_sources( image )
+                sources, psf = self.extract_sources( image )
                 sources.image = image
                 if sources.provenance is None:
                     sources.provenance = prov
@@ -302,7 +286,29 @@ class Detector:
         # make sure this is returned to be used in the next step
         return ds
 
-    def extract_sources_sextractor( self, image, *args, psffile=None, **kwargs ):
+    def extract_sources(self, image):
+        """Calls one of the extraction methods, based on self.pars.method. """
+        sources = None
+        psf = None
+        if self.pars.method == 'sep':
+            sources = self.extract_sources_sep(image)
+        elif self.pars.method == 'sextractor':
+            if self.pars.subtraction:
+                psffile = None if self.pars.psf is None else self.pars.psf.get_fullpath()
+                sources, _ = self.extract_sources_sextractor(image, psffile=psffile)
+            else:
+                sources, psf = self.extract_sources_sextractor(image)
+        elif self.pars.method == 'filter':
+            if self.pars.subtraction:
+                sources = self.extract_sources_filter(image)
+            else:
+                raise ValueError('Cannot use "filter" method on regular image!')
+        else:
+            raise ValueError(f'Unknown extraction method "{self.pars.method}"')
+
+        return sources, psf
+
+    def extract_sources_sextractor( self, image, psffile=None ):
         tempnamebase = ''.join( random.choices( 'abcdefghijklmnopqrstuvwxyz', k=10 ) )
         sourcepath = pathlib.Path( FileOnDiskMixin.temp_path ) / f'{tempnamebase}.sources.fits'
         psfpath = pathlib.Path( psffile ) if psffile is not None else None

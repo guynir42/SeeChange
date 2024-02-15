@@ -155,6 +155,22 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             return None
         return image[0]
 
+    @new_image.setter
+    def new_image(self, value):
+        if value is None:
+            raise ValueError('Do not assign None to new_image. Simply clear the upstream_images list.')
+        if not isinstance(value, Image):
+            raise ValueError("The new_image must be an Image object.")
+        if len(self.upstream_images) != 2:
+            raise ValueError("This only works for subtractions with exactly two upstream images.")
+
+        if self.upstream_images[0].id == self.ref_image_id:
+            self.upstream_images[1] = value
+        elif self.upstream_images[1].id == self.ref_image_id:
+            self.upstream_images[0] = value
+        else:
+            raise ValueError(f"The ref_image_id ({self.ref_image_id}) is not in the upstream_images list.")
+
     is_sub = sa.Column(
         sa.Boolean,
         nullable=False,
@@ -501,7 +517,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         Returns the merged image with all its products on the same session.
         """
         new_image = self.safe_merge(session=session)
-        session.flush()
+        session.flush()  # make sure new_image gets an ID
         if self.sources is not None:
             self.sources.image = new_image
             self.sources.image_id = new_image.id
