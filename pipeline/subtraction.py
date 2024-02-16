@@ -170,7 +170,7 @@ class Subtractor:
         output['outim'] = output.pop('sub_image')
         output['zogy_score_uncorrected'] = output.pop('score')
         output['score'] = output.pop('score_corr')
-        output['alpha_std'] = output.pop('alpha_err')
+        output['alpha_err'] = output.pop('alpha_std')
 
         outwt, outfl = zogy_add_weights_flags(
             ref_image.weight,
@@ -296,6 +296,8 @@ class Subtractor:
                 if 'alpha' in outdict and 'alpha_err' in outdict:
                     sub_image.psfflux = outdict['alpha']
                     sub_image.psffluxerr = outdict['alpha_err']
+
+                sub_image.subtraction_output = outdict  # save the full output for debugging
 
         ds.sub_image = sub_image
 

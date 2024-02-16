@@ -174,7 +174,7 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     )
 
     # using Equation 22, for both directions
-    Z0 = 4 * np.pi * np.conj(P_r_f) * np.conj(P_n_f) * (F_n * P_n_f * R_f - F_r * P_r_f * N_f) / denominator
+    Z0 = 4 * np.pi * F_n * F_r * np.conj(P_r_f) * np.conj(P_n_f) * (F_n * P_n_f * R_f - F_r * P_r_f * N_f) / denominator
     Z1_f = Z0 * np.fft.fftshift(k1) / m1  # make sure the zero frequency is in the corner
     Z2_f = Z0 * np.fft.fftshift(k2) / m2  # make sure the zero frequency is in the corner
 
@@ -234,7 +234,7 @@ def zogy_subtract(image_ref, image_new, psf_ref, psf_new, noise_ref, noise_new, 
     V_S_sqrt = np.sqrt(V_S, where=~zero_mask)
     V_S_sqrt[zero_mask] = 1
     S_corr = S / V_S_sqrt
-    Z_corr = Z / V_S_sqrt
+    Z_corr = Z / V_S
 
     # PSF photometry part:
     # Eqs. 41-43 from paper
