@@ -156,7 +156,7 @@ class Subtractor:
 
         new_image_data = self.inpainter.run(new_image_data, new_image.flags, new_image.weight)
 
-        out_tuple = zogy_subtract(
+        output = zogy_subtract(
             ref_image_data,
             new_image_data,
             ref_image_psf,
@@ -166,8 +166,11 @@ class Subtractor:
             ref_image_flux_zp,
             new_image_flux_zp,
         )
-        keys = ['outim', 'psf', 'zogy_score_uncorrected', 'score', 'alpha', 'alpha_err']
-        output = dict(zip(keys, out_tuple))
+        # rename for compatibility
+        output['outim'] = output.pop('sub_image')
+        output['zogy_score_uncorrected'] = output.pop('score')
+        output['score'] = output.pop('score_corr')
+        output['alpha_std'] = output.pop('alpha_err')
 
         outwt, outfl = zogy_add_weights_flags(
             ref_image.weight,
