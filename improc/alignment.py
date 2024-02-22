@@ -114,7 +114,7 @@ class ImageAligner:
         self.pars = ParsImageAligner( **kwargs )
 
     @staticmethod
-    def image_source_warped_to_target(image, target, sources):
+    def image_source_warped_to_target(image, target):
         """Create a new Image object from the source and target images.
         Most image attributes are from the source image, but the coordinates
         (and corners) are taken from the target image.
@@ -128,11 +128,6 @@ class ImageAligner:
             The source image to be warped.
         target: Image
             The target image to which the source image will be warped.
-        sources: SourceList
-            The sources detected in the source image.
-            This is used to get the extraction parameters,
-            so we can re-extract sources and re-calculate the PSF
-            of the warped image.
 
         Returns
         -------
@@ -147,12 +142,6 @@ class ImageAligner:
 
         warpedim.calculate_coordinates()
         warpedim.zp = image.zp  # zp not available when loading from DB (zp.image_id doesn't point to warpedim)
-
-        extractor = Detector()
-        extractor.pars.override(sources.provenance.parameters, ignore_addons=True)
-        warpedsrc, warpedpsf = extractor.extract_sources(warpedim)
-        warpedim.sources = warpedsrc
-        warpedim.psf = warpedpsf
         # TODO: are the WorldCoordinates also included? Are they valid for the warped image?
 
         warpedim.type = 'Warped'
@@ -324,12 +313,21 @@ class ImageAligner:
             if res.returncode != 0:
                 raise SubprocessFailure(res)
 
-            warpedim = self.image_source_warped_to_target(image, target, sources)
+            warpedim = self.image_source_warped_to_target(image, target)
 
             warpedim.data, warpedim.header = read_fits_image( outim, output="both" )
+            warpedim.header['SATURATA'] = image.header['SATURATA']
+            warpedim.header['SATURATB'] = image.header['SATURATB']
             warpedim.weight = read_fits_image(outwt)
             warpedim.flags = read_fits_image(outfl)
             warpedim.flags = np.rint(warpedim.flags).astype(np.uint16)  # convert back to integers
+
+            # re-calculate the source list and PSF for the warped image
+            extractor = Detector()
+            extractor.pars.override(sources.provenance.parameters, ignore_addons=True)
+            warpedsrc, warpedpsf = extractor.extract_sources(warpedim)
+            warpedim.sources = warpedsrc
+            warpedim.psf = warpedpsf
 
             # expand bad pixel mask to allow for warping that smears the badness
             warpedim.flags = dilate_bitflag(warpedim.flags, iterations=1)  # use the default structure
