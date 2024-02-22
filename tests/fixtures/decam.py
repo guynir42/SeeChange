@@ -4,6 +4,7 @@ import wget
 import yaml
 import subprocess
 import shutil
+import warnings
 
 import sqlalchemy as sa
 import numpy as np
@@ -17,6 +18,7 @@ from models.decam import DECam  # need this import to make sure DECam is added t
 from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
+from models.source_list import SourceList
 from models.datafile import DataFile
 from models.reference import Reference
 
@@ -267,6 +269,15 @@ def decam_datastore(
 
 
 @pytest.fixture
+def decam_processed_image(decam_datastore):
+
+    ds = decam_datastore
+
+    yield ds.image
+
+    # the datastore should delete everything, so we don't need to do anything here
+
+@pytest.fixture
 def decam_ref_datastore( code_version, persistent_dir, cache_dir, data_dir, datastore_factory ):
     persistent_dir = os.path.join(persistent_dir, 'test_data/DECam_examples')
     cache_dir = os.path.join(cache_dir, 'DECam')
@@ -408,3 +419,73 @@ def decam_reference(decam_ref_datastore):
             if sa.inspect(ref).persistent:
                 session.delete(ref.provenance)  # should also delete the reference image
             session.commit()
+
+
+@pytest.fixture
+def decam_subtraction(decam_reference, decam_processed_image, subtractor, cache_dir):
+    cache_dir = os.path.join(cache_dir, 'DECam')
+    filepath = '115/c4d_20221104_074232_N1_g_Diff_SVNUER_u-4ea5cc.image.fits'
+
+    upstreams = []
+    for im in [decam_reference.image, decam_processed_image]:
+        for att in ['sources', 'psf', 'wcs', 'zp']:
+            upstreams.append(getattr(im, att).provenance)
+
+    prov = Provenance(
+        process='subtraction',
+        code_version=decam_processed_image.provenance.code_version,
+        parameters=subtractor.pars.get_critical_pars(),
+        upstreams=upstreams,
+        is_testing=True,
+    )
+
+    if prov.id[:6] not in filepath:
+        warnings.warn(f"Provenance ID {prov.id[:6]} not in filepath {filepath}")
+
+    if os.path.isfile(os.path.join(cache_dir, filepath)) and False:
+        sub_im = Image.copy_from_cache(cache_dir, filepath)
+        sub_im.upstream_images = [decam_reference.image, decam_processed_image]
+        sub_im.ref_image_id = decam_reference.image.id
+        sub_im.ref_image = decam_reference.image
+        sub_im.provenance = prov
+    else:
+        ds = subtractor.run(decam_processed_image)
+
+        ds.sub_image.save()
+        sub_im = ds.sub_image
+        sub_im.copy_to_cache(cache_dir)
+
+    yield sub_im
+
+    if 'sub_im' in locals():
+        sub_im.delete_from_disk_and_database(archive=True)
+
+
+@pytest.fixture
+def decam_detection_list(decam_subtraction, detector, cache_dir):
+    cache_dir = os.path.join(cache_dir, 'DECam')
+
+    prov = Provenance(
+        process='detection',
+        code_version=decam_subtraction.provenance.code_version,
+        parameters=detector.pars.get_critical_pars(),
+        upstreams=[decam_subtraction.provenance],
+        is_testing=True,
+    )
+    filepath = decam_subtraction.filepath + f'.detections_{prov.id[:6]}.npy'
+
+    if os.path.isfile(filepath):
+        detections = SourceList.copy_from_cache(cache_dir, filepath)
+        detections.image_id = decam_subtraction.id
+        detections.provenance = prov
+    else:  # no cache, need to product a new object
+        ds = detector.run(decam_subtraction)
+        detections = ds.sub_image.sources
+        detections.provenance = prov
+        detections.save()
+        detections.copy_to_cache(cache_dir)
+
+    yield detections
+
+    # must delete the detections (especially the file) because I'm not sure the datastore will delete it
+    detections.delete_from_disk_and_database(archive=True)

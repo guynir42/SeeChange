@@ -20,6 +20,7 @@ from models.image import Image
 
 from pipeline.data_store import DataStore
 from pipeline.parameters import Parameters
+from pipeline.detection import Detector
 from pipeline.utils import read_fits_image
 from improc.bitmask_tools import dilate_bitflag
 
@@ -113,7 +114,7 @@ class ImageAligner:
         self.pars = ParsImageAligner( **kwargs )
 
     @staticmethod
-    def image_source_warped_to_target(image, target):
+    def image_source_warped_to_target(image, target, sources):
         """Create a new Image object from the source and target images.
         Most image attributes are from the source image, but the coordinates
         (and corners) are taken from the target image.
@@ -127,6 +128,11 @@ class ImageAligner:
             The source image to be warped.
         target: Image
             The target image to which the source image will be warped.
+        sources: SourceList
+            The sources detected in the source image.
+            This is used to get the extraction parameters,
+            so we can re-extract sources and re-calculate the PSF
+            of the warped image.
 
         Returns
         -------
@@ -140,9 +146,14 @@ class ImageAligner:
                 setattr(warpedim, f'{att}_corner_{corner}', getattr(target, f'{att}_corner_{corner}'))
 
         warpedim.calculate_coordinates()
-        warpedim.psf = image.psf  # psf not available when loading from DB (psf.image_id doesn't point to warpedim)
         warpedim.zp = image.zp  # zp not available when loading from DB (zp.image_id doesn't point to warpedim)
-        # TODO: are SourceList and WorldCoordinates also included? Are they valid for the warped image?
+
+        extractor = Detector()
+        extractor.pars.override(sources.provenance.parameters, ignore_addons=True)
+        warpedsrc, warpedpsf = extractor.extract_sources(warpedim)
+        warpedim.sources = warpedsrc
+        warpedim.psf = warpedpsf
+        # TODO: are the WorldCoordinates also included? Are they valid for the warped image?
 
         warpedim.type = 'Warped'
         warpedim.bitflag = 0
@@ -313,7 +324,7 @@ class ImageAligner:
             if res.returncode != 0:
                 raise SubprocessFailure(res)
 
-            warpedim = self.image_source_warped_to_target(image, target)
+            warpedim = self.image_source_warped_to_target(image, target, sources)
 
             warpedim.data, warpedim.header = read_fits_image( outim, output="both" )
             warpedim.weight = read_fits_image(outwt)
