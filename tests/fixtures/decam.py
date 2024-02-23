@@ -442,7 +442,7 @@ def decam_subtraction(decam_reference, decam_processed_image, subtractor, cache_
     if prov.id[:6] not in filepath:
         warnings.warn(f"Provenance ID {prov.id[:6]} not in filepath {filepath}")
 
-    if os.path.isfile(os.path.join(cache_dir, filepath)) and False:
+    if os.path.isfile(os.path.join(cache_dir, filepath)):
         sub_im = Image.copy_from_cache(cache_dir, filepath)
         sub_im.upstream_images = [decam_reference.image, decam_processed_image]
         sub_im.ref_image_id = decam_reference.image.id

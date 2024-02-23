@@ -1109,12 +1109,12 @@ class DataStore:
         Parameters
         ----------
         provenance: Provenance object
-            The provenance to use for the measurements.
+            The provenance to use for the cutouts.
             This provenance should be consistent with
             the current code version and critical parameters.
             If none is given, will use the latest provenance
             for the "cutting" process.
-        session: sqlalchemy.orm.session.Session or SmartSession
+        session: sqlalchemy.orm.session.Session
             An optional session to use for the database query.
             If not given, will use the session stored inside the
             DataStore object; if there is none, will open a new session
@@ -1122,8 +1122,8 @@ class DataStore:
 
         Returns
         -------
-        measurements: list of Measurement objects
-            The list of measurements, or None if no matching measurements are found.
+        cutouts: list of Cutouts objects
+            The list of cutouts, that will be empty if no matching cutouts are found.
 
         """
         process_name = 'cutting'
@@ -1177,7 +1177,7 @@ class DataStore:
             the current code version and critical parameters.
             If none is given, will use the latest provenance
             for the "measurement" process.
-        session: sqlalchemy.orm.session.Session or SmartSession
+        session: sqlalchemy.orm.session.Session
             An optional session to use for the database query.
             If not given, will use the session stored inside the
             DataStore object; if there is none, will open a new session
@@ -1186,7 +1186,7 @@ class DataStore:
         Returns
         -------
         measurements: list of Measurement objects
-            The list of measurements, or None if no matching measurements are found.
+            The list of measurements, that will be empty if no matching measurements are found.
 
         """
         process_name = 'measurement'
