@@ -9,7 +9,15 @@ from sqlalchemy.ext.associationproxy import association_proxy
 
 import h5py
 
-from models.base import Base, SeeChangeBase, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBadness
+from models.base import (
+    SmartSession,
+    Base,
+    SeeChangeBase,
+    AutoIDMixin,
+    FileOnDiskMixin,
+    SpatiallyIndexed,
+    HasBitFlagBadness,
+)
 from models.enums_and_bitflags import CutoutsFormatConverter
 
 
@@ -66,13 +74,13 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
     sub_image_id = association_proxy('sources', 'image_id')
     sub_image = association_proxy('sources', 'image')
 
-    pixel_x = sa.Column(
+    x = sa.Column(
         sa.Integer,
         nullable=False,
         doc="X pixel coordinate of the center of the cutout. "
     )
 
-    pixel_y = sa.Column(
+    y = sa.Column(
         sa.Integer,
         nullable=False,
         doc="Y pixel coordinate of the center of the cutout. "
@@ -162,8 +170,14 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             f"from SourceList {self.sources_id} "
             f"(number {self.index_in_sources}) "
             f"from Image {self.sub_image_id} "
-            f"at x,y= {self.pixel_x}, {self.pixel_y}>"
+            f"at x,y= {self.x}, {self.y}>"
         )
+
+    def __setattr__(self, key, value):
+        if key in ['x', 'y'] and value is not None:
+            value = int(round(value))
+
+        super().__setattr__(key, value)
 
     @staticmethod
     def get_data_attributes():
@@ -228,8 +242,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         cutout.sources = detections
         cutout.index_in_sources = source_index
         cutout.source_row = dict(detections.data[source_index])
-        cutout.pixel_x = detections.x[source_index]
-        cutout.pixel_y = detections.y[source_index]
+        cutout.x = detections.x[source_index]
+        cutout.y = detections.y[source_index]
         cutout.ra = cutout.source_row['ra']
         cutout.dec = cutout.source_row['dec']
         cutout.provenance = provenance
@@ -270,6 +284,42 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
 
         return filename
 
+    def _save_dataset_to_hdf5(self, file, groupname):
+        """Save the dataset from this Cutouts object into an HDF5 group for an open file.
+
+        Parameters
+        ----------
+        file: h5py.File
+            The open HDF5 file to save to.
+        groupname: str
+            The name of the group to save into. This should be "source_<number>"
+        """
+        if groupname in file:
+            del file[groupname]
+
+        # handle the data arrays
+        for att in self.get_data_attributes():
+            if att == 'source_row':
+                continue
+
+            data = getattr(self, att)
+            file.create_dataset(
+                f'{groupname}/{att}',
+                data=data,
+                shape=data.shape,
+                dtype=data.dtype,
+                compression='gzip'
+            )
+
+        # handle the source_row dictionary
+        target = file[groupname].attrs
+        for key in target.keys():  # first clear the existing keys
+            del target[key]
+
+        # then add the new ones
+        for key, value in self.source_row.items():
+            target[key] = value
+
     def save(self, filename=None, **kwargs):
         """Save a single Cutouts object into a file.
 
@@ -293,32 +343,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
 
         if self.format == 'hdf5':
             with h5py.File(fullname, 'a') as file:
-                if f'source_{self.index_in_sources}' in file:
-                    del file[f'source_{self.index_in_sources}']
-
-                # handle the data arrays
-                for att in self.get_data_attributes():
-                    if att == 'source_row':
-                        continue
-
-                    data = getattr(self, att)
-                    file.create_dataset(
-                        f'source_{self.index_in_sources}/{att}',
-                        data=data,
-                        shape=data.shape,
-                        dtype=data.dtype,
-                        compression='gzip'
-                    )
-
-                # handle the source_row dictionary
-                target = file[f'source_{self.index_in_sources}'].attrs
-                for key in target.keys():  # first clear the existing keys
-                    del target[key]
-
-                # then add the new ones
-                for key, value in self.source_row.items():
-                    target[key] = value
-
+                self._save_dataset_to_hdf5(file, f'source_{self.index_in_sources}')
         elif self.format == 'fits':
             raise NotImplementedError('Saving cutouts to fits is not yet implemented.')
         elif self.format in ['jpg', 'png']:
@@ -330,8 +355,65 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         super().save(fullname, **kwargs)
 
     @classmethod
-    def save_list(cls, cutouts_list):
-        pass
+    def save_list(cls, cutouts_list, filename=None, **kwargs):
+        """Save a list of Cutouts objects into a file.
+
+        Parameters
+        ----------
+        cutouts_list: list of Cutouts
+            The list of Cutouts objects to save.
+        filename: str, optional
+            The (relative/full path) filename to save to. If not given, will use the default filename.
+        kwargs: dict
+            Any additional keyword arguments to pass to the File
+        """
+        if not isinstance(cutouts_list, list):
+            raise TypeError("The input must be a list of Cutouts objects.")
+        if len(cutouts_list) == 0:
+            return  # silently do nothing
+
+        for cutout in cutouts_list:
+            if not isinstance(cutout, cls):
+                raise TypeError("The input must be a list of Cutouts objects.")
+            if not cutout.has_data:
+                raise RuntimeError("The Cutouts data is not loaded. Cannot save.")
+
+        if filename is None:
+            filename = cutouts_list[0].invent_filepath()
+
+        fullname = os.path.join(cutouts_list[0].local_path, filename)
+        cutouts_list[0].safe_mkdir(os.path.dirname(fullname))
+
+        if cutouts_list[0].format == 'hdf5':
+            with h5py.File(fullname, 'a') as file:
+                for cutout in cutouts_list:
+                    cutout._save_dataset_to_hdf5(file, f'source_{cutout.index_in_sources}')
+                    cutout.filepath = filename
+        elif cutouts_list[0].format == 'fits':
+            raise NotImplementedError('Saving cutouts to fits is not yet implemented.')
+        elif cutouts_list[0].format in ['jpg', 'png']:
+            raise NotImplementedError('Saving cutouts to jpg or png is not yet implemented.')
+        else:
+            raise TypeError(f"Unable to save cutouts file of type {cutouts_list[0].format}")
+
+        # make sure to also save using the FileOnDiskMixin method
+        FileOnDiskMixin.save(cutouts_list[0], fullname, **kwargs)
+
+    def _load_dataset_from_hdf5(self, file, groupname):
+        """Load the dataset from an HDF5 group into this Cutouts object.
+
+        Parameters
+        ----------
+        file: h5py.File
+            The open HDF5 file to load from.
+        groupname: str
+            The name of the group to load from. This should be "source_<number>"
+        """
+        for att in self.get_data_attributes():
+            if att == 'source_row':
+                self.source_row = dict(file[f'{groupname}'].attrs)
+            else:
+                setattr(self, att, np.array(file[f'{groupname}/{att}']))
 
     def load(self, filepath):
         """Load the data for this cutout from a file.
@@ -343,12 +425,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         """
         if self.format == 'hdf5':
             with h5py.File(filepath, 'r') as file:
-                for att in self.get_data_attributes():
-                    if att == 'source_row':
-                        self.source_row = dict(file[f'source_{self.index_in_sources}'].attrs)
-                    else:
-                        setattr(self, att, np.array(file[f'source_{self.index_in_sources}/{att}']))
-
+                self._load_dataset_from_hdf5(file, f'source_{self.index_in_sources}')
         elif self.format == 'fits':
             raise NotImplementedError('Loading cutouts from fits is not yet implemented.')
         elif self.format in ['jpg', 'png']:
@@ -379,13 +456,14 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         fmt = os.path.splitext(filepath)[1][1:]
         if fmt == 'h5':
             fmt = 'hdf5'
+
         cutout.format = fmt
         cutout.index_in_sources = source_number
         cutout.load(filepath)
-        cutout.pixel_x = cutout.source_row['x']
-        cutout.pixel_y = cutout.source_row['y']
-        cutout.ra = cutout.source_row['ra']
-        cutout.dec = cutout.source_row['dec']
+
+        for att in ['ra', 'dec', 'x', 'y']:
+            if att in cutout.source_row:
+                setattr(cutout, att, cutout.source_row[att])
 
         if filepath.startswith(cutout.local_path):
             filepath = filepath[len(cutout.local_path) + 1:]
@@ -395,8 +473,189 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
 
         return cutout
 
-    def load_list(self, filepath):
-        pass
+    @classmethod
+    def load_list(cls, filepath):
+        """Load all Cutouts object that were saved to a file
+
+        Parameters
+        ----------
+        filepath: str
+            The (relative/full path) filename to load from.
+            The file format is determined by the extension.
+
+        Returns
+        -------
+        cutouts: Cutouts
+            The list of cutouts loaded from the file.
+        """
+        ext = os.path.splitext(filepath)[1][1:]
+        if ext == 'h5':
+            format = 'hdf5'
+        else:
+            format = ext
+
+        cutouts = []
+        if filepath.startswith(Cutouts.local_path):
+            rel_filepath = filepath[len(Cutouts.local_path) + 1:]
+
+        if format == 'hdf5':
+            with h5py.File(filepath, 'r') as file:
+                for groupname in file.keys():
+                    if groupname.startswith('source_'):
+                        number = int(groupname.split('_')[1])
+                        cutout = cls()
+                        cutout.format = format
+                        cutout.index_in_sources = number
+                        cutout._load_dataset_from_hdf5(file, groupname)
+                        cutout.filepath = rel_filepath
+                        for att in ['ra', 'dec', 'x', 'y']:
+                            if att in cutout.source_row:
+                                setattr(cutout, att, cutout.source_row[att])
+                        cutouts.append(cutout)
+
+        elif format == 'fits':
+            raise NotImplementedError('Loading cutouts from fits is not yet implemented.')
+        elif format in ['jpg', 'png']:
+            raise NotImplementedError('Loading cutouts from jpg or png is not yet implemented.')
+        else:
+            raise TypeError(f"Unable to load cutouts file of type {format}")
+
+        cutouts.sort(key=lambda x: x.index_in_sources)
+        return cutouts
+
+    def remove_data_from_disk(self, remove_folders=True, remove_downstream_data=False):
+        """Delete the data from local disk, if it exists.
+        Will remove the dataset for this specific cutout from the file,
+        and remove the file if this is the last cutout in the file.
+        If remove_folders=True, will also remove any folders
+        if they are empty after the deletion.
+        This function will not remove database rows or archive files,
+        only cleanup local storage for this object and its downstreams.
+
+        To remove both the files and the database entry, use
+        delete_from_disk_and_database() instead.
+
+        Parameters
+        ----------
+        remove_folders: bool
+            If True, will remove any folders on the path to the files
+            associated to this object, if they are empty.
+        remove_downstream_data: bool
+            This is not used, but kept here for backward compatibility with the base class.
+        """
+        if self.filepath is not None:
+            # get the filepath, but don't check if the file exists!
+            for f in self.get_fullpath(as_list=True, nofile=True):
+                if os.path.exists(f):
+                    need_to_delete = False
+                    if self.format == 'hdf5':
+                        with h5py.File(f, 'a') as file:
+                            del file[f'source_{self.index_in_sources}']
+                            if len(file) == 0:
+                                need_to_delete = True
+                    elif self.format == 'fits':
+                        raise NotImplementedError('Removing cutouts from fits is not yet implemented.')
+                    elif self.format in ['jpg', 'png']:
+                        raise NotImplementedError('Removing cutouts from jpg or png is not yet implemented.')
+                    else:
+                        raise TypeError(f"Unable to remove cutouts file of type {self.format}")
+
+                    if need_to_delete:
+                        os.remove(f)
+                        if remove_folders:
+                            folder = f
+                            for i in range(10):
+                                folder = os.path.dirname(folder)
+                                if len(os.listdir(folder)) == 0:
+                                    os.rmdir(folder)
+                                else:
+                                    break
+
+    def delete_from_archive(self, remove_downstream_data=False):
+        """Delete the file from the archive, if it exists.
+        Will only
+        This will not remove the file from local disk, nor
+        from the database.  Use delete_from_disk_and_database()
+        to do that.
+
+        Parameters
+        ----------
+        remove_downstream_data: bool
+            If True, will also remove any downstream data.
+            Will recursively call get_downstreams() and find any objects
+            that have remove_data_from_disk() implemented, and call it.
+            Default is False.
+        """
+        raise NotImplementedError('Currently archive does not support removing one Cutout at a time.')
+        if self.filepath is not None:
+            if self.filepath_extensions is None:
+                self.archive.delete( self.filepath, okifmissing=True )
+            else:
+                for ext in self.filepath_extensions:
+                    self.archive.delete( f"{self.filepath}{ext}", okifmissing=True )
+
+        # make sure these are set to null just in case we fail
+        # to commit later on, we will at least know something is wrong
+        self.md5sum = None
+        self.md5sum_extensions = None
+
+    @classmethod
+    def delete_list(cls, cutouts_list, remove_local=True, remove_archive=True, session=None, commit=True):
+        """
+        Remove a list of Cutouts objects from local disk and/or the archive and/or the database.
+        This removes the file that includes all the cutouts.
+        Can only delete cutouts that share the same filepath.
+        WARNING: this will not check that the file contains ONLY the cutouts on the list!
+        So, if the list contains a subset of the cutouts on file, the file is still deleted.
+
+        Parameters
+        ----------
+        cutouts_list: list of Cutouts
+            The list of Cutouts objects to remove.
+        remove_local: bool
+            If True, will remove the file from local disk.
+        remove_archive: bool
+            If True, will remove the file from the archive.
+        session: Session, optional
+            The database session to use. If not given, will create a new session.
+        commit: bool
+            If True, will commit the changes to the database.
+            If False, will not commit the changes to the database.
+            If session is not given, commit must be True.
+        """
+        if session is None and not commit:
+            raise ValueError('If session is not given, commit must be True.')
+
+        filepath = set([c.filepath for c in cutouts_list])
+        if len(filepath) > 1:
+            raise ValueError('All cutouts must share the same filepath to be deleted together.')
+
+        if remove_local:
+            os.remove(cutouts_list[0].get_fullpath())
+
+        if remove_archive:
+            cutouts_list[0].archive.delete(cutouts_list[0].filepath, okifmissing=True)
+
+        with SmartSession(session) as session:
+            for cutout in cutouts_list:
+                cutout.delete_from_database(session=session, commit=False)
+            if commit:
+                session.commit()
+
+    def __eq__(self, other):
+        """Compare if two cutouts have the same data. """
+        attributes = self.get_data_attributes()
+        attributes += ['ra', 'dec', 'x', 'y', 'filepath', 'format']
+
+        for att in attributes:
+            if isinstance(getattr(self, att), np.ndarray):
+                if not np.array_equal(getattr(self, att), getattr(other, att)):
+                    return False
+            else:  # other attributes get compared directly
+                if getattr(self, att) != getattr(other, att):
+                    return False
+
+        return True
 
 
 # use these two functions to quickly add the "property" accessor methods
