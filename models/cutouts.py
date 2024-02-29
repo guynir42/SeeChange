@@ -1,3 +1,4 @@
+import numpy as np
 
 import sqlalchemy as sa
 from sqlalchemy import orm
@@ -5,11 +6,11 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.ext.associationproxy import association_proxy
 
-from models.base import Base, SeeChangeBase, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed
+from models.base import Base, SeeChangeBase, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBadness
 from models.enums_and_bitflags import CutoutsFormatConverter
 
 
-class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
+class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBadness):
 
     __tablename__ = 'cutouts'
 
@@ -23,7 +24,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
     _format = sa.Column(
         sa.SMALLINT,
         nullable=False,
-        default=CutoutsFormatConverter.convert('fits'),
+        default=CutoutsFormatConverter.convert('hdf5'),
         doc="Format of the file on disk. Should be fits, hdf5, csv or npy. "
             "Saved as integer but is converter to string when loaded. "
     )
@@ -107,30 +108,6 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
             '(e.g., the exposure it is based on). '
     )
 
-    @hybrid_property
-    def bitflag(self):
-        return self._bitflag | self.image.bitflag
-
-    @bitflag.expression
-    def bitflag(cls):
-        sa.select(Cutouts).where(
-            Cutouts._bitflag,
-            Cutouts.ref_image.bitflag,
-            Cutouts.new_image.bitflag,
-            Cutouts.sub_image.bitflag,
-            Cutouts.source_list.bitflag,
-        ).label('bitflag')
-
-    @bitflag.setter
-    def bitflag(self, value):
-        self._bitflag = value
-
-    description = sa.Column(
-        sa.Text,
-        nullable=True,
-        doc='Free text comment about this source list, e.g., why it is bad. '
-    )
-
     @property
     def new_image(self):
         """Get the aligned new image using the sub_image. """
@@ -145,7 +122,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
         FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
 
-        self.source_row = None
+        self._source_row = None
         self._sub_data = None
         self._sub_weight = None
         self._sub_flag = None
@@ -165,7 +142,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
     def init_on_load(self):
         Base.init_on_load(self)
         FileOnDiskMixin.init_on_load(self)
-        self.source_row = None
+        self.format = 'hdf5'  # the default should match the column-defined default above!
+        self._source_row = None
         self._sub_data = None
         self._sub_weight = None
         self._sub_flag = None
@@ -173,6 +151,47 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
         self._ref_weight = None
         self._ref_flag = None
         self._new_data = None
+
+    def __repr__(self):
+        return (
+            f"<Cutouts {self.id} "
+            f"from SourceList {self.sources_id} "
+            f"(number {self.index_in_sources}) "
+            f"from Image {self.sub_image_id} "
+            f"at x,y= {self.pixel_x}, {self.pixel_y}>"
+        )
+
+    @staticmethod
+    def get_data_attributes():
+        names = ['source_row']
+        for im in ['sub', 'ref', 'new']:
+            for att in ['data', 'weight', 'flags']:
+                names.append(f'{im}_{att}')
+        return names
+
+    @property
+    def has_data(self):
+        for att in self.get_data_attributes():
+            if getattr(self, att) is None:
+                return False
+
+    @property
+    def sub_nandata(self):
+        if self.sub_data is None or self.sub_flags is None:
+            return None
+        return np.where(self.sub_flags > 0, np.nan, self.sub_data)
+
+    @property
+    def ref_nandata(self):
+        if self.ref_data is None or self.ref_flags is None:
+            return None
+        return np.where(self.ref_flags > 0, np.nan, self.ref_data)
+
+    @property
+    def new_nandata(self):
+        if self.new_data is None or self.new_flags is None:
+            return None
+        return np.where(self.new_flags > 0, np.nan, self.new_data)
 
     @staticmethod
     def from_detections(detections, source_index, provenance=None, **kwargs):
@@ -203,7 +222,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
         cutout = Cutouts()
         cutout.sources = detections
         cutout.index_in_sources = source_index
-        cutout.source_row = detections.data[source_index]
+        cutout.source_row = dict(detections.data[source_index])
         cutout.pixel_x = detections.x[source_index]
         cutout.pixel_y = detections.y[source_index]
         cutout.provenance = provenance
@@ -217,3 +236,57 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed):
         cutout._upstream_bitflag = detections.bitflag
 
         return cutout
+
+    def save(self, filename=None, **kwargs):
+        """Save a single Cutouts object into a file.
+
+        Parameters
+        ----------
+        filename: str, optional
+            The (relative/full path) filename to save to. If not given, will use the default filename.
+        kwargs: dict
+            Any additional keyword arguments to pass to the FileOnDiskMixin.save method.
+        """
+        if not self.has_data:
+            raise RuntimeError("The Cutouts data is not loaded. Cannot save.")
+
+    @classmethod
+    def save_list(cls, cutouts_list):
+        pass
+
+    def load(self, filepath):
+        pass
+
+    def load_list(self, filepath):
+        pass
+
+
+# use these two functions to quickly add the "property" accessor methods
+def load_attribute(object, att):
+    """Load the data for a given attribute of the object."""
+    if not hasattr(object, f'_{att}'):
+        raise AttributeError(f"The object {object} does not have the attribute {att}.")
+    if getattr(object, f'_{att}') is None:
+        if object.filepath is None:
+            return None  # objects just now created and not saved cannot lazy load data!
+        object.load()  # can lazy-load all data
+
+    # after data is filled, should be able to just return it
+    return getattr(object, f'_{att}')
+
+
+def set_attribute(object, att, value):
+    """Set the value of the attribute on the object. """
+    setattr(object, f'_{att}', value)
+
+
+# add "@property" functions to all the data attributes
+for att in Cutouts.get_data_attributes():
+    setattr(
+        Cutouts,
+        att,
+        property(
+            fget=lambda self, att=att: load_attribute(self, att),
+            fset=lambda self, value, att=att: set_attribute(self, att, value),
+        )
+    )
