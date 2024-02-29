@@ -1,3 +1,4 @@
+import os
 import numpy as np
 
 import sqlalchemy as sa
@@ -5,6 +6,8 @@ from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.ext.associationproxy import association_proxy
+
+import h5py
 
 from models.base import Base, SeeChangeBase, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBadness
 from models.enums_and_bitflags import CutoutsFormatConverter
@@ -122,6 +125,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         FileOnDiskMixin.__init__(self, *args, **kwargs)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
 
+        self.format = 'hdf5'  # the default should match the column-defined default above!
+
         self._source_row = None
         self._sub_data = None
         self._sub_weight = None
@@ -142,7 +147,6 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
     def init_on_load(self):
         Base.init_on_load(self)
         FileOnDiskMixin.init_on_load(self)
-        self.format = 'hdf5'  # the default should match the column-defined default above!
         self._source_row = None
         self._sub_data = None
         self._sub_weight = None
@@ -174,6 +178,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         for att in self.get_data_attributes():
             if getattr(self, att) is None:
                 return False
+        return True
 
     @property
     def sub_nandata(self):
@@ -225,6 +230,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         cutout.source_row = dict(detections.data[source_index])
         cutout.pixel_x = detections.x[source_index]
         cutout.pixel_y = detections.y[source_index]
+        cutout.ra = cutout.source_row['ra']
+        cutout.dec = cutout.source_row['dec']
         cutout.provenance = provenance
 
         # add the data, weight, and flags to the cutout from kwargs
@@ -236,6 +243,32 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         cutout._upstream_bitflag = detections.bitflag
 
         return cutout
+
+    def invent_filepath(self):
+        if self.sources is None:
+            raise RuntimeError( f"Can't invent a filepath for cutouts without a source list" )
+        if self.provenance is None:
+            raise RuntimeError( f"Can't invent a filepath for cutouts without a provenance" )
+
+        # base the filename on the image filename, not on the sources filename.
+        filename = self.sub_image.filepath
+        if filename is None:
+            filename = self.sub_image.invent_filepath()
+
+        if filename.endswith(('.fits', '.h5', '.hdf5')):
+            filename = os.path.splitext(filename)[0]
+
+        filename += '.cutouts_'
+        self.provenance.update_id()
+        filename += self.provenance.id[:6]
+        if self.format == 'hdf5':
+            filename += '.h5'
+        elif self.format == ['fits', 'jpg', 'png']:
+            filename += f'.{self.format}'
+        else:
+            raise TypeError( f"Unable to create a filepath for cutouts file of type {self.format}" )
+
+        return filename
 
     def save(self, filename=None, **kwargs):
         """Save a single Cutouts object into a file.
@@ -250,12 +283,117 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         if not self.has_data:
             raise RuntimeError("The Cutouts data is not loaded. Cannot save.")
 
+        if filename is not None:
+            self.filepath = filename
+        if self.filepath is None:
+            self.filepath = self.invent_filepath()
+
+        fullname = self.get_fullpath()
+        self.safe_mkdir(os.path.dirname(fullname))
+
+        if self.format == 'hdf5':
+            with h5py.File(fullname, 'a') as file:
+                if f'source_{self.index_in_sources}' in file:
+                    del file[f'source_{self.index_in_sources}']
+
+                # handle the data arrays
+                for att in self.get_data_attributes():
+                    if att == 'source_row':
+                        continue
+
+                    data = getattr(self, att)
+                    file.create_dataset(
+                        f'source_{self.index_in_sources}/{att}',
+                        data=data,
+                        shape=data.shape,
+                        dtype=data.dtype,
+                        compression='gzip'
+                    )
+
+                # handle the source_row dictionary
+                target = file[f'source_{self.index_in_sources}'].attrs
+                for key in target.keys():  # first clear the existing keys
+                    del target[key]
+
+                # then add the new ones
+                for key, value in self.source_row.items():
+                    target[key] = value
+
+        elif self.format == 'fits':
+            raise NotImplementedError('Saving cutouts to fits is not yet implemented.')
+        elif self.format in ['jpg', 'png']:
+            raise NotImplementedError('Saving cutouts to jpg or png is not yet implemented.')
+        else:
+            raise TypeError(f"Unable to save cutouts file of type {self.format}")
+
+        # make sure to also save using the FileOnDiskMixin method
+        super().save(fullname, **kwargs)
+
     @classmethod
     def save_list(cls, cutouts_list):
         pass
 
     def load(self, filepath):
-        pass
+        """Load the data for this cutout from a file.
+
+        Parameters
+        ----------
+        filepath: str
+            The (relative/full path) filename to load from.
+        """
+        if self.format == 'hdf5':
+            with h5py.File(filepath, 'r') as file:
+                for att in self.get_data_attributes():
+                    if att == 'source_row':
+                        self.source_row = dict(file[f'source_{self.index_in_sources}'].attrs)
+                    else:
+                        setattr(self, att, np.array(file[f'source_{self.index_in_sources}/{att}']))
+
+        elif self.format == 'fits':
+            raise NotImplementedError('Loading cutouts from fits is not yet implemented.')
+        elif self.format in ['jpg', 'png']:
+            raise NotImplementedError('Loading cutouts from jpg or png is not yet implemented.')
+        else:
+            raise TypeError(f"Unable to load cutouts file of type {self.format}")
+
+    @classmethod
+    def from_file(cls, filepath, source_number, **kwargs):
+        """Create a Cutouts object from a file.
+
+        Will try to guess the format based on the file extension.
+
+        Parameters
+        ----------
+        filepath: str
+            The (relative/full path) filename to load from.
+        source_number: int
+            The index of the source in the source list from which to create the cutout.
+            This relates to the internal storage in file. For HDF5 files, the group
+            for this object will be named "source_{source_number}".
+        kwargs: dict
+            Any additional keyword arguments to pass to the Cutouts constructor.
+            E.g., if you happen to know some database values for this object,
+            like the ID of related objects or the bitflag, you can pass them here.
+        """
+        cutout = cls(**kwargs)
+        fmt = os.path.splitext(filepath)[1][1:]
+        if fmt == 'h5':
+            fmt = 'hdf5'
+        cutout.format = fmt
+        cutout.index_in_sources = source_number
+        cutout.load(filepath)
+        cutout.pixel_x = cutout.source_row['x']
+        cutout.pixel_y = cutout.source_row['y']
+        cutout.ra = cutout.source_row['ra']
+        cutout.dec = cutout.source_row['dec']
+
+        if filepath.startswith(cutout.local_path):
+            filepath = filepath[len(cutout.local_path) + 1:]
+        cutout.filepath = filepath
+
+        # TODO: should also load the MD5sum automatically?
+
+        return cutout
 
     def load_list(self, filepath):
         pass

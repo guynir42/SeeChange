@@ -1061,6 +1061,39 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 self._aligned_images = None
                 return
 
+    def _get_alignment_target_image(self):
+        """Get the image in upstream_images that is the target to which we align all other images. """
+        if self.provenance is None or self.provenance.parameters is None:
+            raise RuntimeError('Cannot get alignment target without a Provenance with legal parameters!')
+        if 'alignment' not in self.provenance.parameters:
+            raise RuntimeError(
+                'Cannot get alignment target without an "alignment" dictionary in the Provenance parameters!'
+            )
+
+        to_index = self.provenance.parameters['alignment'].get('to_index')
+        if to_index == 'first':
+            alignment_target = self.upstream_images[0]
+        elif to_index == 'last':
+            alignment_target = self.upstream_images[-1]
+        elif to_index == 'new':
+            alignment_target = self.new_image
+        elif to_index == 'ref':
+            alignment_target = self.ref_image
+        else:
+            raise RuntimeError(
+                f'Got illegal value for "to_index" ({to_index}) in the Provenance parameters!'
+            )
+
+        return alignment_target
+
+    def coordinates_to_alignment_target(self):
+        """Make sure the coordinates (RA,dec, corners and WCS) all match the alignment target image. """
+        target = self._get_alignment_target_image()
+        for att in ['ra', 'dec', 'wcs',
+                    'ra_corner_00', 'ra_corner_01', 'ra_corner_10', 'ra_corner_11',
+                    'dec_corner_00', 'dec_corner_01', 'dec_corner_10', 'dec_corner_11' ]:
+            self.__setattr__(att, getattr(target, att))
+
     @property
     def aligned_images(self):
         self._check_aligned_images()  # possibly destroy the old aligned images

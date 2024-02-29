@@ -424,10 +424,11 @@ def decam_reference(decam_ref_datastore):
 @pytest.fixture
 def decam_subtraction(decam_reference, decam_processed_image, subtractor, cache_dir):
     cache_dir = os.path.join(cache_dir, 'DECam')
-    filepath = '115/c4d_20221104_074232_N1_g_Diff_SVNUER_u-4ea5cc.image.fits'
+    filepath = '115/c4d_20221104_074232_N1_g_Diff_7EGWL3_u-4ea5cc.image.fits'
 
     upstreams = []
     for im in [decam_reference.image, decam_processed_image]:
+        upstreams.append(im.provenance)
         for att in ['sources', 'psf', 'wcs', 'zp']:
             upstreams.append(getattr(im, att).provenance)
 
@@ -445,9 +446,58 @@ def decam_subtraction(decam_reference, decam_processed_image, subtractor, cache_
     if os.path.isfile(os.path.join(cache_dir, filepath)):
         sub_im = Image.copy_from_cache(cache_dir, filepath)
         sub_im.upstream_images = [decam_reference.image, decam_processed_image]
+
+        if sub_im._aligned_images is None:
+            align_ref_prov = Provenance(
+                code_version=decam_reference.image.provenance.code_version,
+                process='alignment',
+                parameters=prov.parameters['alignment'],
+                upstreams=[
+                    decam_reference.image.provenance,
+                    decam_reference.sources.provenance,
+                    decam_reference.psf.provenance,
+                    decam_reference.wcs.provenance,
+                    decam_reference.zp.provenance,
+                    decam_processed_image.provenance,
+                    decam_processed_image.sources.provenance,
+                    decam_processed_image.psf.provenance,
+                    decam_processed_image.wcs.provenance,
+                ],
+            )
+            align_new_prov = Provenance(
+                code_version=decam_reference.image.provenance.code_version,
+                process='alignment',
+                parameters=prov.parameters['alignment'],
+                upstreams=[
+                    decam_processed_image.provenance,
+                    decam_processed_image.sources.provenance,
+                    decam_processed_image.wcs.provenance,
+                    decam_processed_image.zp.provenance,
+                ],
+            )
+            aligned_ref = None
+            aligned_new = None
+            aligned_ref_file = '115/c4d_20220113_050224_N1_g_Warped_ZBELGP'
+            if os.path.isfile(os.path.join(cache_dir, aligned_ref_file + '.image.fits.json')):
+                aligned_ref = Image.copy_from_cache(cache_dir, aligned_ref_file + '.image.fits.json')
+                aligned_ref.info['original_image_id'] = decam_reference.image.id
+                aligned_ref.provenance = align_ref_prov
+
+            aligned_new_file = '115/c4d_20221104_074232_N1_g_Warped_JZNHWZ'
+            if os.path.isfile(os.path.join(cache_dir, aligned_new_file + '.image.fits.json')):
+                aligned_new = Image.copy_from_cache(cache_dir, aligned_new_file + '.image.fits.json')
+                aligned_new.info['original_image_id'] = decam_processed_image.id
+                aligned_new.provenance = align_new_prov
+
+            if aligned_ref is not None and aligned_new is not None:
+                sub_im._aligned_images = [aligned_ref, aligned_new]
+
         sub_im.ref_image_id = decam_reference.image.id
         sub_im.ref_image = decam_reference.image
         sub_im.provenance = prov
+        sub_im.load_upstream_products()  # make sure stuff like WCS is loaded for upstream_images
+        sub_im.coordinates_to_alignment_target()  # propagate WCS to sub_im
+
     else:
         ds = subtractor.run(decam_processed_image)
 
@@ -455,9 +505,15 @@ def decam_subtraction(decam_reference, decam_processed_image, subtractor, cache_
         sub_im = ds.sub_image
         sub_im.copy_to_cache(cache_dir)
 
+    for im in sub_im.aligned_images:  # also save the aligned images...
+        im.save()
+        im.copy_to_cache(cache_dir)
+
     yield sub_im
 
     if 'sub_im' in locals():
+        for im in sub_im.aligned_images:
+            im.delete_from_disk_and_database(archive=True)
         sub_im.delete_from_disk_and_database(archive=True)
 
 
