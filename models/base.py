@@ -701,13 +701,19 @@ class FileOnDiskMixin:
         # if the path is ok, also make the subfolders
         os.makedirs(path, exist_ok=True)
 
-    filepath = sa.Column(
-        sa.Text,
-        nullable=False,
-        index=True,
-        unique=True,
-        doc="Base path (relative to the data root) for a stored file"
-    )
+    @declared_attr
+    def filepath(cls):
+        uniqueness = True
+        if cls.__name__ in ['Cutouts']:
+            uniqueness = False
+        return sa.Column(
+            sa.Text,
+            nullable=False,
+            index=True,
+            unique=uniqueness,
+            doc="Base path (relative to the data root) for a stored file"
+        )
+
 
     filepath_extensions = sa.Column(
         sa.ARRAY(sa.Text),
@@ -719,7 +725,7 @@ class FileOnDiskMixin:
         sqlUUID(as_uuid=True),
         nullable=True,
         default=None,
-        doc = "md5sum of the file, provided by the archive server"
+        doc="md5sum of the file, provided by the archive server"
     )
 
     md5sum_extensions = sa.Column(

@@ -54,7 +54,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         self._format = CutoutsFormatConverter.convert(value)
 
     sources_id = sa.Column(
-        sa.ForeignKey('source_lists.id', name='cutouts_source_list_id_fkey'),
+        sa.ForeignKey('source_lists.id', name='cutouts_source_list_id_fkey', ondelete="CASCADE", ),
         nullable=False,
         index=True,
         doc="ID of the source list (of detections in the difference image) this cutout is associated with. "
@@ -355,7 +355,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         super().save(fullname, **kwargs)
 
     @classmethod
-    def save_list(cls, cutouts_list, filename=None, **kwargs):
+    def save_list(cls, cutouts_list,  filename=None, **kwargs):
         """Save a list of Cutouts objects into a file.
 
         Parameters
@@ -399,6 +399,11 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         # make sure to also save using the FileOnDiskMixin method
         FileOnDiskMixin.save(cutouts_list[0], fullname, **kwargs)
 
+        # after saving one object as a FileOnDiskMixin, all the others should have the same md5sum
+        if cutouts_list[0].md5sum is not None:
+            for cutout in cutouts_list:
+                cutout.md5sum = cutouts_list[0].md5sum
+
     def _load_dataset_from_hdf5(self, file, groupname):
         """Load the dataset from an HDF5 group into this Cutouts object.
 
@@ -415,14 +420,18 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             else:
                 setattr(self, att, np.array(file[f'{groupname}/{att}']))
 
-    def load(self, filepath):
+    def load(self, filepath=None):
         """Load the data for this cutout from a file.
 
         Parameters
         ----------
-        filepath: str
+        filepath: str, optional
             The (relative/full path) filename to load from.
+            If not given, will use self.get_fullpath() to get the filename.
         """
+        if filepath is None:
+            filepath = self.get_fullpath()
+
         if self.format == 'hdf5':
             with h5py.File(filepath, 'r') as file:
                 self._load_dataset_from_hdf5(file, f'source_{self.index_in_sources}')
@@ -600,7 +609,20 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         self.md5sum_extensions = None
 
     @classmethod
-    def delete_list(cls, cutouts_list, remove_local=True, remove_archive=True, session=None, commit=True):
+    def merge_list(cls, cutouts_list, session):
+        """Merge (or add) the list of Cutouts to the given session. """
+        if cutouts_list is None or len(cutouts_list) == 0:
+            return cutouts_list
+
+        sources = session.merge(cutouts_list[0].sources)
+        for i, cutout in enumerate(cutouts_list):
+            cutouts_list[i].sources = sources
+            cutouts_list[i] = session.merge(cutouts_list[i])
+
+        return cutouts_list
+
+    @classmethod
+    def delete_list(cls, cutouts_list, remove_local=True, archive=True, session=None, commit=True):
         """
         Remove a list of Cutouts objects from local disk and/or the archive and/or the database.
         This removes the file that includes all the cutouts.
@@ -614,7 +636,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             The list of Cutouts objects to remove.
         remove_local: bool
             If True, will remove the file from local disk.
-        remove_archive: bool
+        archive: bool
             If True, will remove the file from the archive.
         session: Session, optional
             The database session to use. If not given, will create a new session.
@@ -631,10 +653,13 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             raise ValueError('All cutouts must share the same filepath to be deleted together.')
 
         if remove_local:
-            os.remove(cutouts_list[0].get_fullpath())
+            fullpath = cutouts_list[0].get_fullpath()
+            if fullpath is not None and os.path.isfile(fullpath):
+                os.remove(fullpath)
 
-        if remove_archive:
-            cutouts_list[0].archive.delete(cutouts_list[0].filepath, okifmissing=True)
+        if archive:
+            if cutouts_list[0].filepath is not None:
+                cutouts_list[0].archive.delete(cutouts_list[0].filepath, okifmissing=True)
 
         with SmartSession(session) as session:
             for cutout in cutouts_list:

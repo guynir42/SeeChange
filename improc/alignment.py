@@ -316,8 +316,10 @@ class ImageAligner:
             warpedim = self.image_source_warped_to_target(image, target)
 
             warpedim.data, warpedim.header = read_fits_image( outim, output="both" )
-            warpedim.header['SATURATA'] = image.header['SATURATA']
-            warpedim.header['SATURATB'] = image.header['SATURATB']
+            for att in ['SATURATA', 'SATURATB']:
+                if att in image.header:
+                    warpedim.header[att] = image.header[att]
+
             warpedim.weight = read_fits_image(outwt)
             warpedim.flags = read_fits_image(outfl)
             warpedim.flags = np.rint(warpedim.flags).astype(np.uint16)  # convert back to integers
