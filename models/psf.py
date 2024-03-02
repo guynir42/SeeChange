@@ -209,6 +209,9 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
           Additional arguments are passed on to FileOnDiskMixin.save
 
         """
+        if self.provenance is None:
+            raise RuntimeError( "Can't save a PSF without a provenance" )
+
         if self.format != 'psfex':
             raise NotImplementedError( "Only know how to save psfex PSF files" )
 

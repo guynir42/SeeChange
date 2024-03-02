@@ -331,6 +331,17 @@ class ImageAligner:
             warpedim.sources = warpedsrc
             warpedim.psf = warpedpsf
 
+            prov = Provenance(
+                code_version=image.provenance.code_version,
+                process='extraction',
+                parameters=extractor.pars.get_critical_pars(),
+                upstreams=[image.provenance],
+            )
+            warpedim.sources.provenance = prov
+            warpedim.sources.provenance_id = prov.id
+            warpedim.psf.provenance = prov
+            warpedim.psf.provenance_id = prov.id
+
             # expand bad pixel mask to allow for warping that smears the badness
             warpedim.flags = dilate_bitflag(warpedim.flags, iterations=1)  # use the default structure
 
