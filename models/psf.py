@@ -209,9 +209,6 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
           Additional arguments are passed on to FileOnDiskMixin.save
 
         """
-        if self.provenance is None:
-            raise RuntimeError( "Can't save a PSF without a provenance" )
-
         if self.format != 'psfex':
             raise NotImplementedError( "Only know how to save psfex PSF files" )
 
@@ -227,6 +224,9 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                 self.filepath = self.image.filepath
             else:
                 self.filepath = self.image.invent_filepath()
+
+            if self.provenance is None:
+                raise RuntimeError("Can't invent a filepath for the PSF without a provenance")
             self.filepath += f'.psf_{self.provenance.id[:6]}'
 
         psfpath = pathlib.Path( self.local_path ) / f'{self.filepath}.fits'
