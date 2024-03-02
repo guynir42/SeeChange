@@ -277,6 +277,7 @@ def decam_processed_image(decam_datastore):
 
     # the datastore should delete everything, so we don't need to do anything here
 
+
 @pytest.fixture
 def decam_ref_datastore( code_version, persistent_dir, cache_dir, data_dir, datastore_factory ):
     persistent_dir = os.path.join(persistent_dir, 'test_data/DECam_examples')
