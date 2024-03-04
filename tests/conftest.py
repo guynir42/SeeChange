@@ -17,6 +17,8 @@ from models.exposure import Exposure
 
 from util.archive import Archive
 from util.util import remove_empty_folders
+from util.retrydownload import retry_download
+
 
 pytest_plugins = [
     'tests.fixtures.simulated',
@@ -303,8 +305,10 @@ def archive(test_config, archive_path):
 
 
 @pytest.fixture( scope="module" )
-def catexp(data_dir, persistent_dir):
-    if not os.path.isfile(os.path.join(data_dir, "Gaia_DR3_151.0926_1.8312_17.0_19.0.fits")):
+def catexp(data_dir, download_url):
+    filename = "Gaia_DR3_151.0926_1.8312_17.0_19.0.fits"
+    if not os.path.isfile(os.path.join(data_dir, filename)):
+        retry_download(os.path.join(download_url, filename))
         shutil.copy2(
             os.path.join(persistent_dir, "test_data/Gaia_DR3_151.0926_1.8312_17.0_19.0.fits"),
             os.path.join(data_dir, "Gaia_DR3_151.0926_1.8312_17.0_19.0.fits")

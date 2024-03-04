@@ -168,7 +168,7 @@ def decam_filename(download_url, data_dir, cache_dir):
 
         if not os.path.isfile(cachedfilename):
             # url = 'https://astroarchive.noirlab.edu/api/retrieve/004d537b1347daa12f8361f5d69bc09b/'
-            url = download_url + '/DECAM/' + base_name
+            url = os.path.join(download_url, 'DECAM', base_name)
             response = wget.download(url=url, out=cachedfilename)
             assert response == cachedfilename
 
@@ -282,12 +282,12 @@ def decam_processed_image(decam_datastore):
 @pytest.fixture
 def decam_fits_image_filename(download_url, cache_dir):
     cache_dir = os.path.join(cache_dir, 'DECam')
-    download_url = download_url + '/DECAM/'
+    download_url = os.path.join(download_url, 'DECAM')
 
     filename = 'c4d_20221002_040239_r_v1.24.fits'
     filepath = os.path.join(cache_dir, filename)
     if not os.path.isfile(filepath):
-        url = download_url + filename
+        url = os.path.join(download_url, filename)
         response = wget.download(url=url, out=filepath)
 
     yield filename
@@ -296,58 +296,46 @@ def decam_fits_image_filename(download_url, cache_dir):
 @pytest.fixture
 def decam_fits_image_filename2(download_url, cache_dir):
     cache_dir = os.path.join(cache_dir, 'DECam')
-    download_url = download_url + '/DECAM/'
+    download_url = os.path.join(download_url, 'DECAM')
 
     filename = 'c4d_20221002_040434_i_v1.24.fits'
     filepath = os.path.join(cache_dir, filename)
     if not os.path.isfile(filepath):
-        url = download_url + filename
+        url = os.path.join(download_url, filename)
         response = wget.download(url=url, out=filepath)
 
     yield filename
 
 
 @pytest.fixture
-def decam_ref_datastore( code_version, download_url, persistent_dir, cache_dir, data_dir, datastore_factory ):
-    persistent_dir = os.path.join(persistent_dir, 'test_data/DECam_examples')
+def decam_ref_datastore( code_version, download_url, cache_dir, data_dir, datastore_factory ):
     cache_dir = os.path.join(cache_dir, 'DECam')
     filebase = 'DECaPS-West_20220112.g.32'
 
-    urlmap = { '.image.fits': '.fits.fz',
-               '.weight.fits': '.weight.fits.fz',
-               '.flags.fits': '.bpm.fits.fz' }
-
     # I added this mirror so the tests will pass, and we should remove it once the decam image goes back up to NERSC
+    # TODO: should we leave these as a mirror in case NERSC is down?
     dropbox_urls = {
         '.image.fits': 'https://www.dropbox.com/scl/fi/x8rzwfpe4zgc8tz5mv0e2/DECaPS-West_20220112.g.32.image.fits?rlkey=5wse43bby3tce7iwo2e1fm5ru&dl=1',
         '.weight.fits': 'https://www.dropbox.com/scl/fi/dfctqqj3rjt09wspvyzb3/DECaPS-West_20220112.g.32.weight.fits?rlkey=tubr3ld4srf59hp0cuxrv2bsv&dl=1',
         '.flags.fits': 'https://www.dropbox.com/scl/fi/y693ckhcs9goj1t7s0dty/DECaPS-West_20220112.g.32.flags.fits?rlkey=fbdyxyzjmr3g2t9zctcil7106&dl=1',
     }
 
-    for ext in [ '.image.fits', '.weight.fits', '.flags.fits' ]:
+    for ext in [ '.image.fits', '.weight.fits', '.flags.fits', '.image.yaml' ]:
         cache_path = os.path.join(cache_dir, f'115/{filebase}{ext}')
         fzpath = cache_path + '.fz'
         if os.path.isfile(cache_path):
             _logger.info( f"{cache_path} exists, not redownloading." )
         else:  # need to download!
-            url = f'{download_url}/DECAM/{filebase}{urlmap[ext]}'
-            try:
-                retry_download( url, fzpath )
-                if os.path.isfile(fzpath):
-                    res = subprocess.run( [ 'funpack', '-D', fzpath ] )
-                    if res.returncode != 0:
-                        raise SubprocessFailure(res)
-                else:
-                    raise FileNotFoundError(f'Cannot find downloaded file: {fzpath}')
-            except (SubprocessFailure, FileNotFoundError, RuntimeError) as e:
-                raise e  # check that the files are successfully downloaded from NERSC, then remove or keep the dropbox links
-                retry_download(dropbox_urls[ext], cache_path)
+            url = os.path.join(download_url, 'DECAM', filebase + ext)
+            retry_download( url, cache_path )
+            if not os.path.isfile(cache_path):
+                raise FileNotFoundError(f'Cannot find downloaded file: {cache_path}')
 
         destination = os.path.join(data_dir, f'115/{filebase}{ext}')
         os.makedirs(os.path.dirname(destination), exist_ok=True)
         shutil.copy2( cache_path, destination )
 
-    yaml_path = os.path.join(persistent_dir, filebase + '.image.yaml')
+    yaml_path = os.path.join(cache_dir, filebase + '.image.yaml')
 
     with open( yaml_path ) as ifp:
         refyaml = yaml.safe_load( ifp )

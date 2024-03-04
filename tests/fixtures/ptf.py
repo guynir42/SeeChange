@@ -31,7 +31,8 @@ def ptf_bad_pixel_map(download_url, data_dir, cache_dir):
     cache_dir = os.path.join(cache_dir, 'PTF')
     filename = 'C11/masktot.fits'  # TODO: add more CCDs if needed
     # url = 'https://portal.nersc.gov/project/m2218/pipeline/test_images/2012021x/'
-    url = download_url + '/PTF/10cwm/2012021x/'
+    url = os.path.join(download_url, 'PTF/10cwm/2012021x/')
+
     # is this file already on the cache? if not, download it
     cache_path = os.path.join(cache_dir, filename)
     if not os.path.isfile(cache_path):
@@ -81,7 +82,7 @@ def ptf_downloader(provenance_preprocessing, download_url, data_dir, cache_dir):
             _logger.info(f"{cachedpath} exists, not redownloading.")
         else:
             # url = f'https://portal.nersc.gov/project/m2218/pipeline/test_images/{filename}'
-            url = f'{download_url}/PTF/10cwm/{filename}'
+            url = os.path.join(download_url, 'PTF/10cwm', filename)
             retry_download(url, cachedpath)  # make the cached copy
 
         if not os.path.isfile(cachedpath):
@@ -149,7 +150,7 @@ def ptf_datastore(datastore_factory, ptf_exposure, cache_dir, ptf_bad_pixel_map)
 @pytest.fixture(scope='session')
 def ptf_urls(download_url):
     # base_url = 'https://portal.nersc.gov/project/m2218/pipeline/test_images/'
-    base_url = f'{download_url}/PTF/10cwm/'
+    base_url = os.path.join(download_url, 'PTF/10cwm')
     r = requests.get(base_url)
     soup = BeautifulSoup(r.text, 'html.parser')
     links = soup.find_all('a')
