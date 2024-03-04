@@ -282,7 +282,7 @@ def ptf_supernova_images(ptf_images_factory):
 # ref: https://stackoverflow.com/a/75337251
 @pytest.fixture(scope='session')
 def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
-    cache_dir = os.path.join(cache_dir, 'aligned_images')
+    cache_dir = os.path.join(ptf_cache_dir, 'aligned_images')
 
     # try to load from cache
     if os.path.isfile(os.path.join(cache_dir, 'manifest.txt')):
