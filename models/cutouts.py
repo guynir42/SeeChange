@@ -330,6 +330,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         kwargs: dict
             Any additional keyword arguments to pass to the FileOnDiskMixin.save method.
         """
+        raise NotImplementedError('Saving only a single cutout into a file is not supported. Use save_list instead.')
+
         if not self.has_data:
             raise RuntimeError("The Cutouts data is not loaded. Cannot save.")
 
@@ -355,7 +357,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         super().save(fullname, **kwargs)
 
     @classmethod
-    def save_list(cls, cutouts_list,  filename=None, **kwargs):
+    def save_list(cls, cutouts_list,  filename=None, overwrite=True, **kwargs):
         """Save a list of Cutouts objects into a file.
 
         Parameters
@@ -364,6 +366,9 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             The list of Cutouts objects to save.
         filename: str, optional
             The (relative/full path) filename to save to. If not given, will use the default filename.
+        overwrite: bool
+            If True, will overwrite the file if it already exists.
+            If False, will raise an error if the file already exists.
         kwargs: dict
             Any additional keyword arguments to pass to the File
         """
@@ -384,6 +389,9 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         fullname = os.path.join(cutouts_list[0].local_path, filename)
         cutouts_list[0].safe_mkdir(os.path.dirname(fullname))
 
+        if not overwrite and os.path.isfile(fullname):
+            raise FileExistsError(f"The file {fullname} already exists and overwrite is False.")
+
         if cutouts_list[0].format == 'hdf5':
             with h5py.File(fullname, 'a') as file:
                 for cutout in cutouts_list:
@@ -397,7 +405,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             raise TypeError(f"Unable to save cutouts file of type {cutouts_list[0].format}")
 
         # make sure to also save using the FileOnDiskMixin method
-        FileOnDiskMixin.save(cutouts_list[0], fullname, **kwargs)
+        FileOnDiskMixin.save(cutouts_list[0], fullname, overwrite=overwrite, **kwargs)
 
         # after saving one object as a FileOnDiskMixin, all the others should have the same md5sum
         if cutouts_list[0].md5sum is not None:
@@ -552,6 +560,10 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         remove_downstream_data: bool
             This is not used, but kept here for backward compatibility with the base class.
         """
+        raise NotImplementedError(
+            'Currently there is no support for removing one Cutout at a time. Use delete_list instead.'
+        )
+
         if self.filepath is not None:
             # get the filepath, but don't check if the file exists!
             for f in self.get_fullpath(as_list=True, nofile=True):
@@ -595,7 +607,9 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             that have remove_data_from_disk() implemented, and call it.
             Default is False.
         """
-        raise NotImplementedError('Currently archive does not support removing one Cutout at a time.')
+        raise NotImplementedError(
+            'Currently archive does not support removing one Cutout at a time, use delete_list instead.'
+        )
         if self.filepath is not None:
             if self.filepath_extensions is None:
                 self.archive.delete( self.filepath, okifmissing=True )
