@@ -2,6 +2,7 @@ import os
 import h5py
 
 import numpy as np
+import pytest
 
 import sqlalchemy as sa
 
@@ -37,7 +38,7 @@ def test_make_save_load_cutouts(decam_detection_list, cutter):
         c.bitflag = 41  # should be Cosmic Ray
 
         # save an individual cutout
-        c.save()
+        Cutouts.save_list([c])
 
         # open the file manually and compare
         with h5py.File(c.get_fullpath(), 'r') as file:
@@ -55,21 +56,21 @@ def test_make_save_load_cutouts(decam_detection_list, cutter):
         assert c2.bitflag == 0  # should not load all column data from file (e.g., bitflag)
 
         # save a second cutout to the same file
-        ds.cutouts[1].save()
+        Cutouts.save_list(ds.cutouts[1:2])
         assert ds.cutouts[1].filepath == c.filepath
 
         # change the value of one of the arrays
         c.sub_data[0, 0] = 100
 
         # make sure we can re-save
-        c.save()
+        Cutouts.save_list([c])
 
         with h5py.File(c.get_fullpath(), 'r') as file:
             assert np.array_equal(c.sub_data, file['source_0']['sub_data'])
             assert file['source_0']['sub_data'][0, 0] == 100  # change has been propagated
 
         # save the whole list of cutouts
-        Cutouts.save_list(cutouts_list=ds.cutouts)
+        Cutouts.save_list(ds.cutouts)
 
         # load it from file and compare
         loaded_cutouts = Cutouts.load_list(c.get_fullpath())
@@ -78,13 +79,15 @@ def test_make_save_load_cutouts(decam_detection_list, cutter):
             assert cut1 == cut2
 
         # make sure that deleting one cutout does not delete the file
-        ds.cutouts[1].remove_data_from_disk()
-        assert os.path.isfile(ds.cutouts[0].get_fullpath())
+        with pytest.raises(NotImplementedError, match='no support for removing one Cutout at a time'):
+            # TODO: fix this if we ever bring back this functionality
+            ds.cutouts[1].remove_data_from_disk()
+            assert os.path.isfile(ds.cutouts[0].get_fullpath())
 
-        # delete one file from the archive, should still keep the file:
-        # TODO: this is not yet implemented! see issue #207
-        # ds.cutouts[1].delete_from_archive()
-        # TODO: check that the file still exists on the archive
+            # delete one file from the archive, should still keep the file:
+            # TODO: this is not yet implemented! see issue #207
+            # ds.cutouts[1].delete_from_archive()
+            # TODO: check that the file still exists on the archive
 
         # check that we can add the cutouts to the database
         with SmartSession() as session:
