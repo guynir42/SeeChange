@@ -160,7 +160,10 @@ def ptf_urls(download_url):
     r = requests.get(base_url)
     soup = BeautifulSoup(r.text, 'html.parser')
     links = soup.find_all('a')
-    filenames = [link.get('href') for link in links if link.get('href').endswith('.fits')]
+    filenames = [
+        link.get('href') for link in links
+        if link.get('href').endswith('.fits') and link.get('href').startswith('PTF')
+    ]
     bad_files = [
         'PTF200904053266_2_o_19609_11.w.fits',
         'PTF200904053340_2_o_19614_11.w.fits',
