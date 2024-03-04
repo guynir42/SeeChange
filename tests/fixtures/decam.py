@@ -150,7 +150,7 @@ def decam_raw_origin_exposures():
 
 @pytest.fixture(scope="session")
 def decam_filename(download_url, data_dir, cache_dir):
-    """Pull a DECam exposure down from the NOIRLab archives.
+    """Pull a DECam exposure down from the NOIRLab archives.  TODO: should we download from NERSC or from NOIRLab?
 
     Because this is a slow process (depending on the NOIRLab archive
     speed, it can take up to minutes), first look for this file
@@ -277,6 +277,34 @@ def decam_processed_image(decam_datastore):
     yield ds.image
 
     # the datastore should delete everything, so we don't need to do anything here
+
+
+@pytest.fixture
+def decam_fits_image_filename(download_url, cache_dir):
+    cache_dir = os.path.join(cache_dir, 'DECam')
+    download_url = download_url + '/DECAM/'
+
+    filename = 'c4d_20221002_040239_r_v1.24.fits'
+    filepath = os.path.join(cache_dir, filename)
+    if not os.path.isfile(filepath):
+        url = download_url + filename
+        response = wget.download(url=url, out=filepath)
+
+    yield filename
+
+
+@pytest.fixture
+def decam_fits_image_filename2(download_url, cache_dir):
+    cache_dir = os.path.join(cache_dir, 'DECam')
+    download_url = download_url + '/DECAM/'
+
+    filename = 'c4d_20221002_040434_i_v1.24.fits'
+    filepath = os.path.join(cache_dir, filename)
+    if not os.path.isfile(filepath):
+        url = download_url + filename
+        response = wget.download(url=url, out=filepath)
+
+    yield filename
 
 
 @pytest.fixture
