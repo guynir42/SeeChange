@@ -311,7 +311,7 @@ def catexp(data_dir, cache_dir, download_url):
     filepath = os.path.join(data_dir, filename)
 
     if not os.path.isfile(cachepath):
-        retry_download(download_url, cachepath)
+        retry_download(os.path.join(download_url, filename), cachepath)
 
     if not os.path.isfile(filepath):
         shutil.copy2(cachepath, filepath)
