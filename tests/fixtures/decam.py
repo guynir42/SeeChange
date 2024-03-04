@@ -149,7 +149,7 @@ def decam_raw_origin_exposures():
 
 
 @pytest.fixture(scope="session")
-def decam_filename(data_dir, cache_dir):
+def decam_filename(download_url, data_dir, cache_dir):
     """Pull a DECam exposure down from the NOIRLab archives.
 
     Because this is a slow process (depending on the NOIRLab archive
@@ -167,7 +167,8 @@ def decam_filename(data_dir, cache_dir):
         os.makedirs(os.path.dirname(cachedfilename), exist_ok=True)
 
         if not os.path.isfile(cachedfilename):
-            url = 'https://astroarchive.noirlab.edu/api/retrieve/004d537b1347daa12f8361f5d69bc09b/'
+            # url = 'https://astroarchive.noirlab.edu/api/retrieve/004d537b1347daa12f8361f5d69bc09b/'
+            url = download_url + '/DECAM/' + base_name
             response = wget.download(url=url, out=cachedfilename)
             assert response == cachedfilename
 
@@ -279,7 +280,7 @@ def decam_processed_image(decam_datastore):
 
 
 @pytest.fixture
-def decam_ref_datastore( code_version, persistent_dir, cache_dir, data_dir, datastore_factory ):
+def decam_ref_datastore( code_version, download_url, persistent_dir, cache_dir, data_dir, datastore_factory ):
     persistent_dir = os.path.join(persistent_dir, 'test_data/DECam_examples')
     cache_dir = os.path.join(cache_dir, 'DECam')
     filebase = 'DECaPS-West_20220112.g.32'
@@ -301,8 +302,7 @@ def decam_ref_datastore( code_version, persistent_dir, cache_dir, data_dir, data
         if os.path.isfile(cache_path):
             _logger.info( f"{cache_path} exists, not redownloading." )
         else:  # need to download!
-            url = ( f'https://portal.nersc.gov/cfs/m2218/decat/decat/templatecache/DECaPS-West_20220112.g/'
-                    f'{filebase}{urlmap[ext]}' )
+            url = f'{download_url}/DECAM/{filebase}{urlmap[ext]}'
             try:
                 retry_download( url, fzpath )
                 if os.path.isfile(fzpath):
@@ -312,6 +312,7 @@ def decam_ref_datastore( code_version, persistent_dir, cache_dir, data_dir, data
                 else:
                     raise FileNotFoundError(f'Cannot find downloaded file: {fzpath}')
             except (SubprocessFailure, FileNotFoundError, RuntimeError) as e:
+                raise e  # check that the files are successfully downloaded from NERSC, then remove or keep the dropbox links
                 retry_download(dropbox_urls[ext], cache_path)
 
         destination = os.path.join(data_dir, f'115/{filebase}{ext}')

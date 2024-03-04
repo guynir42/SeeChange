@@ -96,6 +96,10 @@ def pytest_sessionfinish(session, exitstatus):
                 if len(files) > 0:
                     raise RuntimeError(f'There are files left in the archive after tests cleanup: {files}')
 
+@pytest.fixture
+def download_url():
+    return 'https://portal.nersc.gov/cfs/m4616/SeeChange_test_data'
+
 
 # data that is included in the repo and should be available for tests
 @pytest.fixture(scope="session")
