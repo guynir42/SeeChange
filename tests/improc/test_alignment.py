@@ -119,7 +119,6 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
         new_image.delete_from_disk_and_database(remove_downstream_data=True)
 
 
-
 def check_aligned(image1, image2):
     d1 = image1.data.copy()
     d1[image1.flags > 0] = np.nan

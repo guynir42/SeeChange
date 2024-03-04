@@ -27,14 +27,22 @@ from util.retrydownload import retry_download
 
 
 @pytest.fixture(scope='session')
-def ptf_bad_pixel_map(download_url, data_dir, cache_dir):
-    cache_dir = os.path.join(cache_dir, 'PTF')
+def ptf_cache_dir(cache_dir):
+    output = os.path.join(cache_dir, 'PTF')
+    if not os.path.isdir(output):
+        os.makedirs(output)
+
+    yield output
+
+
+@pytest.fixture(scope='session')
+def ptf_bad_pixel_map(download_url, data_dir, ptf_cache_dir):
     filename = 'C11/masktot.fits'  # TODO: add more CCDs if needed
     # url = 'https://portal.nersc.gov/project/m2218/pipeline/test_images/2012021x/'
     url = os.path.join(download_url, 'PTF/10cwm/2012021x/')
 
     # is this file already on the cache? if not, download it
-    cache_path = os.path.join(cache_dir, filename)
+    cache_path = os.path.join(ptf_cache_dir, filename)
     if not os.path.isfile(cache_path):
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         retry_download(url + filename, cache_path)
@@ -69,13 +77,12 @@ def ptf_bad_pixel_map(download_url, data_dir, cache_dir):
 
 
 @pytest.fixture(scope='session')
-def ptf_downloader(provenance_preprocessing, download_url, data_dir, cache_dir):
-    cache_dir = os.path.join(cache_dir, 'PTF')
+def ptf_downloader(provenance_preprocessing, download_url, data_dir, ptf_cache_dir):
 
     def download_ptf_function(filename='PTF201104291667_2_o_45737_11.w.fits'):
 
-        os.makedirs(cache_dir, exist_ok=True)
-        cachedpath = os.path.join(cache_dir, filename)
+        os.makedirs(ptf_cache_dir, exist_ok=True)
+        cachedpath = os.path.join(ptf_cache_dir, filename)
 
         # first make sure file exists in the cache
         if os.path.isfile(cachedpath):
@@ -132,13 +139,12 @@ def ptf_exposure(ptf_downloader):
 
 
 @pytest.fixture
-def ptf_datastore(datastore_factory, ptf_exposure, cache_dir, ptf_bad_pixel_map):
-    cache_dir = os.path.join(cache_dir, 'PTF')
+def ptf_datastore(datastore_factory, ptf_exposure, ptf_cache_dir, ptf_bad_pixel_map):
     ptf_exposure.instrument_object.fetch_sections()
     ds = datastore_factory(
         ptf_exposure,
         11,
-        cache_dir=cache_dir,
+        cache_dir=ptf_cache_dir,
         cache_base_name='187/PTF_20110429_040004_11_R_Sci_5F5TAU',
         overrides={'extraction': {'threshold': 5}},
         bad_pixel_map=ptf_bad_pixel_map,
@@ -167,14 +173,13 @@ def ptf_urls(download_url):
 
 
 @pytest.fixture(scope='session')
-def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, ptf_bad_pixel_map):
-    cache_dir = os.path.join(cache_dir, 'PTF')
+def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, ptf_cache_dir, ptf_bad_pixel_map):
 
     def factory(start_date='2009-04-04', end_date='2013-03-03', max_images=None):
         # see if any of the cache names were saved to a manifest file
         cache_names = {}
-        if os.path.isfile(os.path.join(cache_dir, 'manifest.txt')):
-            with open(os.path.join(cache_dir, 'manifest.txt')) as f:
+        if os.path.isfile(os.path.join(ptf_cache_dir, 'manifest.txt')):
+            with open(os.path.join(ptf_cache_dir, 'manifest.txt')) as f:
                 text = f.read().splitlines()
             for line in text:
                 filename, cache_name = line.split()
@@ -187,6 +192,8 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
         # choose only the urls that are within the date range (and no more than max_images)
         urls = []
         for url in ptf_urls:
+            if not url.startswith('PTF20'):
+                continue
             obstime = datetime.strptime(url[3:11], '%Y%m%d')
             if start_time <= obstime <= end_time:
                 urls.append(url)
@@ -201,7 +208,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
                 ds = datastore_factory(
                     exp,
                     11,
-                    cache_dir=cache_dir,
+                    cache_dir=ptf_cache_dir,
                     cache_base_name=cache_names.get(url, None),
                     overrides={'extraction': {'threshold': 5}},
                     bad_pixel_map=ptf_bad_pixel_map,
@@ -209,14 +216,14 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, cache_dir, p
 
                 if hasattr(ds, 'cache_base_name') and ds.cache_base_name is not None:
                     cache_name = ds.cache_base_name
-                    if cache_name.startswith(cache_dir):
-                        cache_name = cache_name[len(cache_dir) + 1:]
+                    if cache_name.startswith(ptf_cache_dir):
+                        cache_name = cache_name[len(ptf_cache_dir) + 1:]
                     if cache_name.endswith('.image.fits.json'):
                         cache_name = cache_name[:-len('.image.fits.json')]
                     cache_names[url] = cache_name
 
                     # save the manifest file (save each iteration in case of failure)
-                    with open(os.path.join(cache_dir, 'manifest.txt'), 'w') as f:
+                    with open(os.path.join(ptf_cache_dir, 'manifest.txt'), 'w') as f:
                         for key, value in cache_names.items():
                             f.write(f'{key} {value}\n')
 
@@ -274,8 +281,8 @@ def ptf_supernova_images(ptf_images_factory):
 # conditionally call the ptf_reference_images fixture if cache is not there:
 # ref: https://stackoverflow.com/a/75337251
 @pytest.fixture(scope='session')
-def ptf_aligned_images(request, cache_dir, data_dir, code_version):
-    cache_dir = os.path.join(cache_dir, 'PTF/aligned_images')
+def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
+    cache_dir = os.path.join(cache_dir, 'aligned_images')
 
     # try to load from cache
     if os.path.isfile(os.path.join(cache_dir, 'manifest.txt')):
@@ -342,9 +349,7 @@ def ptf_aligned_images(request, cache_dir, data_dir, code_version):
 
 
 @pytest.fixture
-def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_dir, code_version):
-    cache_dir = os.path.join(cache_dir, 'PTF')
-
+def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, ptf_cache_dir, data_dir, code_version):
     pipe = CoaddPipeline()
     pipe.coadder = coadder  # use this one that has a test_parameter defined
 
@@ -397,10 +402,10 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
         )
 
     extensions = ['image.fits', f'psf_{psf_prov.id[:6]}.fits', f'sources_{sources_prov.id[:6]}.fits', 'wcs', 'zp']
-    filenames = [os.path.join(cache_dir, cache_base_name) + f'.{ext}.json' for ext in extensions]
+    filenames = [os.path.join(ptf_cache_dir, cache_base_name) + f'.{ext}.json' for ext in extensions]
     if all([os.path.isfile(filename) for filename in filenames]):  # can load from cache
         # get the image:
-        coadd_image = Image.copy_from_cache(cache_dir, cache_base_name + '.image.fits')
+        coadd_image = Image.copy_from_cache(ptf_cache_dir, cache_base_name + '.image.fits')
         # we must load these images in order to save the reference image with upstreams
         coadd_image.upstream_images = ptf_reference_images
         coadd_image.provenance = im_prov
@@ -408,25 +413,25 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
         assert coadd_image.provenance_id == coadd_image.provenance.id
 
         # get the PSF:
-        coadd_image.psf = PSF.copy_from_cache(cache_dir, cache_base_name + f'.psf_{psf_prov.id[:6]}.fits')
+        coadd_image.psf = PSF.copy_from_cache(ptf_cache_dir, cache_base_name + f'.psf_{psf_prov.id[:6]}.fits')
         coadd_image.psf.provenance = psf_prov
         assert coadd_image.psf.provenance_id == coadd_image.psf.provenance.id
 
         # get the source list:
         coadd_image.sources = SourceList.copy_from_cache(
-            cache_dir, cache_base_name + f'.sources_{sources_prov.id[:6]}.fits'
+            ptf_cache_dir, cache_base_name + f'.sources_{sources_prov.id[:6]}.fits'
         )
         coadd_image.sources.provenance = sources_prov
         assert coadd_image.sources.provenance_id == coadd_image.sources.provenance.id
 
         # get the WCS:
-        coadd_image.wcs = WorldCoordinates.copy_from_cache(cache_dir, cache_base_name + '.wcs')
+        coadd_image.wcs = WorldCoordinates.copy_from_cache(ptf_cache_dir, cache_base_name + '.wcs')
         coadd_image.wcs.provenance = wcs_prov
         coadd_image.sources.wcs = coadd_image.wcs
         assert coadd_image.wcs.provenance_id == coadd_image.wcs.provenance.id
 
         # get the zero point:
-        coadd_image.zp = ZeroPoint.copy_from_cache(cache_dir, cache_base_name + '.zp')
+        coadd_image.zp = ZeroPoint.copy_from_cache(ptf_cache_dir, cache_base_name + '.zp')
         coadd_image.zp.provenance = zp_prov
         coadd_image.sources.zp = coadd_image.zp
         assert coadd_image.zp.provenance_id == coadd_image.zp.provenance.id
@@ -440,11 +445,11 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
         coadd_image = pipe.datastore.image
 
         # save all products into cache:
-        pipe.datastore.image.copy_to_cache(cache_dir)
-        pipe.datastore.sources.copy_to_cache(cache_dir)
-        pipe.datastore.psf.copy_to_cache(cache_dir)
-        pipe.datastore.wcs.copy_to_cache(cache_dir, cache_base_name + '.wcs.json')
-        pipe.datastore.zp.copy_to_cache(cache_dir, cache_base_name + '.zp.json')
+        pipe.datastore.image.copy_to_cache(ptf_cache_dir)
+        pipe.datastore.sources.copy_to_cache(ptf_cache_dir)
+        pipe.datastore.psf.copy_to_cache(ptf_cache_dir)
+        pipe.datastore.wcs.copy_to_cache(ptf_cache_dir, cache_base_name + '.wcs.json')
+        pipe.datastore.zp.copy_to_cache(ptf_cache_dir, cache_base_name + '.zp.json')
 
     with SmartSession() as session:
         coadd_image = coadd_image.merge_all(session)
@@ -469,13 +474,12 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, cache_dir, data_d
 
 
 @pytest.fixture
-def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, cache_dir):
+def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, ptf_cache_dir):
 
-    cache_dir = os.path.join(cache_dir, 'PTF')
-    cache_path = os.path.join(cache_dir, '187/PTF_20100216_075004_11_R_Diff_VXUBFA_u-7ogkop.image.fits.json')
+    cache_path = os.path.join(ptf_cache_dir, '187/PTF_20100216_075004_11_R_Diff_VXUBFA_u-7ogkop.image.fits.json')
 
     if os.path.isfile(cache_path):  # try to load this from cache
-        im = Image.copy_from_cache(cache_dir, cache_path)
+        im = Image.copy_from_cache(ptf_cache_dir, cache_path)
         im.upstream_images = [ptf_ref.image, ptf_supernova_images[0]]
         im.ref_image_id = ptf_ref.image.id
         prov = Provenance(
@@ -491,7 +495,7 @@ def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, cache_dir):
         ds = subtractor.run(ptf_supernova_images[0])
         ds.sub_image.save()
 
-        ds.sub_image.copy_to_cache(cache_dir)
+        ds.sub_image.copy_to_cache(ptf_cache_dir)
         im = ds.sub_image
 
     # save the subtraction image to DB and the upstreams (if they are not already there)

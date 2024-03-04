@@ -18,13 +18,17 @@ from pipeline.catalog_tools import fetch_GaiaDR3_excerpt
 from util.retrydownload import retry_download
 
 
+@pytest.fixture(scope='session')
+def ztf_cache_dir(cache_dir):
+    output = os.path.join(cache_dir, 'ZTF')
+    if not os.path.isdir(output):
+        os.makedirs(output)
+
+    yield output
+
+
 @pytest.fixture
-def ztf_filepaths_image_sources_psf(data_dir, cache_dir, download_url):
-
-    cache_dir = os.path.join(cache_dir, 'ZTF')
-    if not os.path.isdir(cache_dir):
-        os.makedirs(cache_dir)
-
+def ztf_filepaths_image_sources_psf(data_dir, ztf_cache_dir, download_url):
     download_url = download_url + '/ZTF/'
 
     image = "test_ztf_image.fits"
@@ -36,12 +40,12 @@ def ztf_filepaths_image_sources_psf(data_dir, cache_dir, download_url):
     output = image, weight, flags, sources, psf, psfxml
 
     for filepath in output:
-        if not os.path.isfile(os.path.join(cache_dir, filepath)):
-            retry_download(download_url + filepath, os.path.join(cache_dir, filepath))
-        if not os.path.isfile(os.path.join(cache_dir, filepath)):
+        if not os.path.isfile(os.path.join(ztf_cache_dir, filepath)):
+            retry_download(download_url + filepath, os.path.join(ztf_cache_dir, filepath))
+        if not os.path.isfile(os.path.join(ztf_cache_dir, filepath)):
             raise FileNotFoundError(f"Can't read {filepath}. It should have been downloaded! ")
         if not os.path.isfile(os.path.join(data_dir, filepath)):
-            shutil.copy2(os.path.join(cache_dir, filepath), os.path.join(data_dir, filepath))
+            shutil.copy2(os.path.join(ztf_cache_dir, filepath), os.path.join(data_dir, filepath))
 
     output = tuple(
         pathlib.Path(os.path.join(data_dir, filepath)) for filepath in output
