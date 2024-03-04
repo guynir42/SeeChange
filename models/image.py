@@ -271,8 +271,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def mid_mjd(self):
-        """
-        Time of the middle of the exposures.
+        """Time of the middle of the exposures.
         For multiple, coadded exposures (e.g., references), this would
         be the middle between the start_mjd and end_mjd, regarless of
         how the exposures are spaced.
@@ -763,8 +762,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @classmethod
     def from_images(cls, images, index=0):
-        """
-        Create a new Image object from a list of other Image objects.
+        """Create a new Image object from a list of other Image objects.
         This is the first step in making a multi-image (usually a coadd).
         Do not use this to make subtractions!  Use from_ref_and_new instead.
 
@@ -861,8 +859,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @classmethod
     def from_new_and_ref(cls, new_image, ref_image):
-        """
-        Create a new Image object from a reference Image object and a new Image object.
+        """Create a new Image object from a reference Image object and a new Image object.
         This is the first step in making a difference image.
 
         The output image doesn't have any data, and is created with
@@ -1042,6 +1039,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def aligned_images(self):
+        """A set of images matching the upstream_images, only aligned (warped) to one of the image. """
         self._check_aligned_images()  # possibly destroy the old aligned images
 
         if self._aligned_images is None:
@@ -1067,6 +1065,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def filter_short(self):
+        """The name of the filtered, shortened for display and for filenames. """
         if self.filter is None:
             return None
         return self.instrument_object.get_short_filter_name(self.filter)
@@ -1318,8 +1317,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                     FileOnDiskMixin.save( self, files_written[ext], ext, **kwargs )
 
     def load(self):
-        """
-        Load the image data from disk.
+        """Load the image data from disk.
         This includes the _data property,
         but can also load the _flags, _weight,
         _background, _score, _psfflux and _psffluxerr properties.
@@ -1573,8 +1571,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                             im.zp = zps[0]
 
     def get_upstreams(self, session=None):
-        """
-        Get the upstream images and associated products that were used to make this image.
+        """Get the upstream images and associated products that were used to make this image.
         This includes the reference/new image (for subtractions) or the set of images
         used to build a coadd.  Each image will have some products that were generated
         from it (source lists, PSFs, etc.) that also count as upstreams to this image.
@@ -1679,9 +1676,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def data(self):
-        """
-        The underlying pixel data array (2D float array).
-        """
+        """The underlying pixel data array (2D float array). """
         if self._data is None and self.filepath is not None:
             self.load()
         return self._data
@@ -1707,9 +1702,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def flags(self):
-        """
-        The bit-flag array (2D int array).
-        """
+        """The bit-flag array (2D int array). """
         if self._data is None and self.filepath is not None:
             self.load()
         return self._flags
@@ -1721,9 +1714,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def weight(self):
-        """
-        The inverse-variance array (2D float array).
-        """
+        """The inverse-variance array (2D float array). """
         if self._data is None and self.filepath is not None:
             self.load()
         return self._weight
@@ -1734,9 +1725,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def background(self):
-        """
-        An estimate for the background flux (2D float array).
-        """
+        """An estimate for the background flux (2D float array). """
         if self._data is None and self.filepath is not None:
             self.load()
         return self._background
@@ -1747,9 +1736,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def score(self):
-        """
-        The image after filtering with the PSF and normalizing to S/N units (2D float array).
-        """
+        """The image after filtering with the PSF and normalizing to S/N units (2D float array). """
         if self._data is None and self.filepath is not None:
             self.load()
         return self._score
@@ -1760,9 +1747,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def psfflux(self):
-        """
-        The flux of the PSF (2D float array).
-        """
+        """An array containing an estimate for the (PSF-fitted) flux of each point in the image. """
         if self._data is None and self.filepath is not None:
             self.load()
         return self._psfflux
@@ -1773,9 +1758,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def psffluxerr(self):
-        """
-        The error on the flux of the PSF (2D float array).
-        """
+        """The error for each pixel of the PSF-fit flux array. """
         if self._data is None and self.filepath is not None:
             self.load()
         return self._psffluxerr
