@@ -566,3 +566,28 @@ def decam_detection_list(decam_subtraction, detector, cache_dirdecam_cache_dir):
 
     # must delete the detections (especially the file) because I'm not sure the datastore will delete it
     detections.delete_from_disk_and_database(archive=True)
+
+
+@pytest.fixture
+def decam_cutouts(decam_detection_list, cutter, decam_cache_dir):
+    prov = Provenance(
+        process='cutouts',
+        code_version=cutter.pars.get_code_version(),
+        parameters=cutter.pars.get_critical_pars(),
+        upstreams=[
+            decam_detection_list.provenance,
+            decam_detection_list.image.provenance,
+        ],
+        is_testing=True,
+    )
+    filepath = decam_detection_list.filepath + f'.cutouts_{prov.id[:6]}.npy'
+
+    if os.path.isfile(filepath):
+        cutouts = SourceList.copy_from_cache(decam_cache_dir, filepath)
+        cutouts.provenance = prov
+    else:
+        ds = cutter.run(decam_detection_list)
+        cutouts = ds.sub_image.cutouts
+        cutouts.provenance = prov
+        cutouts.save()
+        cutouts.copy_to_cache(decam_cache_dir)
