@@ -108,17 +108,6 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         )
     )
 
-    _bitflag = sa.Column(
-        sa.BIGINT,
-        nullable=False,
-        default=0,
-        index=True,
-        doc='Bitflag for these cutouts. Good cutouts have a bitflag of 0. '
-            'Bad cutouts are each bad in their own way (i.e., have different bits set). '
-            'Will include all the bits from data used to make these cutouts '
-            '(e.g., the exposure it is based on). '
-    )
-
     @property
     def new_image(self):
         """Get the aligned new image using the sub_image. """
@@ -428,6 +417,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             else:
                 setattr(self, att, np.array(file[f'{groupname}/{att}']))
 
+        self.format = 'hdf5'
+
     def load(self, filepath=None):
         """Load the data for this cutout from a file.
 
@@ -491,14 +482,22 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         return cutout
 
     @classmethod
-    def load_list(cls, filepath):
+    def load_list(cls, filepath, cutout_list=None):
         """Load all Cutouts object that were saved to a file
+
+        Note that these cutouts are not loaded from the database,
+        so they will be missing important relationships like provenance and sources.
+        If cutout_list is given, it must match the cutouts on the file,
+        so that each cutouts object will be loaded the data from file,
+        but retain its database relationships.
 
         Parameters
         ----------
         filepath: str
             The (relative/full path) filename to load from.
             The file format is determined by the extension.
+        cutout_list: list of Cutouts, optional
+            If given, will load the data from the file into these objects.
 
         Returns
         -------
@@ -511,18 +510,26 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         else:
             format = ext
 
-        cutouts = []
         if filepath.startswith(Cutouts.local_path):
             rel_filepath = filepath[len(Cutouts.local_path) + 1:]
+
+        cutouts = []
 
         if format == 'hdf5':
             with h5py.File(filepath, 'r') as file:
                 for groupname in file.keys():
                     if groupname.startswith('source_'):
                         number = int(groupname.split('_')[1])
-                        cutout = cls()
-                        cutout.format = format
-                        cutout.index_in_sources = number
+                        if cutout_list is None:
+                            cutout = cls()
+                            cutout.format = format
+                            cutout.index_in_sources = number
+                        else:
+                            cutout = [c for c in cutout_list if c.index_in_sources == number]
+                            if len(cutout) != 1:
+                                raise ValueError(f"Could not find a unique cutout with index {number} in the list.")
+                            cutout = cutout[0]
+
                         cutout._load_dataset_from_hdf5(file, groupname)
                         cutout.filepath = rel_filepath
                         for att in ['ra', 'dec', 'x', 'y']:

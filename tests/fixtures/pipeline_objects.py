@@ -26,7 +26,7 @@ from pipeline.photo_cal import PhotCalibrator
 from pipeline.coaddition import Coadder
 from pipeline.subtraction import Subtractor
 from pipeline.cutting import Cutter
-from pipeline.measurement import Measurer
+from pipeline.measuring import Measurer
 
 from improc.bitmask_tools import make_saturated_flag
 
@@ -202,7 +202,7 @@ def cutter(cutter_factory):
 def measurer_factory(test_config):
 
     def make_measurer():
-        meas = Measurer(**test_config.value('measurement'))
+        meas = Measurer(**test_config.value('measuring'))
         meas.pars._enforce_no_new_attrs = False
         meas.pars.test_parameter = meas.pars.add_par(
             'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True

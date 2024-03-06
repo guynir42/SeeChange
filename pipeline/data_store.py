@@ -16,7 +16,7 @@ from models.measurements import Measurements
 
 
 UPSTREAM_NAMES = {
-    'exposure': [], # no upstreams
+    'exposure': [],  # no upstreams
     'preprocessing': ['exposure'],
     'extraction': ['preprocessing'],
     'astro_cal': ['extraction'],
@@ -24,7 +24,7 @@ UPSTREAM_NAMES = {
     'subtraction': ['reference', 'preprocessing', 'extraction', 'astro_cal', 'photo_cal'],
     'detection': ['subtraction'],
     'cutting': ['detection'],
-    'measurement': ['detection', 'photo_cal'],
+    'measuring': ['detection', 'photo_cal'],
 }
 
 UPSTREAM_OBJECTS = {
@@ -38,7 +38,7 @@ UPSTREAM_OBJECTS = {
     'subtraction': 'sub_image',
     'detection': 'detections',
     'cutting': 'cutouts',
-    'measurement': 'measurements',
+    'measuring': 'measurements',
 }
 
 
@@ -1162,7 +1162,7 @@ class DataStore:
                 if provenance is not None:  # if None, it means we can't find it on the DB
                     self.cutouts = session.scalars(
                         sa.select(Cutouts).where(
-                            Cutouts.sub_image_id == sub_image.id,
+                            Cutouts.sources_id == sub_image.sources.id,
                             Cutouts.provenance.has(id=provenance.id),
                         )
                     ).all()

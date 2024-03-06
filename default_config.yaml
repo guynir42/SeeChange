@@ -92,10 +92,19 @@ detection:
 cutting:
   cutout_size: 20
 
-measurement:
-  photometry_method: aperture
-  aperture_radius: 3.0
-  real_bogus_version: null
+measuring:
+  aperture_radii: [1.0, 2.0, 3.0]
+  aperture_units: fwhm
+  chosen_aperture: auto
+  analytical_cuts: ['negatives', 'bad pixels', 'saturation', 'streaks', 'psf width']
+  negative_positive_threshold: 0.3
+  bad_pixel_radius: 3.0
+  bad_pixel_exclude: []
+  streak_filter_angle_step: 5.0
+  width_filter_multipliers: [0.5, 2.0, 5.0, 10.0]
+  external_analysis_versions: {}
+  thresholds: {'negatives': 0.3, 'streaks': 1.0, 'bad pixels': 1.0, 'psf width': 1.0}
+
 
 # Specific configuration for specific instruments.
 # Instruments should override the two defaults from

@@ -19,6 +19,7 @@ from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.source_list import SourceList
+from models.cutouts import Cutouts
 from models.datafile import DataFile
 from models.reference import Reference
 
@@ -336,9 +337,10 @@ def decam_ref_datastore( code_version, download_url, decam_cache_dir, data_dir, 
             if not os.path.isfile(cache_path):
                 raise FileNotFoundError(f'Cannot find downloaded file: {cache_path}')
 
-        destination = os.path.join(data_dir, f'115/{filebase}{ext}')
-        os.makedirs(os.path.dirname(destination), exist_ok=True)
-        shutil.copy2( cache_path, destination )
+        if not ext.endswith('.yaml'):
+            destination = os.path.join(data_dir, f'115/{filebase}{ext}')
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            shutil.copy2( cache_path, destination )
 
     yaml_path = os.path.join(decam_cache_dir, f'115/{filebase}.image.yaml')
 
@@ -501,7 +503,7 @@ def decam_subtraction(decam_reference, decam_processed_image, subtractor, decam_
             aligned_new = None
             aligned_ref_file = '115/c4d_20220113_050224_N1_g_Warped_ZBELGP'
             if os.path.isfile(os.path.join(decam_cache_dir, aligned_ref_file + '.image.fits.json')):
-                aligned_ref = Image.copy_from_cache(cache_dir, aligned_ref_file + '.image.fits.json')
+                aligned_ref = Image.copy_from_cache(decam_cache_dir, aligned_ref_file + '.image.fits.json')
                 aligned_ref.info['original_image_id'] = decam_reference.image.id
                 aligned_ref.provenance = align_ref_prov
 
@@ -540,7 +542,7 @@ def decam_subtraction(decam_reference, decam_processed_image, subtractor, decam_
 
 
 @pytest.fixture
-def decam_detection_list(decam_subtraction, detector, cache_dirdecam_cache_dir):
+def decam_detection_list(decam_subtraction, detector, decam_cache_dir):
 
     prov = Provenance(
         process='detection',
@@ -569,10 +571,10 @@ def decam_detection_list(decam_subtraction, detector, cache_dirdecam_cache_dir):
 
 
 @pytest.fixture
-def decam_cutouts(decam_detection_list, cutter, decam_cache_dir):
+def decam_cutouts(decam_detection_list, cutter, decam_cache_dir, data_dir):
     prov = Provenance(
         process='cutouts',
-        code_version=cutter.pars.get_code_version(),
+        code_version=decam_detection_list.provenance.code_version,
         parameters=cutter.pars.get_critical_pars(),
         upstreams=[
             decam_detection_list.provenance,
@@ -580,14 +582,31 @@ def decam_cutouts(decam_detection_list, cutter, decam_cache_dir):
         ],
         is_testing=True,
     )
-    filepath = decam_detection_list.filepath + f'.cutouts_{prov.id[:6]}.npy'
+    filepath = decam_detection_list.image.filepath + f'.cutouts_{prov.id[:6]}.h5'
 
-    if os.path.isfile(filepath):
-        cutouts = SourceList.copy_from_cache(decam_cache_dir, filepath)
-        cutouts.provenance = prov
+    if os.path.isfile(os.path.join(decam_cache_dir, filepath)):
+        sourcepath = os.path.join(decam_cache_dir, filepath)
+        targetpath = os.path.join(data_dir, filepath)
+        if not os.path.isdir(os.path.dirname(targetpath)):
+            os.makedirs(os.path.dirname(targetpath), exist_ok=True)
+        shutil.copy2(sourcepath, targetpath)
+        cutouts = Cutouts.load_list(targetpath)
+        for c in cutouts:
+            c.provenance = prov
+            c.sources = decam_detection_list
     else:
         ds = cutter.run(decam_detection_list)
-        cutouts = ds.sub_image.cutouts
-        cutouts.provenance = prov
-        cutouts.save()
-        cutouts.copy_to_cache(decam_cache_dir)
+        cutouts = ds.cutouts
+        for c in cutouts:
+            c.provenance = prov
+        Cutouts.save_list(cutouts)
+        sourcepath = os.path.join(data_dir, filepath)
+        targetpath = os.path.join(decam_cache_dir, filepath)
+        if not os.path.isdir(os.path.dirname(targetpath)):
+            os.makedirs(os.path.dirname(targetpath), exist_ok=True)
+        shutil.copy2(sourcepath, targetpath)
+
+    # TODO: make sure cutouts are saved to DB and loaded with all the right columns and relationships
+    yield cutouts
+
+    Cutouts.delete_list(cutouts)  # should clean up local storage, archive, and database
