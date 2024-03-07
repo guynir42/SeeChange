@@ -1,4 +1,4 @@
-
+import numpy as np
 import sqlalchemy as sa
 
 from pipeline.parameters import Parameters
@@ -8,6 +8,9 @@ from pipeline.utils import parse_session
 from models.base import SmartSession
 from models.cutouts import Cutouts
 from models.measurements import Measurements
+from models.enums_and_bitflags import BitFlagConverter
+
+from improc.photometry import iterative_photometry
 
 
 class ParsMeasurer(Parameters):
@@ -30,6 +33,23 @@ class ParsMeasurer(Parameters):
             'not the saved aperture values in each measurement object. '
         )
 
+        self.annulus_radii = self.add_par(
+            'annulus_radii',
+            [7.5, 10.0],
+            list,
+            'Inner and outer radii of the annulus. '
+        )
+
+        self.annulus_units = self.add_par(
+            'annulus_units',
+            'pixels',
+            str,
+            'Units for the annulus radii. Can be pixels, arcsec, fwhm. '
+            'This describes the units of the annulus_radii input. '
+            'Use "pixels" to make a constant annulus, or "fwhm" to '
+            'adjust the annulus size for each image based on the PSF width. '
+        )
+
         # TODO: should we choose the "best aperture" using the config, or should each Image have its own aperture?
         self.chosen_aperture = self.add_par(
             'chosen_aperture',
@@ -43,7 +63,7 @@ class ParsMeasurer(Parameters):
 
         self.analytical_cuts = self.add_par(
             'analytical_cuts',
-            ['negatives', 'bad pixels', 'saturation', 'streaks', 'psf width'],
+            ['negatives', 'bad pixels', 'streak like', 'psf width'],
             [list],
             'Which kinds of analytic cuts are used to give scores to this measurement. '
         )
@@ -68,6 +88,7 @@ class ParsMeasurer(Parameters):
             [],
             list,
             'List of strings of the bad pixel types to exclude from the bad pixel cut. '
+            'The same types are ignored when running photometry. '
         )
 
         self.streak_filter_angle_step = self.add_par(
@@ -95,7 +116,7 @@ class ParsMeasurer(Parameters):
 
         self.thresholds = self.add_par(
             'thresholds',
-            {'negatives': 0.3, 'streaks': 1.0, 'bad pixels': 1.0, 'psf width': 1.0},
+            {'negatives': 0.3, 'streak like': 1.0, 'bad pixels': 1.0, 'psf width': 1.0},
             dict,
             'A dictionary where each key is the name of an analytic cut or external analysis, '
             'and the value is the threshold for the score of that cut. '
@@ -160,9 +181,35 @@ class Measurer:
 
             measurements_list = []
             for c in ds.cutouts:
-                m = Measurements()
-                # TODO: implement all sorts of analysis and photometry
+                m = Measurements(cutouts=c)
 
+                # TODO: implement all sorts of analysis and photometry
+                m.set_apertures(self.pars.aperture_radii, self.pars.aperture_units)
+
+                ignore_bits = 0
+                for badness in self.pars.bad_pixel_exclude:
+                    ignore_bits |= BitFlagConverter.convert(badness)
+
+                flags = c.sub_flags ^ ignore_bits  # remove the bad pixels that we want to ignore
+
+                # TODO: consider if there are any additional parameters that photometry needs
+                output = iterative_photometry(c.sub_data, c.sub_weight, flags, m.psf, radii=m.aper_radii)
+                m.flux_psf = output['psf_flux']
+                m.flux_psf_err = output['psf_err']
+                m.area_psf = output['psf_area']
+                m.flux_apertures = output['fluxes']
+                m.flux_apertures_err = np.sqrt(output['variance'] * output['areas'])  # TODO: add source noise??
+                m.aper_radii = output['radii']
+                m.area_apertures = output['areas']
+                m.background = output['background']
+                m.background_rms = np.sqrt(output['variance'])
+                m.offset_x = output['offset_x']
+                m.offset_y = output['offset_y']
+                m.width = (output['major'] + output['minor']) / 2
+                m.elongation = output['elongation']
+                m.position_angle = output['position_angle']
+
+                m.calculate_magnitudes()  # use the fluxes to calculate magnitudes
 
                 if m.provenance is None:
                     m.provenance = prov

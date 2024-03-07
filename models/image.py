@@ -1728,6 +1728,17 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
             return downstreams
 
+    def get_psf(self):
+        """Load the PSF object for this image.
+
+        If it is a sub image, it will load the PSF from the new image.
+        """
+        if self.psf is not None:
+            return self.psf
+        if self.new_image is not None:
+            return self.new_image.psf
+        return None
+
     @property
     def data(self):
         """The underlying pixel data array (2D float array). """
