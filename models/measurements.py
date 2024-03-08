@@ -1,3 +1,4 @@
+import numpy as np
 
 import sqlalchemy as sa
 from sqlalchemy import orm
@@ -48,7 +49,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         doc="MJD of the measurement. "
     )
 
-    exptime = sa.Column(
+    exp_time = sa.Column(
         sa.Float,
         nullable=False,
         index=True,
@@ -231,18 +232,18 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
 
         # these are loaded from the cutouts and upstream objects and saved to DB for easy searches
         self.mjd = cutouts.sources.image.mjd
-        self.exptime = cutouts.sources.image.exptime
+        self.exp_time = cutouts.sources.image.exp_time
         self.filter = cutouts.sources.image.filter
         self.limmag = cutouts.sources.image.lim_mag_estimate  # TODO: must update this when doing Issue #143
         self.ra = cutouts.source_row['ra']
         self.dec = cutouts.source_row['dec']
 
         # these are not saved in the DB but are useful to have around
-        self.zp = cutouts.sources.image.zp.zp
-        self.dzp = cutouts.sources.image.zp.dzp
+        self.zp = cutouts.sources.image.new_image.zp.zp
+        self.dzp = cutouts.sources.image.new_image.zp.dzp
         self.fwhm_pixels = cutouts.sources.image.get_psf().fwhm_pixels
         self.psf = cutouts.sources.image.get_psf().get_clip(x=cutouts.x, y=cutouts.y)
-        self.pixel_scale = cutouts.sources.image.wcs.get_pixel_scale()
+        self.pixel_scale = cutouts.sources.image.new_image.wcs.get_pixel_scale()
 
         # TODO: continue this
 
@@ -262,10 +263,10 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
     def __repr__(self):
         return (
             f"<Measurements {self.id} "
-            f"from SourceList {self.sources_id} "
-            f"(number {self.index_in_sources}) "
-            f"from Image {self.sub_image_id} "
-            f"at x,y= {self.x}, {self.y}>"
+            f"from SourceList {self.cutouts.sources_id} "
+            f"(number {self.cutouts.index_in_sources}) "
+            f"from Image {self.cutouts.sub_image_id} "
+            f"at x,y= {self.cutouts.x}, {self.cutouts.y}>"
         )
 
     @orm.reconstructor
@@ -296,17 +297,37 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         if units == 'pixels':
             self.aper_radii = radii
         elif units == 'arcsec':
-            self.aper_radii = radii / self.pixel_scale
+            self.aper_radii = [r / self.pixel_scale for r in radii]
         elif units == 'fwhm':
-            self.aper_radii = radii * self.fwhm_pixels
+            self.aper_radii = [r * self.fwhm_pixels for r in radii]
         else:
             raise ValueError(f'Unknown units: {units}. Use "pixels", "arcsec", or "fwhm".')
 
     def calculate_magnitudes(self):
         """Fill out the magnitudes using the zero point and fluxes. """
-        pass
+        mag_apertures = []
+        mag_apertures_err = []
+        mag_psf = []
+        mag_psf_err = []
 
+        for f, ferr in zip(self.flux_apertures, self.flux_apertures_err):
+            mag_apertures.append(-2.5 * np.log10(f) + self.zp)
+            mag_apertures_err.append(np.sqrt( (2.5 / np.log(10) * ferr / f) ** 2 + self.dzp ** 2) )
+            mag_psf.append(-2.5 * np.log10(self.flux_psf) + self.zp)
+            d_m_psf = 2.5 / np.log(10) * self.flux_psf_err / self.flux_psf
+            mag_psf_err.append(np.sqrt( d_m_psf ** 2 + self.dzp ** 2))
 
+        self.mag_apertures = mag_apertures
+        self.mag_apertures_err = mag_apertures_err
+        self.mag_psf = mag_psf
+        self.mag_psf_err = mag_psf_err
+
+        if self.best_aperture == -1:
+            self.magnitude = self.mag_psf
+            self.magnitude_err = self.mag_psf_err
+        else:
+            self.magnitude = self.mag_apertures[self.best_aperture]
+            # note that magnitude_err is a @property and gets updated automatically
 
 
 

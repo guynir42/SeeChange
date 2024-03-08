@@ -185,21 +185,56 @@ def iterative_photometry(
         raise ValueError("Apertures must be positive numbers")
 
     xgrid, ygrid = np.meshgrid(np.arange(image.shape[1]), np.arange(image.shape[0]))
+    xgrid -= image.shape[1] // 2
+    ygrid -= image.shape[0] // 2
 
     nandata = np.where(flags > 0, np.nan, image)
 
     # find a rough estimate of the centroid using non-tapered cutout
     cx = np.nansum(xgrid * nandata) / np.nansum(nandata)
     cy = np.nansum(ygrid * nandata) / np.nansum(nandata)
+    cxx = np.nansum((xgrid - cx) ** 2 * nandata) / np.nansum(nandata)
+    cyy = np.nansum((ygrid - cy) ** 2 * nandata) / np.nansum(nandata)
+    cxy = np.nansum((xgrid - cx) * (ygrid - cy) * nandata) / np.nansum(nandata)
+
+    # get some very rough estimates just so we have something in case of immediate failure of the loop
+    fluxes = [np.nansum(nandata)] * len(radii)
+    areas = [np.nansum(~np.isnan(nandata))] * len(radii)
+    background = 0.0
+    variance = np.nanvar(nandata)
+
+    photometry = dict(
+        psf_flux=0.0,  # TODO: update this!
+        psf_err=0.0,  # TODO: update this!
+        psf_area=0.0,  # TODO: update this!
+        radii=radii,
+        fluxes=fluxes,
+        areas=areas,
+        background=background,
+        variance=variance,
+        offset_x=cx,
+        offset_y=cy,
+        moment_xx=cxx,
+        moment_yy=cyy,
+        moment_xy=cxy,
+    )
 
     # Loop over the iterations
     for i in range(iterations):
         fluxes = np.zeros(len(radii))
         areas = np.zeros(len(radii))
+        need_break = False
 
+        # reposition based on the last centroids
+        reposition_cx = cx
+        reposition_cy = cy
         for j, r in enumerate(radii):
             # make a circle-mask based on the centroid position
-            mask = get_circle(radius=r).get_image(cx, cy)
+            try:
+                mask = get_circle(radius=r, imsize=nandata.shape[0]).get_image(reposition_cx, reposition_cy)
+            except Exception as e:
+                print(e)
+                raise
 
             # mask the data and get the flux
             masked_data = nandata * mask
@@ -207,51 +242,71 @@ def iterative_photometry(
             areas[j] = np.nansum(mask)  # save the number of pixels in the aperture
 
             # get an offset annulus to get a local background estimate
-            annulus = get_circle(radius=annulus[1]).get_image(cx, cy) - get_circle(radius=annulus[0]).get_image(cx, cy)
-            # TODO: consider replacing this with a hard-edge annulus and do median or sigma clipping on the pixels
-            background = np.nansum(nandata * annulus) / np.nansum(annulus)  # b/g is per pixel!
-            variance = np.nansum(nandata - background) ** 2 / np.nansum(annulus)  # noise is per pixel!
-            normalization = (fluxes[j] - background * areas[j])
-            masked_data_bg = masked_data - background
+            inner = get_circle(radius=annulus[0], imsize=nandata.shape[0]).get_image(reposition_cx, reposition_cy)
+            outer = get_circle(radius=annulus[1], imsize=nandata.shape[0]).get_image(reposition_cx, reposition_cy)
+            annulus_map = outer - inner
 
-            # update the centroids
-            cx = np.nansum(xgrid * masked_data_bg) / normalization
-            cy = np.nansum(ygrid * masked_data_bg) / normalization
+            # background and variance only need to be calculated once (they are the same for all apertures)
+            # but moments/centroids can be calculated for each aperture but we will only want to save one
+            # so how about we use the smallest one?
+            if j == 0:  # smallest aperture only
+                # TODO: consider replacing this with a hard-edge annulus and do median or sigma clipping on the pixels
+                background = np.nansum(nandata * annulus_map) / np.nansum(annulus_map)  # b/g per pixel
+                variance = np.nansum((nandata - background) * annulus_map) ** 2 / np.nansum(annulus_map)  # noise per pixel
 
-            # update the second moments
-            cxx = np.nansum((xgrid - cx) ** 2 * masked_data_bg) / normalization
-            cyy = np.nansum((ygrid - cy) ** 2 * masked_data_bg) / normalization
-            cxy = np.nansum((xgrid - cx) * (ygrid - cy) * masked_data_bg) / normalization
+                normalization = (fluxes[j] - background * areas[j])
+                masked_data_bg = (nandata - background) * mask
 
-            # TODO: how to do PSF photometry with offsets and a given PSF? and get the error, too!
+                # update the centroids
+                cx = np.nansum(xgrid * masked_data_bg) / normalization
+                cy = np.nansum(ygrid * masked_data_bg) / normalization
 
-        photometry = dict(
-            psf_flux=0.0,  # TODO: update this!
-            psf_err=0.0,  # TODO: update this!
-            psf_area=0.0,  # TODO: update this!
-            radii=radii,
-            fluxes=fluxes,
-            areas=areas,
-            background=background,
-            variance=variance,
-            offset_x=cx,
-            offset_y=cy,
-            moment_xx=cxx,
-            moment_yy=cyy,
-            moment_xy=cxy,
-        )
+                # update the second moments
+                cxx = np.nansum((xgrid - cx) ** 2 * masked_data_bg) / normalization
+                cyy = np.nansum((ygrid - cy) ** 2 * masked_data_bg) / normalization
+                cxy = np.nansum((xgrid - cx) * (ygrid - cy) * masked_data_bg) / normalization
 
-        # calculate from 2nd moments the width, ratio and angle of the source
-        # ref: https://en.wikipedia.org/wiki/Image_moment
-        major = np.sqrt(2 * (cxx + cyy + np.sqrt((cxx - cyy) ** 2 + 4 * cxy ** 2)))
-        minor = np.sqrt(2 * (cxx + cyy - np.sqrt((cxx - cyy) ** 2 + 4 * cxy ** 2)))
-        angle = np.arctan2(2 * cxy, cxx - cyy) / 2
-        elongation = major / minor
+                # TODO: how to do PSF photometry with offsets and a given PSF? and get the error, too!
 
-        photometry['major'] = major
-        photometry['minor'] = minor
-        photometry['angle'] = angle
-        photometry['elongation'] = elongation
+                # check that we got reasonable values! If not, break and keep the current values
+                if np.isnan(cx) or cx > nandata.shape[1] or cx < 0:
+                    need_break = True
+                    break  # there's no point doing more radii if we are not going to save the results!
+                if np.isnan(cy) or cy > nandata.shape[0] or cy < 0:
+                    need_break = True
+                    break  # there's no point doing more radii if we are not going to save the results!
+                if np.nansum(mask) == 0 or np.nansum(annulus_map) == 0:
+                    need_break = True
+                    break  # there's no point doing more radii if we are not going to save the results!
+
+        if need_break:
+            break
+
+        photometry['psf_flux'] = 0.0  # TODO: update this!
+        photometry['psf_err'] = 0.0  # TODO: update this!
+        photometry['psf_area'] = 0.0  # TODO: update this!
+        photometry['radii'] = radii
+        photometry['fluxes'] = fluxes
+        photometry['areas'] = areas
+        photometry['background'] = background
+        photometry['variance'] = variance
+        photometry['offset_x'] = cx
+        photometry['offset_y'] = cy
+        photometry['moment_xx'] = cxx
+        photometry['moment_yy'] = cyy
+        photometry['moment_xy'] = cxy
+
+    # calculate from 2nd moments the width, ratio and angle of the source
+    # ref: https://en.wikipedia.org/wiki/Image_moment
+    major = np.sqrt(2 * (cxx + cyy + np.sqrt((cxx - cyy) ** 2 + 4 * cxy ** 2)))
+    minor = np.sqrt(2 * (cxx + cyy - np.sqrt((cxx - cyy) ** 2 + 4 * cxy ** 2)))
+    angle = np.arctan2(2 * cxy, cxx - cyy) / 2
+    elongation = major / minor
+
+    photometry['major'] = major
+    photometry['minor'] = minor
+    photometry['angle'] = angle
+    photometry['elongation'] = elongation
 
     return photometry
 

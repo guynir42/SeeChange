@@ -90,12 +90,12 @@ detection:
   threshold: 5.0
 
 cutting:
-  cutout_size: 20
+  cutout_size: 25
 
 measuring:
   aperture_radii: [1.0, 2.0, 3.0]
   aperture_units: fwhm
-  chosen_aperture: auto
+  chosen_aperture: 0
   analytical_cuts: ['negatives', 'bad pixels', 'saturation', 'streaks', 'psf width']
   negative_positive_threshold: 0.3
   bad_pixel_radius: 3.0

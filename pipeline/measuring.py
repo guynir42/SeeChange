@@ -53,7 +53,7 @@ class ParsMeasurer(Parameters):
         # TODO: should we choose the "best aperture" using the config, or should each Image have its own aperture?
         self.chosen_aperture = self.add_par(
             'chosen_aperture',
-            'auto',
+            0,
             [str, int],
             'The aperture radius that is used for photometry. '
             'Choose either the index in the aperture_radii list, '
@@ -63,7 +63,7 @@ class ParsMeasurer(Parameters):
 
         self.analytical_cuts = self.add_par(
             'analytical_cuts',
-            ['negatives', 'bad pixels', 'streak like', 'psf width'],
+            ['negatives', 'bad pixels', 'streak like', 'offsets', 'psf width'],
             [list],
             'Which kinds of analytic cuts are used to give scores to this measurement. '
         )
@@ -116,7 +116,7 @@ class ParsMeasurer(Parameters):
 
         self.thresholds = self.add_par(
             'thresholds',
-            {'negatives': 0.3, 'streak like': 1.0, 'bad pixels': 1.0, 'psf width': 1.0},
+            {'negatives': 0.3, 'streak like': 1.0, 'bad pixels': 1.0, 'offsets': 2.0, 'psf width': 1.0},
             dict,
             'A dictionary where each key is the name of an analytic cut or external analysis, '
             'and the value is the threshold for the score of that cut. '
@@ -180,7 +180,7 @@ class Measurer:
             cutouts = ds.get_cutouts(session=session)
 
             measurements_list = []
-            for c in ds.cutouts:
+            for c in cutouts:
                 m = Measurements(cutouts=c)
 
                 # TODO: implement all sorts of analysis and photometry
@@ -190,7 +190,7 @@ class Measurer:
                 for badness in self.pars.bad_pixel_exclude:
                     ignore_bits |= BitFlagConverter.convert(badness)
 
-                flags = c.sub_flags ^ ignore_bits  # remove the bad pixels that we want to ignore
+                flags = c.sub_flags.astype('uint16') ^ ignore_bits  # remove the bad pixels that we want to ignore
 
                 # TODO: consider if there are any additional parameters that photometry needs
                 output = iterative_photometry(c.sub_data, c.sub_weight, flags, m.psf, radii=m.aper_radii)
@@ -198,17 +198,28 @@ class Measurer:
                 m.flux_psf_err = output['psf_err']
                 m.area_psf = output['psf_area']
                 m.flux_apertures = output['fluxes']
-                m.flux_apertures_err = np.sqrt(output['variance'] * output['areas'])  # TODO: add source noise??
+                m.flux_apertures_err = [np.sqrt(output['variance'] * a) for a in output['areas']]  # TODO: add source noise??
                 m.aper_radii = output['radii']
                 m.area_apertures = output['areas']
                 m.background = output['background']
-                m.background_rms = np.sqrt(output['variance'])
+                m.background_err = np.sqrt(output['variance'])
                 m.offset_x = output['offset_x']
                 m.offset_y = output['offset_y']
                 m.width = (output['major'] + output['minor']) / 2
                 m.elongation = output['elongation']
-                m.position_angle = output['position_angle']
+                m.position_angle = output['angle']
 
+                if self.pars.chosen_aperture == 'auto':
+                    raise NotImplementedError('Automatic aperture selection is not yet implemented.')
+                if self.pars.chosen_aperture == 'psf':
+                    ap_index = -1
+                elif isinstance(self.pars.chosen_aperture, int):
+                    ap_index = self.pars.chosen_aperture
+                else:
+                    raise ValueError(
+                        f'Invalid value "{self.pars.chosen_aperture}" for chosen_aperture in the measuring parameters.'
+                    )
+                m.best_aperture = ap_index
                 m.calculate_magnitudes()  # use the fluxes to calculate magnitudes
 
                 if m.provenance is None:

@@ -117,5 +117,5 @@ class WorldCoordinates(Base, AutoIDMixin, HasBitFlagBadness):
         """Calculate the mean pixel scale using the WCS, in units of arcseconds per pixel."""
         if self.wcs is None:
             return None
-        scale_map = utils.proj_plane_pixel_scales(self.wcs)
-        return np.median(scale_map) * 3600.0
+        pixel_scales = utils.proj_plane_pixel_scales(self.wcs)  # the scale in x and y direction
+        return np.mean(pixel_scales) * 3600.0
