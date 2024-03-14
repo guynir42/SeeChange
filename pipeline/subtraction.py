@@ -134,6 +134,16 @@ class Subtractor:
                 The ZOGY alpha image (the PSF flux image)
             zogy_alpha_err: np.ndarray
                 The ZOGY alpha error image (the PSF flux error image)
+            translient: numpy.ndarray
+                The "translational transient" score for moving
+                objects or slightly misaligned images.
+                See the paper: ... TODO: add reference once paper is out!
+            translient_sigma: numpy.ndarray
+                The translient score, converted to S/N units assuming a chi2 distribution.
+            translient_corr: numpy.ndarray
+                The source-noise-corrected translient score.
+            translient_corr_sigma: numpy.ndarray
+                The corrected translient score, converted to S/N units assuming a chi2 distribution.
         """
         new_image_data = new_image.data
         ref_image_data = ref_image.data
