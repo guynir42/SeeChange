@@ -17,22 +17,6 @@ class ParsMeasurer(Parameters):
     def __init__(self, **kwargs):
         super().__init__()
 
-        self.aperture_radii = self.add_par(
-            'aperture_radii',
-            [1.0, 2.0, 3.0],
-            list,
-            'Radius of the aperture in pixels. Can give a list of values. '
-        )
-
-        self.aperture_units = self.add_par(
-            'aperture_units',
-            'fwhm',
-            str,
-            'Units for the aperture radii. Can be pixels, arcsec, fwhm. '
-            'This describes the units of the aperture_radii input, '
-            'not the saved aperture values in each measurement object. '
-        )
-
         self.annulus_radii = self.add_par(
             'annulus_radii',
             [7.5, 10.0],
@@ -44,7 +28,7 @@ class ParsMeasurer(Parameters):
             'annulus_units',
             'pixels',
             str,
-            'Units for the annulus radii. Can be pixels, arcsec, fwhm. '
+            'Units for the annulus radii. Can be pixels or fwhm. '
             'This describes the units of the annulus_radii input. '
             'Use "pixels" to make a constant annulus, or "fwhm" to '
             'adjust the annulus size for each image based on the PSF width. '
@@ -104,22 +88,6 @@ class ParsMeasurer(Parameters):
             list,
             'Multipliers of the PSF width to use as matched filter templates'
             'to compare against the real width (x1.0) when running psf width filter. '
-        )
-
-        self.external_analysis_versions = self.add_par(
-            'external_analysis_versions',
-            {},  # TODO: add "real-bogus" once we have something for that.
-            [dict],
-            'A dictionary where each key is the name of an external software that is run on the cutouts, '
-            'e.g., a "real-bogus" classifier, and the value is a string with the version of the software. ',
-        )
-
-        self.thresholds = self.add_par(
-            'thresholds',
-            {'negatives': 0.3, 'streak like': 1.0, 'bad pixels': 1.0, 'offsets': 2.0, 'psf width': 1.0},
-            dict,
-            'A dictionary where each key is the name of an analytic cut or external analysis, '
-            'and the value is the threshold for the score of that cut. '
         )
 
         self._enforce_no_new_attrs = True
@@ -183,8 +151,9 @@ class Measurer:
             for c in cutouts:
                 m = Measurements(cutouts=c)
 
+                m.aper_radii = c.sources.image.new_image.zp.aper_cor_radii  # zero point corrected aperture radii
+
                 # TODO: implement all sorts of analysis and photometry
-                m.set_apertures(self.pars.aperture_radii, self.pars.aperture_units)
 
                 ignore_bits = 0
                 for badness in self.pars.bad_pixel_exclude:
@@ -192,8 +161,20 @@ class Measurer:
 
                 flags = c.sub_flags.astype('uint16') ^ ignore_bits  # remove the bad pixels that we want to ignore
 
+                annulus_radii_pixels = self.pars.annulus_radii
+                if self.pars.annulus_units == 'fwhm':
+                    annulus_radii_pixels /= c.source.image.get_psf().fwhm_pixels
+
                 # TODO: consider if there are any additional parameters that photometry needs
-                output = iterative_photometry(c.sub_data, c.sub_weight, flags, m.psf, radii=m.aper_radii)
+                output = iterative_photometry(
+                    c.sub_data,
+                    c.sub_weight,
+                    flags,
+                    m.psf,
+                    radii=m.aper_radii,
+                    annulus=annulus_radii_pixels,
+                )
+
                 m.flux_psf = output['psf_flux']
                 m.flux_psf_err = output['psf_err']
                 m.area_psf = output['psf_area']
@@ -220,7 +201,6 @@ class Measurer:
                         f'Invalid value "{self.pars.chosen_aperture}" for chosen_aperture in the measuring parameters.'
                     )
                 m.best_aperture = ap_index
-                m.calculate_magnitudes()  # use the fluxes to calculate magnitudes
 
                 if m.provenance is None:
                     m.provenance = prov
@@ -237,6 +217,10 @@ class Measurer:
             #  Apply deep learning (real/bogus) to each stamp image, to rule out artefacts.
             #  Save the results as Measurement objects, append them to the Cutouts objects.
             #  Commit the results to the database.
+
+            for m in measurements_list:
+                m.provenance = prov
+                m.provenance_id = prov.id
 
             # add the resulting list to the data store
             ds.measurements = measurements_list

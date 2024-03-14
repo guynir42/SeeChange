@@ -4,6 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.associationproxy import association_proxy
 
 from models.base import Base, SeeChangeBase, AutoIDMixin, SpatiallyIndexed
 
@@ -14,10 +15,11 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
 
     __table_args__ = (
         UniqueConstraint('cutouts_id', 'provenance_id', name='_measurements_cutouts_provenance_uc'),
+        sa.Index("ix_measurements_scores_gin", "disqualifier_scores", postgresql_using="gin"),
     )
 
     cutouts_id = sa.Column(
-        sa.ForeignKey('cutouts.id', name='measurements_cutouts_id_fkey'),
+        sa.ForeignKey('cutouts.id', ondelete= "CASCADE", name='measurements_cutouts_id_fkey'),
         nullable=False,
         index=True,
         doc="ID of the cutout this measurement is associated with. "
@@ -40,27 +42,6 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         cascade='save-update, merge, refresh-expire, expunge',
         lazy='selectin',
         doc="The provenance of this measurement. "
-    )
-
-    mjd = sa.Column(
-        sa.Float,
-        nullable=False,
-        index=True,
-        doc="MJD of the measurement. "
-    )
-
-    exp_time = sa.Column(
-        sa.Float,
-        nullable=False,
-        index=True,
-        doc="Exposure time of the measurement. "
-    )
-
-    filter = sa.Column(
-        sa.String,
-        nullable=False,
-        index=True,
-        doc="Filter of the measurement. "
     )
 
     flux_psf = sa.Column(
@@ -101,52 +82,62 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
             "Set to -1 to select the PSF flux instead of one of the apertures. "
     )
 
-    mag_psf = sa.Column(
-        sa.Float,
-        nullable=False,
-        index=True,
-        doc="PSF magnitude of the measurement. "
-    )
+    mjd = association_proxy('cutouts', 'sources.image.mjd')
 
-    mag_psf_err = sa.Column(
-        sa.Float,
-        nullable=False,
-        doc="PSF magnitude error of the measurement. "
-    )
+    exp_time = association_proxy('cutouts', 'sources.image.exp_time')
 
-    mag_apertures = sa.Column(
-        sa.ARRAY(sa.Float),
-        nullable=False,
-        doc="Aperture magnitudes of the measurement. "
-    )
+    filter = association_proxy('cutouts', 'sources.image.filter')
 
-    mag_apertures_err = sa.Column(
-        sa.ARRAY(sa.Float),
-        nullable=False,
-        doc="Aperture magnitude errors of the measurement. "
-    )
+    @property
+    def mag_psf(self):
+        return -2.5 * np.log10(self.flux_psf) + self.zp.zp  # what about aperture correction?
 
-    magnitude = sa.Column(
-        sa.Float,
-        nullable=False,
-        index=True,
-        doc="Magnitude of the measurement, "
-            "defined as the magnitude of the best aperture (or PSF if best_aperture=-1). "
-    )
+    @property
+    def mag_psf_err(self):
+        return np.sqrt( (2.5 / np.log(10) * self.flux_psf_err / self.flux_psf) ** 2 + self.zp.dzp ** 2)
 
-    # the error on the magnitude is not indexed/searchable so we can use a simple property
+    @property
+    def mag_apertures(self):
+        return [-2.5 * np.log10(f) + self.zp.zp + self.zp.aper_cors[i] for i, f in enumerate(self.flux_apertures)]
+
+    @property
+    def mag_apertures_err(self):
+        return [
+            np.sqrt( (2.5 / np.log(10) * ferr / f) ** 2 + self.zp.dzp ** 2)
+            for f, ferr in zip(self.flux_apertures, self.flux_apertures_err)
+        ]
+
+    @property
+    def magnitude(self):
+        if self.best_aperture == -1:
+            return self.mag_psf
+        return self.mag_apertures[self.best_aperture]
+
     @property
     def magnitude_err(self):
         if self.best_aperture == -1:
             return self.mag_psf_err
         return self.mag_apertures_err[self.best_aperture]
 
-    limmag = sa.Column(
-        sa.Float,
-        nullable=False,
-        index=True,
-        doc="Limiting magnitude of the measurement. Useful in case of non-detections. "
-    )
+    @property
+    def lim_mag(self):
+        return self.cutouts.sources.image.new_image.lim_mag_estimate  # TODO: improve this when done with issue #143
+
+    @property
+    def zp(self):
+        return self.cutouts.sources.image.new_image.zp
+
+    @property
+    def fwhm_pixels(self):
+        return self.cutouts.sources.image.get_psf().fwhm_pixels
+
+    @property
+    def psf(self):
+        return self.cutouts.sources.image.get_psf().get_clip(x=self.cutouts.x, y=self.cutouts.y)
+
+    @property
+    def pixel_scale(self):
+        return self.cutouts.sources.image.new_image.wcs.get_pixel_scale()
 
     background = sa.Column(
         sa.Float,
@@ -185,7 +176,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
     )
 
     width = sa.Column(
-        sa.Integer,
+        sa.Float,
         nullable=False,
         index=True,
         doc="Width of the source in the cutout. "
@@ -207,58 +198,25 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
             "Given by the angle of the major axis of the distribution of counts in the aperture. "
     )
 
-    badness_scores = sa.Column(
+    disqualifier_scores = sa.Column(
         JSONB,
         nullable=False,
+        default={},
         index=True,
-        doc="Badness scores of the measurement. "
-            "This includes analytical cuts and external scores like real-bogus. "
+        doc="Values that may disqualify this object, and mark it as not a real source. "
+            "This includes all sorts of analytical cuts defined by the provenance parameters. "
             "The higher the score, the more likely the measurement is to be an artefact. "
-            "Compare (using >=) to the built-in thresholds in the provenance parameters "
-            "to decide if the measurement passes or not. "
     )
 
-    passing = sa.Column(
-        sa.Boolean,
-        nullable=False,
-        index=True,
-        doc="Whether the measurement passes the badness cuts. "
-    )
-
-    def __init__(self, cutouts, **kwargs):
+    def __init__(self, **kwargs):
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
-        self.cutouts = cutouts
-        self.cutouts_id = cutouts.id
-
-        # these are loaded from the cutouts and upstream objects and saved to DB for easy searches
-        self.mjd = cutouts.sources.image.mjd
-        self.exp_time = cutouts.sources.image.exp_time
-        self.filter = cutouts.sources.image.filter
-        self.limmag = cutouts.sources.image.lim_mag_estimate  # TODO: must update this when doing Issue #143
-        self.ra = cutouts.source_row['ra']
-        self.dec = cutouts.source_row['dec']
-
-        # these are not saved in the DB but are useful to have around
-        self.zp = cutouts.sources.image.new_image.zp.zp
-        self.dzp = cutouts.sources.image.new_image.zp.dzp
-        self.fwhm_pixels = cutouts.sources.image.get_psf().fwhm_pixels
-        self.psf = cutouts.sources.image.get_psf().get_clip(x=cutouts.x, y=cutouts.y)
-        self.pixel_scale = cutouts.sources.image.new_image.wcs.get_pixel_scale()
-
-        # TODO: continue this
 
         # manually set all properties (columns or not)
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
 
-        __table_args__ = (
-            sa.Index(
-                "ix_measurements_scores_gin",
-                "badness_scores",
-                postgresql_using="gin",
-            ),
-        )
+        self.calculate_coordinates()
 
     def __repr__(self):
         return (
@@ -269,65 +227,16 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
             f"at x,y= {self.cutouts.x}, {self.cutouts.y}>"
         )
 
-    @orm.reconstructor
-    def init_on_load(self):
-        Base.init_on_load(self)
-        self.zp = self.cutouts.sources.image.zp.zp
-        self.dzp = self.cutouts.sources.image.zp.dzp
-        self.fwhm_pixels = self.cutouts.sources.image.psf.fwhm_pixels
-        self.psf = self.cutouts.sources.image.get_psf().get_clip(x=self.cutouts.x, y=self.cutouts.y)
-        self.pixel_scale = self.cutouts.sources.image.wcs.get_pixel_scale()
+    def __setattr__(self, key, value):
+        if key in ['flux_apertures', 'flux_apertures_err', 'aper_radii']:
+            value = np.array(value)
 
-    def set_apertures(self, radii, units='pixels'):
-        """Set the apertures to be used for calculating flux and magnitude.
+        if key == 'cutouts':
+            super().__setattr__('cutouts_id', value.id)
+            for att in ['ra', 'dec', 'gallon', 'gallat', 'ecllon', 'ecllat']:
+                super().__setattr__(att, getattr(value, att))
 
-        Parameters
-        ----------
-        radii : float or array-like
-            The radii of the apertures to be used.
-        units : str
-            The units of the radii. Can be 'pixels', 'arcsec', or 'fwhm'.
-            - pixels: the radii are already in pixels.
-            - arcsec: the radii are in arcseconds, and will be converted to pixels using the pixel scale.
-            - fwhm: the radii are in units of the FWHM of the PSF, and will be converted to pixels using the FWHM.
-        """
-        if isinstance(radii, (int, float)):
-            radii = [radii]
-
-        if units == 'pixels':
-            self.aper_radii = radii
-        elif units == 'arcsec':
-            self.aper_radii = [r / self.pixel_scale for r in radii]
-        elif units == 'fwhm':
-            self.aper_radii = [r * self.fwhm_pixels for r in radii]
-        else:
-            raise ValueError(f'Unknown units: {units}. Use "pixels", "arcsec", or "fwhm".')
-
-    def calculate_magnitudes(self):
-        """Fill out the magnitudes using the zero point and fluxes. """
-        mag_apertures = []
-        mag_apertures_err = []
-        mag_psf = []
-        mag_psf_err = []
-
-        for f, ferr in zip(self.flux_apertures, self.flux_apertures_err):
-            mag_apertures.append(-2.5 * np.log10(f) + self.zp)
-            mag_apertures_err.append(np.sqrt( (2.5 / np.log(10) * ferr / f) ** 2 + self.dzp ** 2) )
-            mag_psf.append(-2.5 * np.log10(self.flux_psf) + self.zp)
-            d_m_psf = 2.5 / np.log(10) * self.flux_psf_err / self.flux_psf
-            mag_psf_err.append(np.sqrt( d_m_psf ** 2 + self.dzp ** 2))
-
-        self.mag_apertures = mag_apertures
-        self.mag_apertures_err = mag_apertures_err
-        self.mag_psf = mag_psf
-        self.mag_psf_err = mag_psf_err
-
-        if self.best_aperture == -1:
-            self.magnitude = self.mag_psf
-            self.magnitude_err = self.mag_psf_err
-        else:
-            self.magnitude = self.mag_apertures[self.best_aperture]
-            # note that magnitude_err is a @property and gets updated automatically
+        super().__setattr__(key, value)
 
 
 

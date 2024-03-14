@@ -178,6 +178,7 @@ def iterative_photometry(
     else:
         if len(psf.shape) != 2:
             raise ValueError("PSF must be a 2D array")
+    # TODO: still need to figure out how to actually use the PSF for photometry!
 
     # Make sure the apertures are a list or 1D array
     radii = np.atleast_1d(radii)
@@ -199,7 +200,7 @@ def iterative_photometry(
 
     # get some very rough estimates just so we have something in case of immediate failure of the loop
     fluxes = [np.nansum(nandata)] * len(radii)
-    areas = [np.nansum(~np.isnan(nandata))] * len(radii)
+    areas = [float(np.nansum(~np.isnan(nandata)))] * len(radii)
     background = 0.0
     variance = np.nanvar(nandata)
 
@@ -247,7 +248,7 @@ def iterative_photometry(
             annulus_map = outer - inner
 
             # background and variance only need to be calculated once (they are the same for all apertures)
-            # but moments/centroids can be calculated for each aperture but we will only want to save one
+            # but moments/centroids can be calculated for each aperture, but we will only want to save one
             # so how about we use the smallest one?
             if j == 0:  # smallest aperture only
                 # TODO: consider replacing this with a hard-edge annulus and do median or sigma clipping on the pixels

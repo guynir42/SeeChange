@@ -24,7 +24,7 @@ UPSTREAM_NAMES = {
     'subtraction': ['reference', 'preprocessing', 'extraction', 'astro_cal', 'photo_cal'],
     'detection': ['subtraction'],
     'cutting': ['detection'],
-    'measuring': ['detection', 'photo_cal'],
+    'measuring': ['cutting'],
 }
 
 UPSTREAM_OBJECTS = {
@@ -1155,6 +1155,15 @@ class DataStore:
             with SmartSession(session, self.session) as session:
                 sub_image = self.get_subtraction(session=session)
 
+                if sub_image is None:
+                    return None
+
+                if sub_image.sources is None:
+                    sub_image.sources = self.get_detections(session=session)
+
+                if sub_image.sources is None:
+                    return None
+
                 # this happens when the cutouts are required as an upstream for another process (but aren't in memory)
                 if provenance is None:
                     provenance = self._get_provenance_for_an_upstream(process_name, session=session)
@@ -1415,11 +1424,15 @@ class DataStore:
                 self.detections = self.sub_image.sources
 
             if self.detections is not None:
-                for cutout in self.cutouts:
-                    cutout.sources = self.detections
-                self.cutouts = Cutouts.merge_list(self.cutouts, session)
+                if self.cutouts is not None:
+                    for cutout in self.cutouts:
+                        cutout.sources = self.detections
+                    self.cutouts = Cutouts.merge_list(self.cutouts, session)
 
-            # TODO: handle measurements
+                if self.measurements is not None:
+                    for i, m in enumerate(self.measurements):
+                        self.measurements[i].cutouts = self.cutouts[i]  # use the new, merged cutouts
+                        self.measurements[i] = session.merge(m)
 
             self.psf = self.image.psf
             self.sources = self.image.sources
@@ -1471,7 +1484,8 @@ class DataStore:
                     # call the special delete method for list-arranged objects (e.g., cutouts, measurements)
                     if isinstance(obj, list):
                         if len(obj) > 0:
-                            obj[0].delete_list(obj, session=session, commit=False, archive=True)
+                            if hasattr(obj[0], 'delete_list'):
+                                obj[0].delete_list(obj, session=session, commit=False, archive=True)
                         continue
                     if isinstance(obj, FileOnDiskMixin):
                         obj.delete_from_disk_and_database(session=session, commit=False, archive=True)

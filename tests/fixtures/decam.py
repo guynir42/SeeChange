@@ -237,6 +237,7 @@ def decam_datastore(
         decam_cache_dir,
         decam_exposure,
         decam_default_calibrators,  # not used directly, but makes sure this is pre-fetched from cache
+        decam_reference,
 ):
     """Provide a datastore with all the products based on the DECam exposure
 
@@ -276,6 +277,10 @@ def decam_datastore(
     for obj in delete_list:
         if obj is not None and hasattr(obj, 'delete_from_disk_and_database'):
             obj.delete_from_disk_and_database(archive=True)
+
+
+def test_datastore(decam_datastore):
+    pass
 
 
 @pytest.fixture

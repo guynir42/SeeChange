@@ -93,8 +93,8 @@ cutting:
   cutout_size: 25
 
 measuring:
-  aperture_radii: [1.0, 2.0, 3.0]
-  aperture_units: fwhm
+  annulus_radii: [10, 15]
+  annulus_units: pixels
   chosen_aperture: 0
   analytical_cuts: ['negatives', 'bad pixels', 'saturation', 'streaks', 'psf width']
   negative_positive_threshold: 0.3
@@ -102,8 +102,6 @@ measuring:
   bad_pixel_exclude: []
   streak_filter_angle_step: 5.0
   width_filter_multipliers: [0.5, 2.0, 5.0, 10.0]
-  external_analysis_versions: {}
-  thresholds: {'negatives': 0.3, 'streaks': 1.0, 'bad pixels': 1.0, 'psf width': 1.0}
 
 
 # Specific configuration for specific instruments.

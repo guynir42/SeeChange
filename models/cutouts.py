@@ -9,6 +9,8 @@ from sqlalchemy.ext.associationproxy import association_proxy
 
 import h5py
 
+from astropy.table import Table
+
 from models.base import (
     SmartSession,
     Base,
@@ -140,6 +142,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             if hasattr(self, key):
                 setattr(self, key, value)
 
+        self.calculate_coordinates()
+
     @orm.reconstructor
     def init_on_load(self):
         Base.init_on_load(self)
@@ -230,11 +234,12 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         cutout = Cutouts()
         cutout.sources = detections
         cutout.index_in_sources = source_index
-        cutout.source_row = dict(detections.data[source_index])
+        cutout.source_row = dict(Table(detections.data)[source_index])
         cutout.x = detections.x[source_index]
         cutout.y = detections.y[source_index]
         cutout.ra = cutout.source_row['ra']
         cutout.dec = cutout.source_row['dec']
+        cutout.calculate_coordinates()
         cutout.provenance = provenance
 
         # add the data, weight, and flags to the cutout from kwargs
@@ -473,6 +478,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             if att in cutout.source_row:
                 setattr(cutout, att, cutout.source_row[att])
 
+        cutout.calculate_coordinates()
+
         if filepath.startswith(cutout.local_path):
             filepath = filepath[len(cutout.local_path) + 1:]
         cutout.filepath = filepath
@@ -535,6 +542,9 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
                         for att in ['ra', 'dec', 'x', 'y']:
                             if att in cutout.source_row:
                                 setattr(cutout, att, cutout.source_row[att])
+
+                        cutout.calculate_coordinates()
+
                         cutouts.append(cutout)
 
         elif format == 'fits':
