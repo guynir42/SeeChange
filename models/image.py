@@ -130,9 +130,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         sa.ForeignKey('images.id', ondelete="SET NULL", name='images_ref_image_id_fkey'),
         nullable=True,
         index=True,
-        doc=(
-            "ID of the reference image used to produce this image, in the upstream_images list. "
-        )
+        doc="ID of the reference image used to produce this image, in the upstream_images list. "
     )
 
     ref_image = orm.relationship(
@@ -142,9 +140,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         cascade='save-update, merge, refresh-expire, expunge',
         uselist=False,
         lazy='selectin',
-        doc=(
-            "Reference image used to produce this image, in the upstream_images list. "
-        )
+        doc="Reference image used to produce this image, in the upstream_images list. "
     )
 
     @property

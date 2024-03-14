@@ -56,15 +56,18 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         self._format = CutoutsFormatConverter.convert(value)
 
     sources_id = sa.Column(
-        sa.ForeignKey('source_lists.id', name='cutouts_source_list_id_fkey', ondelete="CASCADE", ),
+        sa.ForeignKey('source_lists.id', name='cutouts_source_list_id_fkey', ondelete="CASCADE"),
         nullable=False,
         index=True,
-        doc="ID of the source list (of detections in the difference image) this cutout is associated with. "
+        doc="ID of the source list (of detections in the difference image) this cutouts object is associated with. "
     )
 
     sources = orm.relationship(
         'SourceList',
-        doc="The source list (of detections in the difference image) this cutout is associated with. "
+        cascade='save-update, merge, refresh-expire, expunge',
+        passive_deletes=True,
+        lazy='selectin',
+        doc="The source list (of detections in the difference image) this cutouts object is associated with. "
     )
 
     index_in_sources = sa.Column(

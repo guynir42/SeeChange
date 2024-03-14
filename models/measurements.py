@@ -19,15 +19,18 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
     )
 
     cutouts_id = sa.Column(
-        sa.ForeignKey('cutouts.id', ondelete= "CASCADE", name='measurements_cutouts_id_fkey'),
+        sa.ForeignKey('cutouts.id', ondelete="CASCADE", name='measurements_cutouts_id_fkey'),
         nullable=False,
         index=True,
-        doc="ID of the cutout this measurement is associated with. "
+        doc="ID of the cutouts object that this measurements object is associated with. "
     )
 
     cutouts = orm.relationship(
         'Cutouts',
-        doc="The cutout this measurement is associated with. "
+        cascade='save-update, merge, refresh-expire, expunge',
+        passive_deletes=True,
+        lazy='selectin',
+        doc="The cutouts object that this measurements object is associated with. "
     )
 
     provenance_id = sa.Column(

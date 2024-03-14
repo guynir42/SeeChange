@@ -275,12 +275,10 @@ def decam_datastore(
     # make sure that these individual objects have their files cleaned up,
     # even if the datastore is cleared and all database rows are deleted.
     for obj in delete_list:
+        if isinstance(obj, list) and len(obj) > 0 and hasattr(obj[0], 'delete_list'):
+            obj[0].delete_list(obj, archive=True)
         if obj is not None and hasattr(obj, 'delete_from_disk_and_database'):
             obj.delete_from_disk_and_database(archive=True)
-
-
-def test_datastore(decam_datastore):
-    pass
 
 
 @pytest.fixture
@@ -452,166 +450,20 @@ def decam_reference(decam_ref_datastore):
 
 
 @pytest.fixture
-def decam_subtraction(decam_reference, decam_processed_image, subtractor, decam_cache_dir):
-    filepath = '115/c4d_20221104_074232_N1_g_Diff_7EGWL3_u-4ea5cc.image.fits'
-
-    upstreams = []
-    for im in [decam_reference.image, decam_processed_image]:
-        upstreams.append(im.provenance)
-        for att in ['sources', 'psf', 'wcs', 'zp']:
-            upstreams.append(getattr(im, att).provenance)
-
-    prov = Provenance(
-        process='subtraction',
-        code_version=decam_processed_image.provenance.code_version,
-        parameters=subtractor.pars.get_critical_pars(),
-        upstreams=upstreams,
-        is_testing=True,
-    )
-
-    if prov.id[:6] not in filepath:
-        warnings.warn(f"Provenance ID {prov.id[:6]} not in filepath {filepath}")
-
-    if os.path.isfile(os.path.join(decam_cache_dir, filepath)):
-        sub_im = Image.copy_from_cache(decam_cache_dir, filepath)
-        sub_im.upstream_images = [decam_reference.image, decam_processed_image]
-
-        if sub_im._aligned_images is None:
-            align_ref_prov = Provenance(
-                code_version=decam_reference.image.provenance.code_version,
-                process='alignment',
-                parameters=prov.parameters['alignment'],
-                upstreams=[
-                    decam_reference.image.provenance,
-                    decam_reference.sources.provenance,
-                    decam_reference.psf.provenance,
-                    decam_reference.wcs.provenance,
-                    decam_reference.zp.provenance,
-                    decam_processed_image.provenance,
-                    decam_processed_image.sources.provenance,
-                    decam_processed_image.psf.provenance,
-                    decam_processed_image.wcs.provenance,
-                ],
-            )
-            align_new_prov = Provenance(
-                code_version=decam_reference.image.provenance.code_version,
-                process='alignment',
-                parameters=prov.parameters['alignment'],
-                upstreams=[
-                    decam_processed_image.provenance,
-                    decam_processed_image.sources.provenance,
-                    decam_processed_image.wcs.provenance,
-                    decam_processed_image.zp.provenance,
-                ],
-            )
-            aligned_ref = None
-            aligned_new = None
-            aligned_ref_file = '115/c4d_20220113_050224_N1_g_Warped_ZBELGP'
-            if os.path.isfile(os.path.join(decam_cache_dir, aligned_ref_file + '.image.fits.json')):
-                aligned_ref = Image.copy_from_cache(decam_cache_dir, aligned_ref_file + '.image.fits.json')
-                aligned_ref.info['original_image_id'] = decam_reference.image.id
-                aligned_ref.provenance = align_ref_prov
-
-            aligned_new_file = '115/c4d_20221104_074232_N1_g_Warped_JZNHWZ'
-            if os.path.isfile(os.path.join(decam_cache_dir, aligned_new_file + '.image.fits.json')):
-                aligned_new = Image.copy_from_cache(decam_cache_dir, aligned_new_file + '.image.fits.json')
-                aligned_new.info['original_image_id'] = decam_processed_image.id
-                aligned_new.provenance = align_new_prov
-
-            if aligned_ref is not None and aligned_new is not None:
-                sub_im._aligned_images = [aligned_ref, aligned_new]
-
-        sub_im.ref_image_id = decam_reference.image.id
-        sub_im.ref_image = decam_reference.image
-        sub_im.provenance = prov
-        sub_im.load_upstream_products()  # make sure stuff like WCS is loaded for upstream_images
-        sub_im.coordinates_to_alignment_target()  # propagate WCS to sub_im
-
-    else:
-        ds = subtractor.run(decam_processed_image)
-
-        ds.sub_image.save()
-        sub_im = ds.sub_image
-        sub_im.copy_to_cache(decam_cache_dir)
-
-    for im in sub_im.aligned_images:  # also save the aligned images...
-        im.save()
-        im.copy_to_cache(decam_cache_dir)
-
-    yield sub_im
-
-    if 'sub_im' in locals():
-        for im in sub_im.aligned_images:
-            im.delete_from_disk_and_database(archive=True)
-        sub_im.delete_from_disk_and_database(archive=True)
+def decam_subtraction(decam_datastore):
+    return decam_datastore.sub_image
 
 
 @pytest.fixture
-def decam_detection_list(decam_subtraction, detector, decam_cache_dir):
-
-    prov = Provenance(
-        process='detection',
-        code_version=decam_subtraction.provenance.code_version,
-        parameters=detector.pars.get_critical_pars(),
-        upstreams=[decam_subtraction.provenance],
-        is_testing=True,
-    )
-    filepath = decam_subtraction.filepath + f'.detections_{prov.id[:6]}.npy'
-
-    if os.path.isfile(filepath):
-        detections = SourceList.copy_from_cache(decam_cache_dir, filepath)
-        detections.image_id = decam_subtraction.id
-        detections.provenance = prov
-    else:  # no cache, need to product a new object
-        ds = detector.run(decam_subtraction)
-        detections = ds.sub_image.sources
-        detections.provenance = prov
-        detections.save()
-        detections.copy_to_cache(decam_cache_dir)
-
-    yield detections
-
-    # must delete the detections (especially the file) because I'm not sure the datastore will delete it
-    detections.delete_from_disk_and_database(archive=True)
+def decam_detection_list(decam_datastore):
+    return decam_datastore.detections
 
 
 @pytest.fixture
-def decam_cutouts(decam_detection_list, cutter, decam_cache_dir, data_dir):
-    prov = Provenance(
-        process='cutouts',
-        code_version=decam_detection_list.provenance.code_version,
-        parameters=cutter.pars.get_critical_pars(),
-        upstreams=[
-            decam_detection_list.provenance,
-            decam_detection_list.image.provenance,
-        ],
-        is_testing=True,
-    )
-    filepath = decam_detection_list.image.filepath + f'.cutouts_{prov.id[:6]}.h5'
+def decam_cutouts(decam_datastore):
+    return decam_datastore.cutouts
 
-    if os.path.isfile(os.path.join(decam_cache_dir, filepath)):
-        sourcepath = os.path.join(decam_cache_dir, filepath)
-        targetpath = os.path.join(data_dir, filepath)
-        if not os.path.isdir(os.path.dirname(targetpath)):
-            os.makedirs(os.path.dirname(targetpath), exist_ok=True)
-        shutil.copy2(sourcepath, targetpath)
-        cutouts = Cutouts.load_list(targetpath)
-        for c in cutouts:
-            c.provenance = prov
-            c.sources = decam_detection_list
-    else:
-        ds = cutter.run(decam_detection_list)
-        cutouts = ds.cutouts
-        for c in cutouts:
-            c.provenance = prov
-        Cutouts.save_list(cutouts)
-        sourcepath = os.path.join(data_dir, filepath)
-        targetpath = os.path.join(decam_cache_dir, filepath)
-        if not os.path.isdir(os.path.dirname(targetpath)):
-            os.makedirs(os.path.dirname(targetpath), exist_ok=True)
-        shutil.copy2(sourcepath, targetpath)
 
-    # TODO: make sure cutouts are saved to DB and loaded with all the right columns and relationships
-    yield cutouts
-
-    Cutouts.delete_list(cutouts)  # should clean up local storage, archive, and database
+@pytest.fixture
+def decam_measurements(decam_datastore):
+    return decam_datastore.measurements

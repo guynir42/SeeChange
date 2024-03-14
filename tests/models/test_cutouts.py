@@ -1,5 +1,6 @@
 import os
 import h5py
+import uuid
 
 import numpy as np
 import pytest
@@ -12,7 +13,9 @@ from models.cutouts import Cutouts
 
 def test_make_save_load_cutouts(decam_detection_list, cutter):
     try:
+        cutter.pars.test_parameter = uuid.uuid4().hex
         ds = cutter.run(decam_detection_list)
+        assert cutter.has_recalculated
         assert isinstance(ds.cutouts, list)
         assert len(ds.cutouts) > 1
         assert isinstance(ds.cutouts[0], Cutouts)

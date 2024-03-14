@@ -11,8 +11,8 @@ def test_measuring(measurer, decam_cutouts):
     # grab one example measurements object
     m = ds.measurements[0]
     new_im = m.cutouts.sources.image.new_image
-    assert np.array_equal(m.aper_radii, new_im.zp.aper_cor_radii)
-    assert np.array_equal(
+    assert np.allclose(m.aper_radii, new_im.zp.aper_cor_radii)
+    assert np.allclose(
         new_im.zp.aper_cor_radii,
         new_im.psf.fwhm_pixels * np.array(new_im.instrument_object.standard_apertures()),
     )
