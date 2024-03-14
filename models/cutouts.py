@@ -119,6 +119,11 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         return self.sub_image.new_aligned_image
 
     @property
+    def new_image(self):
+        """Get the aligned new image using the sub_image. """
+        return self.sub_image.new_aligned_image
+
+    @property
     def ref_image(self):
         """Get the aligned reference image using the sub_image. """
         return self.sub_image.ref_aligned_image
@@ -144,8 +149,6 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
-
-        self.calculate_coordinates()
 
     @orm.reconstructor
     def init_on_load(self):

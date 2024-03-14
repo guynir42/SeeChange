@@ -2,7 +2,6 @@ import pytest
 import os
 import wget
 import yaml
-import subprocess
 import shutil
 import warnings
 
@@ -19,12 +18,10 @@ from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.source_list import SourceList
-from models.cutouts import Cutouts
 from models.datafile import DataFile
 from models.reference import Reference
 
 from util.retrydownload import retry_download
-from util.exceptions import SubprocessFailure
 
 
 @pytest.fixture(scope='session')
@@ -467,3 +464,4 @@ def decam_cutouts(decam_datastore):
 @pytest.fixture
 def decam_measurements(decam_datastore):
     return decam_datastore.measurements
+
