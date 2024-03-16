@@ -541,7 +541,7 @@ def decam_subtraction(decam_reference, decam_processed_image, subtractor, decam_
 
 
 @pytest.fixture
-def decam_detection_list(decam_subtraction, detector, cache_dirdecam_cache_dir):
+def decam_detection_list(decam_subtraction, detector, decam_cache_dir):
     prov = Provenance(
         process='detection',
         code_version=decam_subtraction.provenance.code_version,
