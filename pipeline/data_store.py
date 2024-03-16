@@ -407,6 +407,8 @@ class DataStore:
             for name in UPSTREAM_NAMES[process]:
                 # first try to load an upstream that was given explicitly:
                 obj = getattr(self, UPSTREAM_OBJECTS[name], None)
+                if isinstance(obj, list):
+                    obj = obj[0]  # for cutouts or measurements just use the first one
                 if upstream_provs is not None and name in [p.process for p in upstream_provs]:
                     prov = [p for p in upstream_provs if p.process == name][0]
 

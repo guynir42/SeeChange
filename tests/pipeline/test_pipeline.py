@@ -150,13 +150,13 @@ def test_parameters( test_config ):
                   'subtraction': { 'method': 'override' },
                   'detection': { 'threshold': 3.14 },
                   'cutting': { 'cutout_size': 666 },
-                  'measurement': { 'photometry_method': 'override' }
+                  'measuring': { 'chosen_aperture': 1 }
                  }
     pipelinemodule = { 'preprocessing': 'preprocessor',
                        'subtraction': 'subtractor',
                        'detection': 'detector',
                        'cutting': 'cutter',
-                       'measurement': 'measurer'
+                       'measuring': 'measurer'
                       }
 
     # TODO: this is based on a temporary "example_pipeline_parameter" that will be removed later
