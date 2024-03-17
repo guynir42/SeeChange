@@ -455,6 +455,9 @@ class SeeChangeBase:
         str
             The full path to the output json file.
         """
+        if filepath is not None and filepath.endswith('.json'):  # remove .json if it exists
+            filepath = filepath[:-5]
+
         json_filepath = filepath
         if not isinstance(self, FileOnDiskMixin):
             if filepath is None:
