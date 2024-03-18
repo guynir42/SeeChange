@@ -76,30 +76,39 @@ def test_measurements(measurer, decam_cutouts, decam_measurements):
         assert len(ms) < len(ds.measurements)  # only some of the measurements have positive flux
 
         ms = session.scalars(
-            sa.select(Measurements).join(Cutouts).join(SourceList).join(Image).where(Image.mjd == m.mjd)
-        ).all()
+            sa.select(Measurements).join(Cutouts).join(SourceList).join(Image).where(
+                Image.mjd == m.mjd, Measurements.provenance_id == m.provenance.id
+            )).all()
         assert len(ms) == len(ds.measurements)  # all measurements have the same MJD
 
         ms = session.scalars(
-            sa.select(Measurements).join(Cutouts).join(SourceList).join(Image).where(Image.exp_time == m.exp_time)
-        ).all()
+            sa.select(Measurements).join(Cutouts).join(SourceList).join(Image).where(
+                Image.exp_time == m.exp_time, Measurements.provenance_id == m.provenance.id
+            )).all()
         assert len(ms) == len(ds.measurements)  # all measurements have the same exposure time
 
         ms = session.scalars(
-            sa.select(Measurements).join(Cutouts).join(SourceList).join(Image).where(Image.filter == m.filter)
-        ).all()
+            sa.select(Measurements).join(Cutouts).join(SourceList).join(Image).where(
+                Image.filter == m.filter, Measurements.provenance_id == m.provenance.id
+            )).all()
         assert len(ms) == len(ds.measurements)  # all measurements have the same filter
 
         ms = session.scalars(sa.select(Measurements).where(Measurements.background > 0)).all()
         assert len(ms) <= len(ds.measurements)  # only some of the measurements have positive background
 
-        ms = session.scalars(sa.select(Measurements).where(Measurements.offset_x > 0)).all()
+        ms = session.scalars(sa.select(Measurements).where(
+            Measurements.offset_x > 0, Measurements.provenance_id == m.provenance.id
+        )).all()
         assert len(ms) <= len(ds.measurements)  # only some of the measurements have positive offsets
 
-        ms = session.scalars(sa.select(Measurements).where(Measurements.area_psf >= 0)).all()
+        ms = session.scalars(sa.select(Measurements).where(
+            Measurements.area_psf >= 0, Measurements.provenance_id == m.provenance.id
+        )).all()
         assert len(ms) == len(ds.measurements)  # all measurements have positive psf area
 
-        ms = session.scalars(sa.select(Measurements).where(Measurements.width >= 0)).all()
+        ms = session.scalars(sa.select(Measurements).where(
+            Measurements.width >= 0, Measurements.provenance_id == m.provenance.id
+        )).all()
         assert len(ms) == len(ds.measurements)  # all measurements have positive width
 
         # TODO: filter on a specific disqulaifier score
