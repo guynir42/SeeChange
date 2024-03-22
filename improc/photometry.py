@@ -92,6 +92,11 @@ class Circle:
         im: np.ndarray
             The circle with the given shifts.
         """
+        if not np.isfinite(dx):
+            dx = 0
+        if not np.isfinite(dy):
+            dy = 0
+
         # Get the integer part of the shifts
         ix = int(np.floor(dx))
         iy = int(np.floor(dy))
@@ -103,19 +108,19 @@ class Circle:
         fy = int(fy * self.oversampling)  # convert to oversampled pixels
 
         # Get the circle
-        im = self.datacube[fx * self.oversampling + fy, :, :]
+        im = self.datacube[(fx * self.oversampling + fy) % self.datacube.shape[0], :, :]
 
         # roll and crop the circle to the correct position
-        im = np.roll(im, -ix, axis=1)
-        if ix > 0:
-            im[:, -ix:] = 0
+        im = np.roll(im, ix, axis=1)
+        if ix >= 0:
+            im[:, :ix] = 0
         else:
-            im[:, :-ix] = 0
-        im = np.roll(im, -iy, axis=0)
-        if iy > 0:
-            im[-iy:, :] = 0
+            im[:, ix:] = 0
+        im = np.roll(im, iy, axis=0)
+        if iy >= 0:
+            im[:iy, :] = 0
         else:
-            im[:-iy, :] = 0
+            im[iy:, :] = 0
 
         return im
 
@@ -191,12 +196,19 @@ def iterative_photometry(
 
     nandata = np.where(flags > 0, np.nan, image)
 
-    # find a rough estimate of the centroid using non-tapered cutout
-    cx = np.nansum(xgrid * nandata) / np.nansum(nandata)
-    cy = np.nansum(ygrid * nandata) / np.nansum(nandata)
-    cxx = np.nansum((xgrid - cx) ** 2 * nandata) / np.nansum(nandata)
-    cyy = np.nansum((ygrid - cy) ** 2 * nandata) / np.nansum(nandata)
-    cxy = np.nansum((xgrid - cx) * (ygrid - cy) * nandata) / np.nansum(nandata)
+    if np.all(nandata == 0 | np.isnan(nandata)):
+        cx = cy = cxx = cyy = cxy = 0.0
+        iterations = 0  # skip the iterative mode if there's no data
+    else:
+        # find a rough estimate of the centroid using non-tapered cutout
+        normalization = np.nansum(nandata)
+        if normalization < 1.0:
+            normalization = 1.0  # prevent division by zero and other rare cases
+        cx = np.nansum(xgrid * nandata) / normalization
+        cy = np.nansum(ygrid * nandata) / normalization
+        cxx = np.nansum((xgrid - cx) ** 2 * nandata) / normalization
+        cyy = np.nansum((ygrid - cy) ** 2 * nandata) / normalization
+        cxy = np.nansum((xgrid - cx) * (ygrid - cy) * nandata) / normalization
 
     # get some very rough estimates just so we have something in case of immediate failure of the loop
     fluxes = [np.nansum(nandata)] * len(radii)
@@ -231,11 +243,9 @@ def iterative_photometry(
         reposition_cy = cy
         for j, r in enumerate(radii):
             # make a circle-mask based on the centroid position
-            try:
-                mask = get_circle(radius=r, imsize=nandata.shape[0]).get_image(reposition_cx, reposition_cy)
-            except Exception as e:
-                print(e)
-                raise
+            if not np.isfinite(reposition_cx) or not np.isfinite(reposition_cy):
+                raise ValueError("Centroid is not finite, cannot proceed with photometry")
+            mask = get_circle(radius=r, imsize=nandata.shape[0]).get_image(reposition_cx, reposition_cy)
 
             # mask the data and get the flux
             masked_data = nandata * mask
@@ -253,7 +263,7 @@ def iterative_photometry(
             if j == 0:  # smallest aperture only
                 # TODO: consider replacing this with a hard-edge annulus and do median or sigma clipping on the pixels
                 background = np.nansum(nandata * annulus_map) / np.nansum(annulus_map)  # b/g per pixel
-                variance = np.nansum((nandata - background) * annulus_map) ** 2 / np.nansum(annulus_map)  # noise per pixel
+                variance = np.nansum((nandata - background) * annulus_map) ** 2 / np.nansum(annulus_map)  # per pixel
 
                 normalization = (fluxes[j] - background * areas[j])
                 masked_data_bg = (nandata - background) * mask
@@ -270,10 +280,10 @@ def iterative_photometry(
                 # TODO: how to do PSF photometry with offsets and a given PSF? and get the error, too!
 
                 # check that we got reasonable values! If not, break and keep the current values
-                if np.isnan(cx) or cx > nandata.shape[1] or cx < 0:
+                if np.isnan(cx) or cx > nandata.shape[1] / 2 or cx < -nandata.shape[1] / 2:
                     need_break = True
                     break  # there's no point doing more radii if we are not going to save the results!
-                if np.isnan(cy) or cy > nandata.shape[0] or cy < 0:
+                if np.isnan(cy) or cy > nandata.shape[0] / 2 or cy < -nandata.shape[0] / 2:
                     need_break = True
                     break  # there's no point doing more radii if we are not going to save the results!
                 if np.nansum(mask) == 0 or np.nansum(annulus_map) == 0:

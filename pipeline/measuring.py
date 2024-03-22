@@ -1,6 +1,8 @@
 import numpy as np
 import sqlalchemy as sa
 
+from scipy import signal
+
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 from pipeline.utils import parse_session
@@ -11,6 +13,7 @@ from models.measurements import Measurements
 from models.enums_and_bitflags import BitFlagConverter
 
 from improc.photometry import iterative_photometry
+from improc.tools import make_gaussian
 
 
 class ParsMeasurer(Parameters):
@@ -47,7 +50,7 @@ class ParsMeasurer(Parameters):
 
         self.analytical_cuts = self.add_par(
             'analytical_cuts',
-            ['negatives', 'bad pixels', 'streak like', 'offsets', 'psf width'],
+            ['negatives', 'bad pixels', 'offsets', 'filter bank'],
             [list],
             'Which kinds of analytic cuts are used to give scores to this measurement. '
         )
@@ -84,7 +87,7 @@ class ParsMeasurer(Parameters):
 
         self.width_filter_multipliers = self.add_par(
             'width_filter_multipliers',
-            [0.5, 2.0, 5.0, 10.0],
+            [0.25, 2.0, 5.0, 10.0],
             list,
             'Multipliers of the PSF width to use as matched filter templates'
             'to compare against the real width (x1.0) when running psf width filter. '
@@ -105,6 +108,9 @@ class Measurer:
         # this is useful for tests, where we can know if
         # the object did any work or just loaded from DB or datastore
         self.has_recalculated = False
+
+        self._filter_bank = None  # store an array of filters to match against the cutouts
+        self._filter_psf_fwhm = None  # recall the FWHM used to produce this filter bank, recalculate if it changes
 
     def run(self, *args, **kwargs):
         """
@@ -147,19 +153,23 @@ class Measurer:
 
             cutouts = ds.get_cutouts(session=session)
 
+            # prepare the filter bank for this batch of cutouts
+            if self._filter_psf_fwhm is None or self._filter_psf_fwhm != cutouts[0].sources.image.get_psf().fwhm_pixels:
+                self.make_filter_bank(cutouts[0].sub_data.shape[0], cutouts[0].sources.image.get_psf().fwhm_pixels)
+
+            # go over each cutouts object and produce a measurements object
             measurements_list = []
             for c in cutouts:
                 m = Measurements(cutouts=c)
 
                 m.aper_radii = c.sources.image.new_image.zp.aper_cor_radii  # zero point corrected aperture radii
 
-                # TODO: implement all sorts of analysis and photometry
-
                 ignore_bits = 0
                 for badness in self.pars.bad_pixel_exclude:
-                    ignore_bits |= BitFlagConverter.convert(badness)
+                    ignore_bits |= 2 ** BitFlagConverter.convert(badness)
 
-                flags = c.sub_flags.astype('uint16') ^ ignore_bits  # remove the bad pixels that we want to ignore
+                # remove the bad pixels that we want to ignore
+                flags = c.sub_flags.astype('uint16') & ~np.array(ignore_bits).astype('uint16')
 
                 annulus_radii_pixels = self.pars.annulus_radii
                 if self.pars.annulus_units == 'fwhm':
@@ -202,29 +212,96 @@ class Measurer:
                     )
                 m.best_aperture = ap_index
 
-                if m.provenance is None:
-                    m.provenance = prov
-                else:
-                    if m.provenance.id != prov.id:
-                        raise ValueError('Provenance mismatch for measurements and provenance!')
-
-                measurements_list.append(m)
-
-            # TODO: implement the actual code to do this.
-            #  For each source in the SourceList make a Cutouts object.
-            #  For each Cutouts calculate the photometry (flux, centroids).
-            #  Apply analytic cuts to each stamp image, to rule out artefacts.
-            #  Apply deep learning (real/bogus) to each stamp image, to rule out artefacts.
-            #  Save the results as Measurement objects, append them to the Cutouts objects.
-            #  Commit the results to the database.
-
-            for m in measurements_list:
                 m.provenance = prov
                 m.provenance_id = prov.id
+
+                # Apply analytic cuts to each stamp image, to rule out artefacts.
+                m.disqualifier_scores = {}
+                if m.background != 0 and m.background_err > 0:
+                    norm_data = (c.sub_nandata - m.background) / m.background_err  # normalize
+                else:
+                    norm_data = c.sub_nandata  # no good background measurement, do not normalize!
+
+                positives = np.sum(norm_data > 3)
+                negatives = np.sum(norm_data < -3)
+                if negatives == 0:
+                    m.disqualifier_scores['negatives'] = 0.0
+                elif positives == 0:
+                    m.disqualifier_scores['negatives'] = 1.0
+                else:
+                    m.disqualifier_scores['negatives'] = negatives / positives
+
+                x, y = np.meshgrid(range(c.sub_data.shape[0]), range(c.sub_data.shape[1]))
+                x = x - c.sub_data.shape[1] // 2 - m.offset_x
+                y = y - c.sub_data.shape[0] // 2 - m.offset_y
+                r = np.sqrt(x ** 2 + y ** 2)
+                bad_pixel_inclusion = r < self.pars.bad_pixel_radius
+                m.disqualifier_scores['bad pixels'] = np.sum(flags[bad_pixel_inclusion] > 0)
+
+                norm_data_no_nans = norm_data.copy()
+                norm_data_no_nans[np.isnan(norm_data)] = 0
+
+                filter_scores = []
+                for template in self._filter_bank:
+                    filter_scores.append(np.max(signal.correlate(abs(norm_data_no_nans), template, mode='same')))
+
+                m.disqualifier_scores['filter bank'] = np.argmax(filter_scores)
+
+                offset = np.sqrt(m.offset_x ** 2 + m.offset_y ** 2)
+                m.disqualifier_scores['offsets'] = offset
+
+                # TODO: add additional disqualifiers
+
+                # make sure disqualifier scores don't have any numpy types
+                for k, v in m.disqualifier_scores.items():
+                    if isinstance(v, np.number):
+                        m.disqualifier_scores[k] = v.item()
+
+                measurements_list.append(m)
 
             # add the resulting list to the data store
             ds.measurements = measurements_list
 
         # make sure this is returned to be used in the next step
         return ds
+
+    def make_filter_bank(self, imsize, psf_fwhm):
+        """Make a filter bank matching the PSF width.
+
+        Parameters
+        ----------
+        imsize: int
+            The size of the image cutouts, which is also the size of the filters. # TODO: allow smaller filters?
+        psf_fwhm : float
+            The FWHM of the PSF in pixels.
+        """
+        psf_sigma = psf_fwhm / 2.355  # convert FWHM to sigma
+        templates = []
+        templates.append(make_gaussian(imsize=imsize, sigma_x=psf_sigma, sigma_y=psf_sigma, norm=2))
+
+        # narrow gaussian to trigger on cosmic rays, wider templates for extended sources
+        for multiplier in self.pars.width_filter_multipliers:
+            templates.append(
+                make_gaussian(imsize=imsize, sigma_x=psf_sigma * multiplier, sigma_y=psf_sigma * multiplier, norm=2)
+            )
+
+        # add some streaks:
+        (y, x) = np.meshgrid(range(-(imsize // 2), imsize // 2 + 1), range(-(imsize // 2), imsize // 2 + 1))
+        for angle in np.arange(-90.0, 90.0, self.pars.streak_filter_angle_step):
+
+            if abs(angle) == 90:
+                d = np.abs(x)  # distance from line
+            else:
+                a = np.tan(np.radians(angle))
+                b = 0  # impact parameter is zero for centered streak
+                d = np.abs(a * x - y + b) / np.sqrt(1 + a ** 2)  # distance from line
+            streak = (1 / np.sqrt(2.0 * np.pi) / psf_sigma) * np.exp(
+                -0.5 * d ** 2 / psf_sigma ** 2
+            )
+            streak /= np.sqrt(np.sum(streak ** 2))  # verify that the template is normalized
+
+            templates.append(streak)
+
+        self._filter_bank = templates
+        self._filter_psf_fwhm = psf_fwhm
 

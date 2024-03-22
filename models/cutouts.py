@@ -137,11 +137,13 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         self._source_row = None
         self._sub_data = None
         self._sub_weight = None
-        self._sub_flag = None
+        self._sub_flags = None
         self._ref_data = None
         self._ref_weight = None
-        self._ref_flag = None
+        self._ref_flags = None
         self._new_data = None
+        self._new_weight = None
+        self._new_flags = None
 
         self._bitflag = 0
 
@@ -157,11 +159,13 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         self._source_row = None
         self._sub_data = None
         self._sub_weight = None
-        self._sub_flag = None
+        self._sub_flags = None
         self._ref_data = None
         self._ref_weight = None
-        self._ref_flag = None
+        self._ref_flags = None
         self._new_data = None
+        self._new_weight = None
+        self._new_flags = None
 
     def __repr__(self):
         return (

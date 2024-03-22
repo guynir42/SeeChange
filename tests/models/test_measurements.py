@@ -31,6 +31,9 @@ def test_measurements(measurer, decam_cutouts, decam_measurements):
         new_im.zp.aper_cor_radii,
         new_im.psf.fwhm_pixels * np.array(new_im.instrument_object.standard_apertures()),
     )
+    assert m.mjd == new_im.mjd
+    assert m.exp_time == new_im.exp_time
+    assert m.filter == new_im.filter
 
     original_flux = m.flux_apertures[m.best_aperture]
 

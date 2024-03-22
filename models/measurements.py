@@ -241,5 +241,38 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
 
         super().__setattr__(key, value)
 
+    def get_filter_description(self, number=None):
+        """Use the number of the filter in the filter bank to get a string describing it.
 
+        The number is from the list of filters, and for a given measurement you can use the
+        disqualifier_score['filter bank'] to get the number of the filter that got the best S/N
+        (so that filter best describes the shape of the light in the cutout).
+        This is the default value for number, if it is not given.
+        """
+        if number is None:
+            number = self.disqualifier_scores.get('filter bank', None)
 
+        if number is None:
+            raise ValueError('No filter number given, and no filter bank score found. ')
+
+        if number < 0:
+            raise ValueError('Filter number must be non-negative.')
+        if self.provenance is None:
+            raise ValueError('No provenance for this measurement, cannot recover the parameters used. ')
+        if self.cutouts is None or self.cutouts.sources is None or self.cutouts.sources.image is None:
+            raise ValueError('No cutouts for this measurement, cannot recover the PSF width. ')
+
+        mult = self.provenance.parameters['width_filter_multipliers']
+        angles = np.arange(-90.0, 90.0, self.provenance.parameters['streak_filter_angle_step'])
+        fwhm = self.cutouts.sources.image.get_psf().fwhm_pixels
+
+        if number == 0:
+            return f'PSF match (FWHM= 1.00 x {fwhm:.2f})'
+
+        if number < len(mult) + 1:
+            return f'PSF mismatch (FWHM= {mult[number - 1]:.2f} x {fwhm:.2f})'
+
+        if number < len(mult) + 1 + len(angles):
+            return f'Streaked (angle= {angles[number - len(mult) - 1]:.1f} deg)'
+
+        raise ValueError('Filter number too high for the filter bank. ')

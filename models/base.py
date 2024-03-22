@@ -359,6 +359,14 @@ class SeeChangeBase:
         output = {}
         for key in sa.inspect(self).mapper.columns.keys():
             value = getattr(self, key)
+            # get rid of numpy types
+            if isinstance(value, np.number):
+                value = value.item()  # convert numpy number to python primitive
+            if isinstance(value, list):
+                value = [v.item() if isinstance(v, np.number) else v for v in value]
+            if isinstance(value, dict):
+                value = {k: v.item() if isinstance(v, np.number) else v for k, v in value.items()}
+
             if key == 'md5sum' and value is not None:
                 if isinstance(value, UUID):
                     value = value.hex
@@ -425,7 +433,10 @@ class SeeChangeBase:
             The path to the output JSON file.
         """
         with open(filename, 'w') as fp:
-            json.dump(self.to_dict(), fp, indent=2)
+            try:
+                json.dump(self.to_dict(), fp, indent=2)
+            except:
+                raise
 
     def copy_to_cache(self, cache_dir, filepath=None):
         """Save a copy of the object (and associated files) into a cache directory.

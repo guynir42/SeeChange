@@ -110,11 +110,3 @@ def test_make_save_load_cutouts(decam_detection_list, cutter):
         if 'ds' in locals() and ds.cutouts is not None:
             Cutouts.delete_list(ds.cutouts)
 
-
-def test_cutout_bitflag():
-    pass
-
-
-def test_cutout_io_timing():
-    pass
-
