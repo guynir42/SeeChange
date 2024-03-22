@@ -159,7 +159,7 @@ def decam_raw_origin_exposures():
 
 @pytest.fixture(scope="session")
 def decam_filename(download_url, data_dir, decam_cache_dir):
-    """Pull a DECam exposure down from the NOIRLab archives.  TODO: should we download from NERSC or from NOIRLab?
+    """Pull a DECam exposure down from the NOIRLab archives.
 
     Because this is a slow process (depending on the NOIRLab archive
     speed, it can take up to minutes), first look for this file
@@ -176,7 +176,6 @@ def decam_filename(download_url, data_dir, decam_cache_dir):
         os.makedirs(os.path.dirname(cachedfilename), exist_ok=True)
 
         if not os.path.isfile(cachedfilename):
-            # url = 'https://astroarchive.noirlab.edu/api/retrieve/004d537b1347daa12f8361f5d69bc09b/'
             url = os.path.join(download_url, 'DECAM', base_name)
             response = wget.download(url=url, out=cachedfilename)
             assert response == cachedfilename
