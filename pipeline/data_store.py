@@ -1443,7 +1443,7 @@ class DataStore:
 
             session.commit()
 
-    def delete_everything(self, session=None):
+    def delete_everything(self, session=None, commit=True):
         """Delete everything associated with this sub-image.
 
         All data products in the data store are removed from the DB,
@@ -1462,8 +1462,15 @@ class DataStore:
             DataStore object; if there is none, will open a new session
             and close it at the end of the function.
             Note that this method calls session.commit()
-
+        commit: bool, default True
+            If True, will commit the transaction.  If False, will not
+            commit the transaction, so the caller can do more work
+            before committing.
+            If session is None, commit must also be True.
         """
+        if session is None and not commit:
+            raise ValueError('If session is None, commit must be True')
+
         with SmartSession( session, self.session ) as session:
             autoflush_state = session.autoflush
             try:
@@ -1487,7 +1494,7 @@ class DataStore:
                     if isinstance(obj, list):
                         if len(obj) > 0:
                             if hasattr(obj[0], 'delete_list'):
-                                obj[0].delete_list(obj, session=session, commit=False, archive=True)
+                                obj[0].delete_list(obj, session=session, commit=False)
                         continue
                     if isinstance(obj, FileOnDiskMixin):
                         obj.delete_from_disk_and_database(session=session, commit=False, archive=True)
@@ -1499,14 +1506,27 @@ class DataStore:
                     if hasattr(obj, 'provenance') and obj.provenance is not None and obj.provenance in session:
                         session.expunge(obj.provenance)
 
+                # verify that the objects are in fact deleted by deleting the image at the root of the datastore
+                if self.image is not None and self.image.id is not None:
+                    session.execute(sa.delete(Image).where(Image.id == self.image.id))
+
+                # verify that no objects were accidentally added to the session's "new" set
+                for obj in obj_list:
+                    if isinstance(obj, list):
+                        continue  # skip cutouts and measurements, as they could be slow to check
+
+                    for new_obj in session.new:
+                        if type(obj) is type(new_obj) and obj.id is not None and obj.id == new_obj.id:
+                            session.expunge(new_obj)  # remove this object
+
                 session.commit()
 
             finally:
                 session.autoflush = autoflush_state
 
         # Make sure all data products are None so that they aren't used again now that they're gone
-        for att in self.attributes_to_save:
-            setattr(self, att, None)
-
-        for att in self.attributes_to_clear:
-            setattr(self, att, None)
+        # for att in self.attributes_to_save:
+        #     setattr(self, att, None)
+        #
+        # for att in self.attributes_to_clear:
+        #     setattr(self, att, None)

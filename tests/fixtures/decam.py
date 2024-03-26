@@ -208,6 +208,7 @@ def decam_exposure(decam_filename, data_dir):
     exposure.save()  # save to archive and get an MD5 sum
 
     with SmartSession() as session:
+        exposure.provenance = session.merge(exposure.provenance)
         session.add(exposure)
         session.commit()
 
@@ -267,7 +268,7 @@ def decam_datastore(
     # does not cause any problems.
     ds.save_and_commit()
 
-    delete_list = [
+    deletion_list = [
         ds.image, ds.sources, ds.psf, ds.wcs, ds.zp, ds.sub_image, ds.detections, ds.cutouts, ds.measurements
     ]
 
@@ -279,9 +280,9 @@ def decam_datastore(
 
     # make sure that these individual objects have their files cleaned up,
     # even if the datastore is cleared and all database rows are deleted.
-    for obj in delete_list:
+    for obj in deletion_list:
         if isinstance(obj, list) and len(obj) > 0 and hasattr(obj[0], 'delete_list'):
-            obj[0].delete_list(obj, archive=True)
+            obj[0].delete_list(obj)
         if obj is not None and hasattr(obj, 'delete_from_disk_and_database'):
             obj.delete_from_disk_and_database(archive=True)
 

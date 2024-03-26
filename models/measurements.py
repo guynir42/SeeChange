@@ -6,7 +6,7 @@ from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.associationproxy import association_proxy
 
-from models.base import Base, SeeChangeBase, AutoIDMixin, SpatiallyIndexed
+from models.base import Base, SeeChangeBase, SmartSession, AutoIDMixin, SpatiallyIndexed
 
 
 class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
@@ -276,3 +276,28 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
             return f'Streaked (angle= {angles[number - len(mult) - 1]:.1f} deg)'
 
         raise ValueError('Filter number too high for the filter bank. ')
+
+    @classmethod
+    def delete_list(cls, measurements_list, session=None, commit=True):
+        """
+        Remove a list of Measurements objects from the database.
+
+        Parameters
+        ----------
+        measurements_list: list of Measurements
+            The list of Measurements objects to remove.
+        session: Session, optional
+            The database session to use. If not given, will create a new session.
+        commit: bool
+            If True, will commit the changes to the database.
+            If False, will not commit the changes to the database.
+            If session is not given, commit must be True.
+        """
+        if session is None and not commit:
+            raise ValueError('If session is not given, commit must be True.')
+
+        with SmartSession(session) as session:
+            for m in measurements_list:
+                m.delete_from_database(session=session, commit=False)
+            if commit:
+                session.commit()

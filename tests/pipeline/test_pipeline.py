@@ -245,3 +245,44 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
         # this should be removed after we add datastore failure modes (issue #150)
         shutil.rmtree(os.path.join(os.path.dirname(exposure.get_fullpath()), '115'), ignore_errors=True)
         shutil.rmtree(os.path.join(archive.test_folder_path, '115'), ignore_errors=True)
+
+
+def test_datastore_delete_everything(decam_datastore):
+    im = decam_datastore.image
+    sources = decam_datastore.sources
+    psf = decam_datastore.psf
+    sub = decam_datastore.sub_image
+    det = decam_datastore.detections
+    cutouts_list = decam_datastore.cutouts
+    measurements_list = decam_datastore.measurements
+
+    # make sure we can delete everything
+    decam_datastore.delete_everything()
+
+    # make sure everything is deleted
+    for path in im.get_fullpath(as_list=True):
+        assert not os.path.exists(path)
+
+    assert not os.path.exists(sources.get_fullpath())
+
+    for path in psf.get_fullpath(as_list=True):
+        assert not os.path.exists(path)
+
+    for path in sub.get_fullpath(as_list=True):
+        assert not os.path.exists(path)
+
+    assert not os.path.exists(det.get_fullpath())
+
+    assert not os.path.exists(cutouts_list[0].get_fullpath())
+
+    # check these don't exist on the DB:
+    with SmartSession() as session:
+        assert session.scalars(sa.select(Image).where(Image.id == im.id)).first() is None
+        assert session.scalars(sa.select(SourceList).where(SourceList.id == sources.id)).first() is None
+        assert session.scalars(sa.select(PSF).where(PSF.id == psf.id)).first() is None
+        assert session.scalars(sa.select(Image).where(Image.id == sub.id)).first() is None
+        assert session.scalars(sa.select(SourceList).where(SourceList.id == det.id)).first() is None
+        assert session.scalars(sa.select(Cutouts).where(Cutouts.id == cutouts_list[0].id)).first() is None
+        assert session.scalars(
+            sa.select(Measurements).where(Measurements.id == measurements_list[0].id)
+        ).first() is None

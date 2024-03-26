@@ -74,7 +74,7 @@ def pytest_sessionfinish(session, exitstatus):
 
         dbsession.commit()
 
-        verify_archive_database_empty = False  # set to False to avoid spurious errors at end of tests (when debugging)
+        verify_archive_database_empty = True  # set to False to avoid spurious errors at end of tests (when debugging)
 
         if any_objects and verify_archive_database_empty:
             raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')
@@ -99,6 +99,7 @@ def pytest_sessionfinish(session, exitstatus):
 
                 if len(files) > 0 and verify_archive_database_empty:
                     raise RuntimeError(f'There are files left in the archive after tests cleanup: {files}')
+
 
 @pytest.fixture(scope='session')
 def download_url():
