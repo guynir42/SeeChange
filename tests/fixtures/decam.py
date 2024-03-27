@@ -21,6 +21,8 @@ from models.source_list import SourceList
 from models.datafile import DataFile
 from models.reference import Reference
 
+from improc.alignment import ImageAligner
+
 from util.retrydownload import retry_download
 
 
@@ -286,6 +288,8 @@ def decam_datastore(
         if obj is not None and hasattr(obj, 'delete_from_disk_and_database'):
             obj.delete_from_disk_and_database(archive=True)
 
+    ImageAligner.cleanup_temp_images()
+
 
 @pytest.fixture
 def decam_processed_image(decam_datastore):
@@ -408,6 +412,8 @@ def decam_ref_datastore( code_version, download_url, decam_cache_dir, data_dir, 
     for obj in delete_list:
         if obj is not None and hasattr(obj, 'delete_from_disk_and_database'):
             obj.delete_from_disk_and_database(archive=True)
+
+    ImageAligner.cleanup_temp_images()
 
 
 @pytest.fixture
