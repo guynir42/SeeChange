@@ -51,6 +51,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         sa.Float,
         nullable=False,
         doc="PSF flux of the measurement. "
+            "This measurement has not had a background from a local annulus subtracted from it. "
     )
 
     flux_psf_err = sa.Column(
@@ -63,6 +64,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         sa.ARRAY(sa.Float),
         nullable=False,
         doc="Aperture fluxes of the measurement. "
+            "This measurement has not had a background from a local annulus subtracted from it. "
     )
 
     flux_apertures_err = sa.Column(

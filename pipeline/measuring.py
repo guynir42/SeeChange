@@ -115,7 +115,7 @@ class Measurer:
     def run(self, *args, **kwargs):
         """
         Go over the cutouts from an image and measure all sorts of things
-        for each cutout: photometry (flux, centroids), real/bogus, etc.
+        for each cutout: photometry (flux, centroids), etc.
 
         Returns a DataStore object with the products of the processing.
         """
