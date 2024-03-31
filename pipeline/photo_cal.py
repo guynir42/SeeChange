@@ -238,7 +238,7 @@ class PhotCalibrator:
 
         if zp is None:  # must create a new ZeroPoint object
             self.has_recalculated = True
-            if self.pars.cross_match_catalog != 'gaia_gr3':
+            if self.pars.cross_match_catalog != 'gaia_dr3':
                 raise NotImplementedError( f"Currently only know how to calibrate to gaia_dr3, not "
                                            f"{self.pars.cross_match_catalog}" )
 
