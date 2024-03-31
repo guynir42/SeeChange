@@ -258,7 +258,7 @@ def download_GaiaDR3( minra, maxra, mindec, maxdec, padding=0.1, minmag=18., max
     _logger.debug( f"Writing {len(fitstab)} gaia stars to {ofpath}" )
     ldac.save_table_as_ldac( fitstab, ofpath, overwrite=True )
 
-    catexp = CatalogExcerpt( format='fitsldac', origin='GaiaDR3', num_items=len(fitstab),
+    catexp = CatalogExcerpt( format='fitsldac', origin='gaia_dr3', num_items=len(fitstab),
                              minmag=minmag, maxmag=maxmag, ra=ra, dec=dec,
                              ra_corner_00=ralow, ra_corner_01=ralow, ra_corner_10=rahigh, ra_corner_11=rahigh,
                              dec_corner_00=declow, dec_corner_10=declow,
@@ -344,7 +344,7 @@ def fetch_GaiaDR3_excerpt( image, minstars=50, maxmags=22, magrange=None, sessio
         for maxmag in maxmags:
             # See if there's a cached catalog we can use.
             q = ( session.query( CatalogExcerpt )
-                  .filter( CatalogExcerpt.origin == 'GaiaDR3' )
+                  .filter( CatalogExcerpt.origin == 'gaia_dr3' )
                   .filter( CatalogExcerpt.ra_corner_00 <= ralow )
                   .filter( CatalogExcerpt.ra_corner_01 <= ralow )
                   .filter( CatalogExcerpt.ra_corner_10 >= rahigh )

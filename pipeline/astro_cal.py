@@ -14,7 +14,7 @@ class ParsAstroCalibrator(Parameters):
         super().__init__()
         self.cross_match_catalog = self.add_par(
             'cross_match_catalog',
-            'GaiaDR3',
+            'gaia_dr3',
             str,
             'Which catalog should be used for cross matching for astrometry. ',
             critical=True
@@ -160,9 +160,9 @@ class AstroCalibrator:
             raise ValueError( f'_solve_wcs_scamp requires a fitsldac catalog excerpt, not {catexp.format}' )
         if sources.format != 'sextrfits':
             raise ValueError( f'_solve_wcs_scamp requires a sextrffits source list, not {sources.format}' )
-        if catexp.origin != 'GaiaDR3':
+        if catexp.origin != 'gaia_dr3':
             raise NotImplementedError( f"Don't know what magnitude key to choose for astrometric reference "
-                                       f"{catexp.origin}; only GaiaDR3 is implemented." )
+                                       f"{catexp.origin}; only gaia_dr3 is implemented." )
 
         if sources.filepath is None:
             sources.save()

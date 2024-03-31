@@ -93,7 +93,7 @@ def test_run_scamp( decam_datastore, astrometor ):
     with fits.open(original_filename) as hdu:
         origwcs = WCS(hdu[ds.section_id].header)
 
-    astrometor.pars.cross_match_catalog = 'GaiaDR3'
+    astrometor.pars.cross_match_catalog = 'gaia_dr3'
     astrometor.pars.solution_method = 'scamp'
     astrometor.pars.max_catalog_mag = [20.]
     astrometor.pars.mag_range_catalog = 4.

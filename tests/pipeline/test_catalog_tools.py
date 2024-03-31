@@ -17,7 +17,7 @@ def test_download_GaiaDR3(data_dir):
         assert dbfile == firstfilepath
         assert catexp.num_items == 178
         assert catexp.format == 'fitsldac'
-        assert catexp.origin == 'GaiaDR3'
+        assert catexp.origin == 'gaia_dr3'
         assert catexp.minmag == 18.
         assert catexp.maxmag == 22.
         assert ( catexp.dec_corner_11 - catexp.dec_corner_00 ) == pytest.approx( 1.2 * (1.90649-1.75582), abs=1e-4 )

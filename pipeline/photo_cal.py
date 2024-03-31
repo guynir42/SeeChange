@@ -24,7 +24,7 @@ class ParsPhotCalibrator(Parameters):
         super().__init__()
         self.cross_match_catalog = self.add_par(
             'cross_match_catalog',
-            'GaiaDR3',
+            'gaia_dr3',
             str,
             'Which catalog should be used for cross matching for photometric calibration. '
         )
@@ -238,8 +238,8 @@ class PhotCalibrator:
 
         if zp is None:  # must create a new ZeroPoint object
             self.has_recalculated = True
-            if self.pars.cross_match_catalog != 'GaiaDR3':
-                raise NotImplementedError( f"Currently only know how to calibrate to GaiaDR3, not "
+            if self.pars.cross_match_catalog != 'gaia_gr3':
+                raise NotImplementedError( f"Currently only know how to calibrate to gaia_dr3, not "
                                            f"{self.pars.cross_match_catalog}" )
 
             image = ds.get_image(session=session)
