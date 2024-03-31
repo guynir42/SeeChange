@@ -98,17 +98,6 @@ class ParsImageAligner(Parameters):
 
 
 class ImageAligner:
-    temp_images = []
-
-    @classmethod
-    def cleanup_temp_images( cls ):
-        for im in cls.temp_images:
-            im.remove_data_from_disk()
-            for file in im.get_fullpath(as_list=True):
-                if file is not None and os.path.isfile( file ):
-                    raise RuntimeError( f'Failed to clean up {file}' )
-
-        cls.temp_images = []
 
     def __init__( self, **kwargs ):
         self.pars = ParsImageAligner( **kwargs )

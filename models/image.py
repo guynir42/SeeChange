@@ -987,10 +987,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         The index to which the images are aligned is given by the "to_index" key in the
         "alignment" dictionary in the parameters of the image provenance; the value can
         be "first" or "last".
-
-        The resulting images are saved in _aligned_images, which are not saved
-        to the database. Note that each aligned image is also referred to by
-        a global variable under the ImageAligner.temp_images list.
         """
         from improc.alignment import ImageAligner  # avoid circular import
         if self.provenance is None or self.provenance.parameters is None:
@@ -1026,7 +1022,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         for i, image in enumerate(self.upstream_images):
             new_image = self._aligner.run(image, alignment_target)
             aligned.append(new_image)
-            ImageAligner.temp_images.append(new_image)  # keep track of all these images for cleanup purposes
 
         self._aligned_images = aligned
 

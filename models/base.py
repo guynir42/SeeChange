@@ -832,7 +832,6 @@ class FileOnDiskMixin:
             doc="Base path (relative to the data root) for a stored file"
         )
 
-
     filepath_extensions = sa.Column(
         sa.ARRAY(sa.Text),
         nullable=True,
@@ -898,6 +897,25 @@ class FileOnDiskMixin:
         self.nofile = kwargs.pop('nofile', self._do_not_require_file_to_exist())
 
         self._archive = None
+
+    def __del__(self):
+        """Release any resources (files) associated with this object, unless it has been committed.
+
+        To prevent accidentally deleting files that are associated with committed objects
+        (which we definitely want to save) the files only get cleared up if this object
+        doesn't have a primary key identifier.
+
+        This doesn't cover all cases, such as instances that were deleted after having
+        been committed, or instances that failed to get saved because of database constraints.
+        In such cases, it is still the user's responsibility to clean up the files.
+        """
+        if self.id is None:  # only delete in case of missing ID
+            if self.filepath is not None:
+                # remove local files
+                self.remove_data_from_disk()  # note that this doesn't remove any downstream data
+
+                # remove archive files
+                self.delete_from_archive()  # note that this doesn't remove any downstream data
 
     @orm.reconstructor
     def init_on_load(self):
