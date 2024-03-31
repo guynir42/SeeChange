@@ -314,7 +314,7 @@ def datastore_factory(
                     if ds.exposure is not None:
                         ds.image.exposure = ds.exposure
 
-                    # add the preprocessing steps from instruement (TODO: remove this as part of Issue #142)
+                    # add the preprocessing steps from instrument (TODO: remove this as part of Issue #142)
                     preprocessing_steps = ds.image.instrument_object.preprocessing_steps
                     prep_pars = preprocessor.pars.get_critical_pars()
                     prep_pars['preprocessing_steps'] = preprocessing_steps
@@ -560,7 +560,6 @@ def datastore_factory(
                         warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
 
             ds.save_and_commit(session=session)
-
 
             try:  # if no reference is found, simply return the datastore without the rest of the products
                 ref = ds.get_reference()  # first make sure this actually manages to find the reference image
