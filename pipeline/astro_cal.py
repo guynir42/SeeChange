@@ -6,7 +6,7 @@ from models.catalog_excerpt import CatalogExcerpt
 from models.world_coordinates import WorldCoordinates
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
-from pipeline.catalog_tools import fetch_GaiaDR3_excerpt
+from pipeline.catalog_tools import fetch_gaia_dr3_excerpt
 
 
 class ParsAstroCalibrator(Parameters):
@@ -206,7 +206,7 @@ class AstroCalibrator:
         exceptions = []
         for maxmag in self.pars.max_catalog_mag:
             try:
-                catexp = fetch_GaiaDR3_excerpt(
+                catexp = fetch_gaia_dr3_excerpt(
                     image=image,
                     minstars=self.pars.min_catalog_stars,
                     maxmags=maxmag,

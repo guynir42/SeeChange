@@ -122,8 +122,8 @@ def get_bandpasses_Gaia():
     return dict(G=Bandpass(400, 850), BP=Bandpass(380, 650), RP=Bandpass(620, 900))
 
 
-def download_GaiaDR3( minra, maxra, mindec, maxdec, padding=0.1, minmag=18., maxmag=22. ):
-    """Download objects from GaiaDR3 as served by Noirlab Astro Data Lab
+def download_gaia_dr3( minra, maxra, mindec, maxdec, padding=0.1, minmag=18., maxmag=22. ):
+    """Download objects from gaia_dr3 as served by Noirlab Astro Data Lab
 
     Will Get a square on the sky given the limits, with the limits
     fractionally expanded at each edge by padding.
@@ -248,7 +248,7 @@ def download_GaiaDR3( minra, maxra, mindec, maxdec, padding=0.1, minmag=18., max
     hpix = healpy.ang2pix( 4, ra, dec, lonlat=True )
     minmagstr = 'None' if minmag is None else f'{minmag:.1f}'
     maxmagstr = 'None' if maxmag is None else f'{maxmag:.1f}'
-    relpath = ( pathlib.Path( "GaiaDR3_excerpt" ) / str(hpix) /
+    relpath = ( pathlib.Path( "gaia_dr3_excerpt" ) / str(hpix) /
                 f"Gaia_DR3_{ra:.4f}_{dec:.4f}_{minmagstr}_{maxmagstr}.fits" )
     ofpath = pathlib.Path( FileOnDiskMixin.temp_path ) / relpath
     dbpath = pathlib.Path( FileOnDiskMixin.local_path ) / relpath
@@ -270,8 +270,8 @@ def download_GaiaDR3( minra, maxra, mindec, maxdec, padding=0.1, minmag=18., max
 
 # ----------------------------------------------------------------------
 
-def fetch_GaiaDR3_excerpt( image, minstars=50, maxmags=22, magrange=None, session=None, onlycached=False ):
-    """Search catalog excerpts for a compatible GaiaDR3 excerpt; if not found, make one.
+def fetch_gaia_dr3_excerpt( image, minstars=50, maxmags=22, magrange=None, session=None, onlycached=False ):
+    """Search catalog excerpts for a compatible gaia_dr3 excerpt; if not found, make one.
 
     If multiple matching catalogs are found, will return the first
     one that the database happens to return.  (TODO: perhaps return
@@ -374,7 +374,7 @@ def fetch_GaiaDR3_excerpt( image, minstars=50, maxmags=22, magrange=None, sessio
 
             if catexp is None and not onlycached:
                 # No cached catalog excerpt, so query the NOIRLab server
-                catexp, localfile, dbfile = download_GaiaDR3(
+                catexp, localfile, dbfile = download_gaia_dr3(
                     minra,
                     maxra,
                     mindec,

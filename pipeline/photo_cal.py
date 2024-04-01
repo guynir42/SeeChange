@@ -93,7 +93,7 @@ class PhotCalibrator:
             Image sources. The sources must have been extracted from an
             image with a good WCS, as the ra and dec of the sources will
             be matched directly to the X_WORLD and Y_WORLD fields of the
-            GaiaDR3 catalog excerpt.
+            gaia_dr3 catalog excerpt.
 
           wcs: WorldCoordinates
             A WorldCoordinates object that can be used to find ra and
