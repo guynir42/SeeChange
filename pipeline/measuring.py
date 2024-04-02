@@ -1,5 +1,4 @@
 import numpy as np
-import sqlalchemy as sa
 
 from scipy import signal
 
@@ -7,7 +6,6 @@ from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 from pipeline.utils import parse_session
 
-from models.base import SmartSession
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 from models.enums_and_bitflags import BitFlagConverter
@@ -113,21 +111,22 @@ class Measurer:
         self._filter_psf_fwhm = None  # recall the FWHM used to produce this filter bank, recalculate if it changes
 
     def run(self, *args, **kwargs):
-        """
-        Go over the cutouts from an image and measure all sorts of things
+        """Go over the cutouts from an image and measure all sorts of things
         for each cutout: photometry (flux, centroids), etc.
 
         Returns a DataStore object with the products of the processing.
         """
         # most likely to get a Cutouts object or list of Cutouts
         if isinstance(args[0], Cutouts):
-            args[0] = [args[0]]  # make it a list if we got a single Cutouts object for some reason
+            new_args = [args[0]]  # make it a list if we got a single Cutouts object for some reason
+            new_args += list(args[1:])
+            args = tuple(new_args)
 
         if isinstance(args[0], list) and all([isinstance(c, Cutouts) for c in args[0]]):
             args, kwargs, session = parse_session(*args, **kwargs)
             ds = DataStore()
             ds.cutouts = args[0]
-            ds.detections = args[0][0].sources
+            ds.detections = ds.cutouts[0].sources
             ds.sub_image = ds.detections.image
             ds.image = ds.sub_image.new_image
         else:
@@ -258,6 +257,10 @@ class Measurer:
                         m.disqualifier_scores[k] = v.item()
 
                 measurements_list.append(m)
+
+            # with SmartSession(session) as session:
+            #     for m in measurements_list:
+
 
             # add the resulting list to the data store
             ds.measurements = measurements_list

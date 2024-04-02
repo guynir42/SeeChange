@@ -1720,8 +1720,8 @@ class FourCorners:
             sess.execute( sa.text( "DROP TABLE temp_find_containing" ) )
             return objs
 
-    @hybrid_method
-    def cone_search( self, ra, dec, rad, radunit='arcsec' ):
+    @classmethod
+    def cone_search( cls, ra, dec, rad, radunit='arcsec', ra_col='ra', dec_col='dec' ):
         """Find all objects of this class that are within a cone.
 
         Parameters
@@ -1735,13 +1735,16 @@ class FourCorners:
           radunit: str
             The units of rad.  One of 'arcsec', 'arcmin', 'degrees', or
             'radians'.  Defaults to 'arcsec'.
+          ra_col: str
+            The name of the ra column in the table.  Defaults to 'ra'.
+          dec_col: str
+            The name of the dec column in the table.  Defaults to 'dec'.
 
         Returns
         -------
           A query with the cone search.
 
         """
-
         if radunit == 'arcmin':
             rad /= 60.
         elif radunit == 'arcsec':
@@ -1751,7 +1754,7 @@ class FourCorners:
         elif radunit != 'degrees':
             raise ValueError( f'SpatiallyIndexed.cone_search: unknown radius unit {radunit}' )
 
-        return func.q3c_radial_query( self.ra, self.dec, ra, dec, rad )
+        return func.q3c_radial_query( getattr(cls, ra_col), getattr(cls, dec_col), ra, dec, rad )
 
 
 class HasBitFlagBadness:

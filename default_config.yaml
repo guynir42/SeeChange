@@ -104,6 +104,14 @@ measuring:
   width_filter_multipliers: [0.25, 2.0, 5.0, 10.0]
 
 
+associating:
+  association_radius: 2.0
+  disqualifier_thresholds:
+    negatives: 0.3
+    bad pixels: 1
+    offsets: 5.0
+    filter bank: 1.0
+
 # Specific configuration for specific instruments.
 # Instruments should override the two defaults from
 # instrument_default; they may add additional

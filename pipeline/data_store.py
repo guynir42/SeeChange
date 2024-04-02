@@ -25,6 +25,7 @@ UPSTREAM_NAMES = {
     'detection': ['subtraction'],
     'cutting': ['detection'],
     'measuring': ['cutting'],
+    'associating': ['measuring'],
 }
 
 UPSTREAM_OBJECTS = {
@@ -39,6 +40,7 @@ UPSTREAM_OBJECTS = {
     'detection': 'detections',
     'cutting': 'cutouts',
     'measuring': 'measurements',
+    'associating': 'objects',
 }
 
 
@@ -120,6 +122,7 @@ class DataStore:
         self.detections = None  # a SourceList object for sources detected in the subtraction image
         self.cutouts = None  # cutouts around sources
         self.measurements = None  # photometry and other measurements for each source
+        self.objects = None  # a list of Object associations of Measurements
 
         # these need to be added to the attributes_to_clear list
         self.ref_image = None  # to be used to make subtractions
@@ -710,7 +713,7 @@ class DataStore:
 
         return self.sources
 
-    def get_psf( self, provenance=None, session=None ):
+    def get_psf(self, provenance=None, session=None):
         """Get a PSF for the image, either from memory or the database.
 
         Parameters
@@ -1244,7 +1247,7 @@ class DataStore:
 
         return self.measurements
 
-    def get_all_data_products(self, output='dict', omit_exposure=False ):
+    def get_all_data_products(self, output='dict', omit_exposure=False):
         """Get all the data products associated with this Exposure.
 
         By default, this returns a dict with named entries.
@@ -1279,8 +1282,8 @@ class DataStore:
         else:
             raise ValueError(f'Unknown output format: {output}')
 
-    def save_and_commit( self, exists_ok=False, overwrite=True, no_archive=False,
-                         update_image_header=False, force_save_everything=True, session=None ):
+    def save_and_commit(self, exists_ok=False, overwrite=True, no_archive=False,
+                        update_image_header=False, force_save_everything=True, session=None):
         """Go over all the data products and add them to the session.
 
         If any of the data products are associated with a file on disk,
