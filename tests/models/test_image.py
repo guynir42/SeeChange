@@ -1367,7 +1367,7 @@ def test_image_products_are_deleted(ptf_datastore, data_dir, archive):
             archive_files.append(archive_file)
 
     # delete the image and all its downstreams
-    im.delete_from_disk_and_database(remove_folders=True, remove_downstream_data=True)
+    im.delete_from_disk_and_database(remove_folders=True, remove_downstreams=True)
 
     # make sure the files are gone
     for file in local_files:

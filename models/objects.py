@@ -1,3 +1,6 @@
+import datetime
+
+from functools import partial
 import numpy as np
 from collections import defaultdict
 
@@ -5,8 +8,9 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 
 from models.base import Base, SeeChangeBase, SmartSession, AutoIDMixin, SpatiallyIndexed
-from models.provenance import Provenance
-from models.measurements import Measurements, measurements_object_association_table
+from models.measurements import Measurements
+
+import util.config as config
 
 
 class Object(Base, AutoIDMixin, SpatiallyIndexed):
@@ -15,31 +19,32 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
     name = sa.Column(
         sa.String,
         nullable=False,
+        unique=True,
         index=True,
         doc='Name of the object (can be internal nomenclature or external designation, e.g., "SN2017abc")'
     )
 
-    discovery_ra = sa.Column(
-        sa.Float,
+    is_test = sa.Column(
+        sa.Boolean,
         nullable=False,
-        index=True,
-        doc='Right ascension of the object when it was first detected, in degrees'
+        default=False,
+        doc='Boolean flag to indicate if the object is a test object created during testing. '
     )
 
-    discovery_dec = sa.Column(
-        sa.Float,
+    is_fake = sa.Column(
+        sa.Boolean,
         nullable=False,
-        index=True,
-        doc='Declination of the object when it was first detected, in degrees'
+        default=False,
+        doc='Boolean flag to indicate if the object is a fake object that has been artificially injected. '
     )
 
     measurements = orm.relationship(
-        'Measurement',
+        Measurements,
         back_populates='object',
         cascade='all, delete-orphan',
         passive_deletes=True,
         lazy='selectin',
-        doc='Measurements of the object'
+        doc='All Measurements related to the object, can include duplicates or bad measurements! '
     )
 
     def __init__(self, **kwargs):
@@ -52,108 +57,228 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
 
         self.calculate_coordinates()
 
-    def __setattr__(self, key, value):
-        if key == 'ra' and self.discovery_ra is None:
-            self.discovery_ra = value
-
-        if key == 'dec' and self.discovery_dec is None:
-            self.discovery_dec = value
-
-        super().__setattr__(key, value)
-
-    def associate_measurements(self, associator, new_measurement=None, session=None):
-        """Associate any Measurements objects that are close enough to this object's discovery coordinates.
-
-        Will use the associator object to determine the radius for the search,
-        and also to disqualify bad measurements.
-
-        If there is more than one measurements object within the search radius and with the same MJD,
-        it will choose the best one according to the following priority:
-        1) Measurements object has a provenance that matches this Object's provenance.upstreams.
-        2) Measurements object's provenance is on the prov_list of this Object's provenance.parameters
-           (the first items on the list have higher priority than the later ones).
-        3) Measurements object with the most recently created provenance is chosen.
-
-        Once a set of measurements is determined it will also update the object's ra/dec, which are the
-        mean coordinates of all associated measurements.
+    def get_measurements_list(self, prov_hash_list=None, radius=2.0, thresholds=None, session=None):
+        """Filter the measurements associated with this object.
 
         Parameters
         ----------
-        associator: pipeline.associating.Associator object
-            The associator object that will be used to determine the radius for the search
-            and the disqualifier thresholds.
-        new_measurement: models.measurements.Measurement, optional
-            The measurement to add to the list of already committed measurements.
-            Could be a new object that hasn't been added to the DB or an existing one.
+        prov_hash_list: list of strings, optional
+            The prov_hash_list is used to choose only some measurements, if they have a matching provenance hash.
+            This list is ordered such that the first hash is the most preferred, and the last is the least preferred.
+            If not given, will default to the most recently added Measurements object's provenance.
+        radius: float, optional
+            Will use the radius parameter to narrow down to measurements within a certain distance of the object's
+            coordinates (can only narrow down measurements that are already associated with the object).
+            Default is 2.0 arcsec.
+        thresholds: dict, optional
+            Provide a dictionary of thresholds to cut on the Measurements object's disqualifier_scores.
+            Can provide keys that match the keys of the disqualifier_scores dictionary, in which case the cuts
+            will be applied to any Measurements object that has the appropriate score.
+            Can also provide a nested dictionary, where the key is the provenance hash, in which case the value
+            is a dictionary with keys matching the disqualifier_scores dictionary of those specific Measurements
+            that have that provenance (i.e., you can give different thresholds for different provenances).
+            The specific provenance thresholds will override the general thresholds.
+            Note that if any of the disqualifier scores is not given, then the threshold saved
+            in the Measurements object's Provenance will be used (the original threshold).
+            If a disqualifier score is given but no corresponding threshold is given, then the cut will not be applied.
+            To override an existing threshold, provide a new value but set it to None.
         session: sqlalchemy.orm.session.Session, optional
-            The session to use for the database queries.
-            If not given will use the default session,
-            and close it at the end of the method.
+            The session to use for the query. If not given, will open a new session
+            that will be automatically closed at the end of this function.
+
+        Returns
+        -------
+        list of Measurements
         """
         # this includes all measurements that are close to the discovery measurement
-        stmt = sa.select(Measurements).join(Provenance).where(
-            Measurements.cone_search(
-                self.ra,
-                self.dec,
-                associator.pars.radius,
-            )
-        )
-        stmt = stmt.where(Provenance.is_bad.is_(False))
-        if new_measurement is not None and new_measurement.id is not None:
-            stmt = stmt.where(Measurements.id != new_measurement.id)  # do not include new_measurement
+        # measurements = session.scalars(
+        #     sa.select(Measurements).where(Measurements.cone_search(self.ra, self.dec, radius))
+        # ).all()
+        measurements = []
+        for m in self.measurements:  # include only Measurements objects inside the given radius
+            delta_ra = np.cos(m.dec * np.pi / 180) * (m.ra - self.ra)
+            delta_dec = m.dec - self.dec
+            if np.sqrt(delta_ra**2 + delta_dec**2) < radius / 3600:
+                measurements.append(m)
 
-        measurements = session.scalars(stmt).all()
-        if new_measurement is not None:  # now add it to the list
-            measurements = [new_measurement] + measurements
+        if thresholds is None:
+            thresholds = {}
 
-        measurements = [m for m in measurements if associator.check(m)]
+        if prov_hash_list is None:
+            sorted_measurements = self.measurements.copy()
+            sorted_measurements.sort(key=lambda m: m.created_at, reverse=True)  # sort by most recent first
+            prov_hash_list = [sorted_measurements[0].provenance.id]  # use the most recent provenance hash
 
-        measurements.sort(key=lambda m: m.mjd)
+        passed_measurements = []
+        for m in measurements:
+            local_thresh = m.provenance.parameters.get('thresholds', {})
+            if m.provenance.id in thresholds:
+                new_thresh = thresholds[m.provenance.id]  # specific thresholds for this provenance
+            else:
+                new_thresh = thresholds  # global thresholds for all provenances
+
+            local_thresh.update(new_thresh)  # override the Measurements object's thresholds with the new ones
+
+            for key, value in local_thresh.items():
+                if value is not None and m.disqualifier_scores.get(key, 0.0) > value:
+                    break
+            else:
+                passed_measurements.append(m)  # only append if all disqualifiers are below the threshold
 
         # group measurements into a dictionary by their MJD
         measurements_per_mjd = defaultdict(list)
-        for m in measurements:
+        for m in passed_measurements:
             measurements_per_mjd[m.mjd].append(m)
 
         for mjd, m_list in measurements_per_mjd.items():
-            prov_list = self.provenance.parameters['prov_list'].copy()
-            prov_list = [self.provenance.upstreams[0].id] + prov_list  # prepend the upstream provenance
-
-            # check if a measurement matches one of the provenance hashes, ideally it matches the upstream
-            for hash in prov_list:
+            # check if a measurement matches one of the provenance hashes
+            for hash in prov_hash_list:
                 best_m = [m for m in m_list if m.provenance.id == hash]
                 if len(best_m) > 1:
                     raise ValueError('More than one measurement with the same provenance. ')
                 if len(best_m) == 1:
                     measurements_per_mjd[mjd] = best_m[0]  # replace a list with a single Measurements object
                     break  # don't need to keep checking the other hashes
+            else:
+                # if none of the hashes match, don't have anything on that date
+                measurements_per_mjd[mjd] = None
 
-        # check if there is only one measurement per mjd, if not, just take the most recent provenance
-        for mjd, m_list in measurements_per_mjd.items():
-            if isinstance(m_list, list):
-                m_list.sort(key=lambda m: m.provenance.created_at)
-                measurements_per_mjd[mjd] = m_list[-1]
+        # remove the missing dates
+        output = [m for m in measurements_per_mjd.values() if m is not None]
 
-        # set the measurements to the updated list
-        self.measurements = list(measurements_per_mjd.values())
+        return output
 
-        # update the object's ra/dec to be the mean of all associated measurements
-        # TODO: should we use a weighted sum, with the weights being the uncertainties? Issue #234
-        self.ra = np.sum([m.ra for m in self.measurements]) / len(self.measurements)
-        self.dec = np.sum([m.dec for m in self.measurements]) / len(self.measurements)
-        self.calculate_coordinates()
+    @staticmethod
+    def make_naming_function(format_string):
+        """Generate a function that will translate a serial number into a name.
+
+        The possible format specifiers are:
+        - <instrument> : the (short) instrument name
+        - <yyyy> : the year of the object's creation in four digits
+        - <yy> : the year of the object's creation in two digits
+        - <mm> : the month of the object's creation in two digits
+        - <dd> : the day of the object's creation in two digits
+        - <alpha> : a lowercase set of letters, starting with a..z and then aa..az..zz then aaa..zzz, etc.
+        - <ALPHA> : an uppercase set of letters, starting with A..Z and then AA..AZ..ZZ then AAA..ZZZ, etc.
+        - <number> : a number that increments by one for each object created
+
+        The function takes the Object, that must already have a created_at datetime and numeric (autoincrementing) id.
+        The second argument to the function is the ID of the last object from last year/month/day (if using that).
+        """
+        def name_func(obj, starting_id=0, fmt=''):
+            # get the current year, month, and day
+            replacements = {}
+            replacements['yyyy'] = obj.created_at.year
+            replacements['yy'] = obj.created_at.year % 100
+            replacements['mm'] = obj.created_at.month
+            replacements['dd'] = obj.created_at.day
+
+            replacements['number'] = obj.id - starting_id
+
+            if obj.measurements is None or len(obj.measurements) == 0:
+                replacements['instrument'] = 'UNK'
+            else:
+                replacements['instrument'] = obj.measurements[0].instrument_object.get_short_instrument_name()
+
+            # generate the alpha part
+            num_to_letters = replacements['number']
+            need_letters = 0
+            while num_to_letters >= 1:
+                num_to_letters /= 26
+                need_letters += 1
+
+            if need_letters == 0:
+                need_letters = 1  # avoid the case where the number is 0, and then no letters are given
+
+            alpha = ''
+            for i in range(need_letters):
+                alpha += chr(((replacements['number']) // 26 ** i) % 26 + ord('a'))
+
+            alpha = alpha[::-1]  # reverse the string
+            replacements['alpha'] = alpha
+
+            # generate the ALPHA part
+            replacements['ALPHA'] = alpha.upper()
+
+            for key in ['instrument', 'yyyy', 'yy', 'mm', 'dd', 'alpha', 'ALPHA', 'number']:
+                fmt = fmt.replace(f'<{key}>', str(replacements[key]))
+
+            return fmt
+
+        return partial(name_func, fmt=format_string)
+
+    @staticmethod
+    def get_last_id_for_naming(convention, present_time=None, session=None):
+        """Get the ID of the last object before the given date (defaults to now).
+
+        Will query the database for an object with a created_at which is the last before
+        the start of this year, month or day (depending on what exists in the naming convention).
+        Will return the ID of that object, or 0 if no object exists.
+
+        Parameters
+        ----------
+        convention: str
+            The naming convention that will be used to generate the name.
+            Example: SomeText_<instrument>_<yyyy><mm>_<number>
+        present_time: datetime.datetime, optional
+            The time to use as the present time. Defaults to now.
+        session: sqlalchemy.orm.session.Session, optional
+            The session to use for the query. If not given, will open a new session
+            that will be automatically closed at the end of this function.
+
+        Returns
+        -------
+        int
+            The ID of the last object before the given date.
+        """
+        if present_time is None:
+            present_time = datetime.datetime.utcnow()
+
+        # figure out what the time frame should be:
+        if '<yyyy>' in convention:
+            start_time = datetime.datetime(present_time.year, 1, 1)
+        elif '<mm>' in convention:
+            start_time = datetime.datetime(present_time.year, present_time.month, 1)
+        elif '<dd>' in convention:
+            start_time = datetime.datetime(present_time.year, present_time.month, present_time.day)
+        else:
+            return 0  # if none of these format specifiers are present, just assume there is no last object
+
+        with SmartSession(session) as session:
+            last_obj = session.scalars(
+                sa.select(Object).where(Object.created_at < start_time).order_by(Object.created_at.desc())
+            ).first()
+            if last_obj is None:
+                return 0
+            return last_obj.id
 
 
-Object.__table_args__ = sa.Index(
-    f"objects_discovery_q3c_ang2ipix_idx",
-    sa.func.q3c_ang2ipix(Object.discovery_ra, Object.discovery_dec)
-)
+# add an event listener to catch objects before insert and generate a name for them
+@sa.event.listens_for(Object, 'before_insert')
+def generate_object_name(mapper, connection, target):
+    if target.name is None:
+        target.name = 'placeholder'
 
-Measurements.objects = orm.relationship(
-    'Object',
-    secondary=measurements_object_association_table,
-    passive_deletes=True,
-    cascade='save-update, merge, refresh-expire, expunge',
-    lazy='selectin',
-    doc="The object that this measurement is associated with. "
-)
+
+@sa.event.listens_for(sa.orm.session.Session, 'after_flush_postexec')
+def receive_after_flush_postexec(session, flush_context):
+    cfg = config.Config.get()
+    convention = cfg.value('object_naming_function', '<instrument><yyyy><alpha>')
+    naming_func = Object.make_naming_function(convention)
+    last_id = Object.get_last_id_for_naming(convention, session=session)
+
+    for obj in session.identity_map.values():
+        if isinstance(obj, Object) and (obj.name is None or obj.name == 'placeholder'):
+            obj.name = naming_func(obj, last_id)
+            # print(f'Object ID: {obj.id} Name: {obj.name}')
+
+
+if __name__ == '__main__':
+    import datetime
+
+    obj = Object()
+    obj.created_at = datetime.datetime.utcnow()
+    obj.id = 130
+
+    fun = Object.make_naming_function('SeeChange<instrument>_<yyyy><alpha>')
+    print(fun(obj))

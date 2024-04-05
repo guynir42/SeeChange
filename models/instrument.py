@@ -1833,6 +1833,8 @@ class Instrument:
 
 
 class DemoInstrument(Instrument):
+    fake_image_size_x = 512
+    fake_image_size_y = 1024
 
     def __init__(self, **kwargs):
         self.name = 'DemoInstrument'
@@ -1883,7 +1885,7 @@ class DemoInstrument(Instrument):
         section: SensorSection
             A new section for this instrument.
         """
-        return SensorSection(identifier, self.name, size_x=512, size_y=1024)
+        return SensorSection(identifier, self.name, size_x=self.fake_image_size_x, size_y=self.fake_image_size_y)
 
     def load_section_image(self, filepath, section_id):
         """

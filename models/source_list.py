@@ -3,6 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from collections import defaultdict
+
 import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -69,7 +71,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     )
 
     image = orm.relationship(
-        'Image',
+        Image,
         lazy='selectin',
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
@@ -203,7 +205,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                 new_list = []
                 for item in sub_obj:
                     item.sources = new_sources  # make sure to first point this relationship back to new_sources
-                    new_list.append(item.safe_merge(session=session))
+                    new_list.append(session.merge(item))
                 setattr(new_sources, att, new_list)
 
         return new_sources
@@ -731,13 +733,20 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         """Get all the data products (WCSs and ZPs) that are made using this source list. """
         from models.world_coordinates import WorldCoordinates
         from models.zero_point import ZeroPoint
+        from models.cutouts import Cutouts
 
-        # TODO: add Cutouts and Measurements?
         with SmartSession(session) as session:
             wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == self.id)).all()
             zps = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == self.id)).all()
 
-        return wcs + zps
+            cutouts = session.scalars(sa.select(Cutouts).where(Cutouts.sources_id == self.id)).all()
+            # group the cutouts based on the provenance id
+            groups = defaultdict(list)
+            for cutout in cutouts:
+                groups[cutout.provenance_id].append(cutout)
+            cutouts = list(groups.values())
+
+        return wcs + zps + cutouts
 
     def show(self, **kwargs):
         """Show the source positions on top of the image.

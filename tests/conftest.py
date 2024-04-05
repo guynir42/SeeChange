@@ -1,5 +1,6 @@
 import os
 import warnings
+import logging
 import pytest
 import uuid
 import shutil
@@ -14,6 +15,7 @@ from models.base import FileOnDiskMixin, SmartSession, CODE_ROOT, get_all_databa
 from models.provenance import CodeVersion, Provenance
 from models.catalog_excerpt import CatalogExcerpt
 from models.exposure import Exposure
+from models.objects import Object
 
 from util.archive import Archive
 from util.util import remove_empty_folders
@@ -30,6 +32,7 @@ pytest_plugins = [
 
 ARCHIVE_PATH = None
 
+
 # this fixture should be the first thing loaded by the test suite
 # (session is the pytest session, not the SQLAlchemy session)
 def pytest_sessionstart(session):
@@ -40,6 +43,7 @@ def pytest_sessionstart(session):
     test_config_file = str((pathlib.Path(__file__).parent.parent / 'tests' / 'seechange_config_test.yaml').resolve())
     Config.get(configfile=test_config_file, setdefault=True)
     FileOnDiskMixin.configure_paths()
+    _logger.setLevel( logging.INFO )
 
 
 # This will be executed after the last test (session is the pytest session, not the SQLAlchemy session)
@@ -54,19 +58,22 @@ def pytest_sessionfinish(session, exitstatus):
                 dbsession.delete(prov)
         dbsession.commit()
 
+        # remove any Object objects from tests, as these are usually not cleaned up:
+        dbsession.execute(sa.delete(Object).where(Object.is_test.is_(True)))
+
         objects = get_all_database_objects(session=dbsession)
         any_objects = False
         for Class, ids in objects.items():
             # TODO: check that surviving provenances have test_parameter
             if Class.__name__ in ['CodeVersion', 'CodeHash', 'SensorSection', 'CatalogExcerpt', 'Provenance']:
-                _logger.info(f'There are {len(ids)} {Class.__name__} objects in the database. These are OK to stay.')
+                _logger.debug(f'There are {len(ids)} {Class.__name__} objects in the database. These are OK to stay.')
             elif len(ids) > 0:
-                _logger.debug(
+                _logger.info(
                     f'There are {len(ids)} {Class.__name__} objects in the database. Please make sure to cleanup!'
                 )
                 for id in ids:
                     obj = dbsession.scalars(sa.select(Class).where(Class.id == id)).first()
-                    _logger.debug(f'  {obj}')
+                    _logger.info(f'  {obj}')
                     any_objects = True
 
         # delete the CodeVersion object (this should remove all provenances as well)
@@ -257,6 +264,28 @@ def provenance_preprocessing(code_version):
         code_version = session.merge(code_version)
         p = Provenance(
             process="preprocessing",
+            code_version=code_version,
+            parameters={"test_parameter": "test_value"},
+            upstreams=[],
+            is_testing=True,
+        )
+
+        p = session.merge(p)
+        session.commit()
+
+    yield p
+
+    with SmartSession() as session:
+        session.delete(p)
+        session.commit()
+
+
+@pytest.fixture(scope="session")
+def provenance_extraction(code_version):
+    with SmartSession() as session:
+        code_version = session.merge(code_version)
+        p = Provenance(
+            process="extraction",
             code_version=code_version,
             parameters={"test_parameter": "test_value"},
             upstreams=[],

@@ -9,17 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.associationproxy import association_proxy
 
 from models.base import Base, SeeChangeBase, SmartSession, AutoIDMixin, SpatiallyIndexed
-from models.provenance import Provenance
-from models.image import Image
-from models.source_list import SourceList
 from models.cutouts import Cutouts
-
-measurements_object_association_table = sa.Table(
-    'measurements_object_association',
-    Base.metadata,
-    sa.Column('measurements_id', sa.Integer, sa.ForeignKey('measurements.id', ondelete="CASCADE"), primary_key=True),
-    sa.Column('objects_id', sa.Integer, sa.ForeignKey('objects.id', ondelete="CASCADE"), primary_key=True)
-)
 
 
 class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
@@ -39,11 +29,25 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
     )
 
     cutouts = orm.relationship(
-        'Cutouts',
+        Cutouts,
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
         lazy='selectin',
         doc="The cutouts object that this measurements object is associated with. "
+    )
+
+    object_id = sa.Column(
+        sa.ForeignKey('objects.id', ondelete="CASCADE", name='measurements_object_id_fkey'),
+        nullable=False,  # every saved Measurements object must have an associated Object
+        index=True,
+        doc="ID of the object that this measurement is associated with. "
+    )
+
+    object = orm.relationship(
+        'Object',
+        cascade='save-update, merge, refresh-expire, expunge',
+        lazy='selectin',
+        doc="The object that this measurement is associated with. "
     )
 
     provenance_id = sa.Column(
@@ -292,149 +296,36 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
 
         raise ValueError('Filter number too high for the filter bank. ')
 
-    def associate_object(self, associator, provenance, session=None):
+    def associate_object(self, session=None):
         """Find or create a new object and associate it with this measurement.
 
         Objects must have sufficiently close coordinates to be associated with this
-        measurement (set by the associator.pars.radius parameter, in arcsec).
+        measurement (set by the provenance.parameters['association_radius'], in arcsec).
 
-        If an object with the correct provenance already exists, it is associated
-        with this measurement.
+        If no Object is found, a new one is created, and its coordinates will be identical
+        to those of this Measurements object.
 
-        If no object is found, a new one is created and the object will also prompt
-        a search for previous measurements in the database for any that are
-        close enough to the new Object's coordinates, to verify that no earlier
-        detections have already been made.
-        These other measurements will be subject to the associator's quality
-        thresholds, and some may be disqualified from the association.
-
-        If more than one Measurements is found at the same time, with different
-        provenances, then there are a few possible outcomes, in this order:
-        1) If the provenance matches the given Object.provenance's upstream, it is chosen.
-        2) If the Object.provenance.parameters['prov_list'] is not empty, the most recent
-           provenance hash (i.e., most close to the start of the list) is chosen.
-        3) If there are still more than one Measurements object for that image,
-           the one with the most recently created Provenance is chosen.
-           Provenances that are marked as 'is_bad' are ignored.
-
-        Parameters
-        ----------
-        associator: a pipeline.associating.Associator object
-            The associator to use to find or create an object.
-            We need this object first of all to get the radius
-            to match Objects with Measurements.
-            In addition to that, we also may need the disqualifier
-            thresholds to filter Measurements that may be associated
-            in case a new Object is created.
-        provenance: a models.provenance.Provenance object
-            The associating Provenance of the Object that is to be created.
-            This provenance includes the associator's parameters,
-            and a single upstream pointing to a measuring provenance.
-            In general that upstream would be the provenance of this
-            Measurement object, but other situations could arise.
-        session: sqlalchemy.orm.session.Session, optional
-            The database session to use. If not given, will create a new session
-            that will close at the end of the function call.
+        This should only be done for measurements that have passed all cuts and are considered
+        to be real sources.
         """
         from models.objects import Object  # avoid circular import
 
-        if len(provenance.upstreams) != 1:
-            raise ValueError('Provenance must have exactly one upstream provenance. ')
-
-        if not associator.check_measurement(self):
-            raise ValueError('Measurement does not pass the associator quality thresholds. ')
-
         with SmartSession(session) as session:
-            stmt = sa.select(Object).where(
+            obj = session.scalars(sa.select(Object).where(
                 Object.cone_search(
                     self.ra,
                     self.dec,
-                    associator.pars.radius,
-                    ra_col='discovery_ra',
-                    dec_col='discovery_dec'
+                    self.provenance.parameters['association_radius'],
                 )
-            )
-            stmt = stmt.where(Object.provenance_id == provenance.id)
+            )).first()
 
-            obj = session.scalars(stmt).first()
-            if obj is not None:  # object already exists
-                # check if this measurement has somehow been made before all existing measurements
-                if self.mjd < min([m.mjd for m in obj.measurements]):
-                    obj.discovery_ra = self.ra
-                    obj.discovery_dec = self.dec
-                    obj.associate_measurements(associator, new_measurement=self, session=session)
-                else:  # can just add this to the list
-                    self.objects.append(obj)  # this should also append self to the object's list of measurements
-
-            else:  # no object exists, need to make a new one and make sure we capture all measurements close to it
-                # find the earliest measurement in this spot that qualifies
-                stmt = sa.select(Measurements).join(Provenance).where(
-                    Measurements.cone_search(
-                        self.ra,
-                        self.dec,
-                        associator.pars.radius,
-                    )
-                )
-                stmt = stmt.where(Provenance.is_bad.is_(False))
-                if self.id is not None:
-                    stmt = stmt.where(Measurements.id != self.id)  # do not include self
-
-                # this includes all measurements that are close to self
-                other_measurements = session.scalars(stmt).all()
-                measurements = [self] + other_measurements  # now add this measurement to the list
-                measurements.sort(key=lambda m: m.mjd)
-                first_measurement = measurements[0]
-                discovery_ra = first_measurement.ra
-                discovery_dec = first_measurement.dec
-
+            if obj is None:  # no object exists, make one based on these measurements
                 obj = Object(
-                    discovery_ra=discovery_ra,
-                    discovery_dec=discovery_dec,
-                    provenance_id=provenance.id,
-                    provenance=provenance,
+                    ra=self.ra,
+                    dec=self.dec,
                 )
-                obj.associate_measurements(associator, new_measurement=self, session=session)
 
-                # this includes all measurements that are close to the discovery measurement
-                stmt = sa.select(Measurements).join(Provenance).where(
-                    Measurements.cone_search(
-                        self.ra,
-                        self.dec,
-                        associator.pars.radius,
-                    )
-                )
-                stmt = stmt.where(Provenance.is_bad.is_(False))
-                if self.id is not None:
-                    stmt = stmt.where(Measurements.id != self.id)  # do not include self
-
-                close_measurements = session.scalars(stmt).all()
-                measurements = [self] + close_measurements
-                measurements.sort(key=lambda m: m.mjd)
-
-                measurements_per_mjd = defaultdict(list)
-
-                for m in measurements:
-                    measurements_per_mjd[m.mjd].append(m)
-
-                for mjd, m_list in measurements_per_mjd.items():
-                    prov_list = provenance.parameters['prov_list'].copy()
-                    prov_list = [provenance.upstreams[0].id] + prov_list  # prepend the upstream provenance
-
-                    # check if a measurement matches one of the provenance hashes, ideally it matches the upstream
-                    for hash in prov_list:
-                        best_m = [m for m in m_list if m.provenance.id == hash]
-                        if len(best_m) > 1:
-                            raise ValueError('More than one measurement with the same provenance. ')
-                        if len(best_m) == 1:
-                            measurements_per_mjd[mjd] = best_m  # replace a list with a single Measurements object
-                            break  # don't need to keep checking the other hashes
-
-                # check if there is only one measurement per mjd, if not, just take the most recent provenance
-                for mjd, m_list in measurements_per_mjd.items():
-                    if isinstance(m_list, list):
-                        m_list.sort(key=lambda m: m.provenance.created_at)
-                        measurements_per_mjd[mjd] = m_list[-1]
-
+            self.object = obj  # this should also add self to the Object's measurements
 
     @classmethod
     def delete_list(cls, measurements_list, session=None, commit=True):

@@ -6,6 +6,7 @@ from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 from pipeline.utils import parse_session
 
+from models.base import SmartSession
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 from models.enums_and_bitflags import BitFlagConverter
@@ -89,6 +90,26 @@ class ParsMeasurer(Parameters):
             list,
             'Multipliers of the PSF width to use as matched filter templates'
             'to compare against the real width (x1.0) when running psf width filter. '
+        )
+
+        self.thresholds = self.add_par(
+            'thresholds',
+            {
+                'negatives': 0.3,
+                'bad pixels': 1,
+                'offsets': 5.0,
+                'filter bank': 1,
+            },
+            dict,
+            'Thresholds for the disqualifier scores. '
+            'If the score is higher than the threshold, the measurement is disqualified. '
+        )
+
+        self.association_radius = self.add_par(
+            'association_radius',
+            2.0,
+            float,
+            'Radius in arcseconds to associate measurements with an object. '
         )
 
         self._enforce_no_new_attrs = True
@@ -258,12 +279,24 @@ class Measurer:
 
                 measurements_list.append(m)
 
-            # with SmartSession(session) as session:
-            #     for m in measurements_list:
+            # associate some of these measurements with Objects
+            saved_measurements = []
+            objects = []
+            with SmartSession(session) as session:
+                for m in measurements_list:
+                    # check if there are disqualifiers above the threshold
+                    # note that if a threshold is missing or None, that disqualifier is not checked
+                    for key, value in self.pars.thresholds.items():
+                        if value is not None and m.disqualifier_scores[key] > value:
+                            break
+                    else:  # all disqualifiers are below threshold
+                        saved_measurements.append(m)
+                        m.associate_object(session=session)
+                        objects.append(m.object)
 
-
-            # add the resulting list to the data store
-            ds.measurements = measurements_list
+            # add the resulting objects and measurements to the data store
+            ds.measurements = saved_measurements  # only keep measurements that passed the disqualifiers cuts.
+            ds.objects = objects
 
         # make sure this is returned to be used in the next step
         return ds

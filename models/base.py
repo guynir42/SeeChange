@@ -41,11 +41,12 @@ utcnow = func.timezone("UTC", func.current_timestamp())
 
 _logger = logging.getLogger("main")
 if len(_logger.handlers) == 0:
-    _logout = logging.StreamHandler( sys.stderr )
+    _logout = logging.StreamHandler( sys.stdout )
     _logger.addHandler( _logout )
     _formatter = logging.Formatter( f"[%(asctime)s - %(levelname)s] - %(message)s", datefmt="%Y-%m-%d %H:%M:%S" )
     _logout.setFormatter( _formatter )
-# _logout.setLevel( logging.DEBUG )
+# _logger.setLevel( logging.INFO )
+
 
 # this is the root SeeChange folder
 CODE_ROOT = os.path.abspath(os.path.join(__file__, os.pardir, os.pardir))
@@ -149,6 +150,7 @@ def get_all_database_objects(display=False, session=None):
     from models.zero_point import ZeroPoint
     from models.cutouts import Cutouts
     from models.measurements import Measurements
+    from models.objects import Object
     from models.calibratorfile import CalibratorFile
     from models.catalog_excerpt import CatalogExcerpt
     from models.reference import Reference
@@ -156,7 +158,7 @@ def get_all_database_objects(display=False, session=None):
 
     models = [
         CodeHash, CodeVersion, Provenance, DataFile, Exposure, Image,
-        SourceList, PSF, WorldCoordinates, ZeroPoint, Cutouts, Measurements,
+        SourceList, PSF, WorldCoordinates, ZeroPoint, Cutouts, Measurements, Object,
         CalibratorFile, CatalogExcerpt, Reference, SensorSection
     ]
 
@@ -298,7 +300,7 @@ class SeeChangeBase:
         """Get all data products that were created directly from this object (non-recursive)."""
         raise NotImplementedError('get_downstreams not implemented for this class')
 
-    def delete_from_database(self, session=None, commit=True):
+    def delete_from_database(self, session=None, commit=True, remove_downstreams=False):
         """Remove the object from the database.
 
         This does not remove any associated files (if this is a FileOnDiskMixin)
@@ -314,13 +316,30 @@ class SeeChangeBase:
             Default is True. When session=None then commit must be True,
             otherwise the session will exit without committing
             (in this case the function will raise a RuntimeException).
+        remove_downstreams: bool
+            If True, will also remove all downstream data products.
+            Default is False.
         """
         if session is None and not commit:
             raise RuntimeError("When session=None, commit must be True!")
 
         with SmartSession(session) as session:
-            info = sa.inspect(self)
             need_commit = False
+            if remove_downstreams:
+                try:
+                    downstreams = self.get_downstreams()
+                    for d in downstreams:
+                        if hasattr(d, 'delete_from_database'):
+                            if d.delete_from_database(session=session, commit=False, remove_downstreams=True):
+                                need_commit = True
+                        if isinstance(d, list) and len(d) > 0 and hasattr(d[0], 'delete_list'):
+                            d[0].delete_list(d, remove_local=False, archive=False, commit=False, session=session)
+                            need_commit = True
+                except NotImplementedError as e:
+                    pass  # if this object does not implement get_downstreams, it is ok
+
+            info = sa.inspect(self)
+
             if info.persistent:
                 session.delete(self)
                 need_commit = True
@@ -333,6 +352,8 @@ class SeeChangeBase:
 
             if commit and need_commit:
                 session.commit()
+
+        return need_commit  # to be able to recursively report back if there's a need to commit
 
     def to_dict(self):
         """Translate all the SQLAlchemy columns into a dictionary.
@@ -831,7 +852,6 @@ class FileOnDiskMixin:
             unique=uniqueness,
             doc="Base path (relative to the data root) for a stored file"
         )
-
 
     filepath_extensions = sa.Column(
         sa.ARRAY(sa.Text),
@@ -1369,11 +1389,11 @@ class FileOnDiskMixin:
             else:
                 self.md5sum = remmd5
 
-    def remove_data_from_disk(self, remove_folders=True, remove_downstream_data=False):
+    def remove_data_from_disk(self, remove_folders=True, remove_downstreams=False):
         """Delete the data from local disk, if it exists.
         If remove_folders=True, will also remove any folders
         if they are empty after the deletion.
-        Use remove_downstream_data=True to also remove any
+        Use remove_downstreams=True to also remove any
         downstream data (e.g., for an Image, that would be the
         data for the SourceLists and PSFs that depend on this Image).
         This function will not remove database rows or archive files,
@@ -1387,7 +1407,7 @@ class FileOnDiskMixin:
         remove_folders: bool
             If True, will remove any folders on the path to the files
             associated to this object, if they are empty.
-        remove_downstream_data: bool
+        remove_downstreams: bool
             If True, will also remove any downstream data.
             Will recursively call get_downstreams() and find any objects
             that have remove_data_from_disk() implemented, and call it.
@@ -1407,17 +1427,18 @@ class FileOnDiskMixin:
                             else:
                                 break
 
-        if remove_downstream_data:
+        if remove_downstreams:
             try:
                 downstreams = self.get_downstreams()
                 for d in downstreams:
                     if hasattr(d, 'remove_data_from_disk'):
-                        d.remove_data_from_disk(remove_folders=remove_folders, remove_downstream_data=True)
-
+                        d.remove_data_from_disk(remove_folders=remove_folders, remove_downstreams=True)
+                    if isinstance(d, list) and len(d) > 0 and hasattr(d[0], 'delete_list'):
+                        d[0].delete_list(d, remove_local=True, archive=False, database=False)
             except NotImplementedError as e:
                 pass  # if this object does not implement get_downstreams, it is ok
 
-    def delete_from_archive(self, remove_downstream_data=False):
+    def delete_from_archive(self, remove_downstreams=False):
         """Delete the file from the archive, if it exists.
         This will not remove the file from local disk, nor
         from the database.  Use delete_from_disk_and_database()
@@ -1425,19 +1446,20 @@ class FileOnDiskMixin:
 
         Parameters
         ----------
-        remove_downstream_data: bool
+        remove_downstreams: bool
             If True, will also remove any downstream data.
             Will recursively call get_downstreams() and find any objects
-            that have remove_data_from_disk() implemented, and call it.
+            that have delete_from_archive() implemented, and call it.
             Default is False.
         """
-        if remove_downstream_data:
+        if remove_downstreams:
             try:
                 downstreams = self.get_downstreams()
                 for d in downstreams:
                     if hasattr(d, 'delete_from_archive'):
-                        d.delete_from_archive(remove_downstream_data=True)  # TODO: do we need remove_folders?
-
+                        d.delete_from_archive(remove_downstreams=True)  # TODO: do we need remove_folders?
+                    if isinstance(d, list) and len(d) > 0 and hasattr(d[0], 'delete_list'):
+                        d[0].delete_list(d, remove_local=False, archive=True, database=False)
             except NotImplementedError as e:
                 pass  # if this object does not implement get_downstreams, it is ok
 
@@ -1447,13 +1469,14 @@ class FileOnDiskMixin:
             else:
                 for ext in self.filepath_extensions:
                     self.archive.delete( f"{self.filepath}{ext}", okifmissing=True )
+
         # make sure these are set to null just in case we fail
         # to commit later on, we will at least know something is wrong
         self.md5sum = None
         self.md5sum_extensions = None
 
     def delete_from_disk_and_database(
-            self, session=None, commit=True, remove_folders=True, remove_downstream_data=False, archive=True,
+            self, session=None, commit=True, remove_folders=True, remove_downstreams=False, archive=True,
     ):
         """
         Delete the data from disk, archive and the database.
@@ -1483,10 +1506,10 @@ class FileOnDiskMixin:
         remove_folders: bool
             If True, will remove any folders on the path to the files
             associated to this object, if they are empty.
-        remove_downstream_data: bool
+        remove_downstreams: bool
             If True, will also remove any downstream data.
             Will recursively call get_downstreams() and find any objects
-            that have remove_data_from_disk() implemented, and call it.
+            that can have their data deleted from disk, archive and database.
             Default is False.
         archive: bool
             If True, will also delete the file from the archive.
@@ -1495,19 +1518,17 @@ class FileOnDiskMixin:
         if session is None and not commit:
             raise RuntimeError("When session=None, commit must be True!")
 
-        self.remove_data_from_disk(remove_folders=remove_folders, remove_downstream_data=remove_downstream_data)
+        SeeChangeBase.delete_from_database(self, session=session, commit=commit, remove_downstreams=remove_downstreams)
+
+        self.remove_data_from_disk(remove_folders=remove_folders, remove_downstreams=remove_downstreams)
 
         if archive:
-            self.delete_from_archive(remove_downstream_data=remove_downstream_data)
+            self.delete_from_archive(remove_downstreams=remove_downstreams)
 
         # make sure these are set to null just in case we fail
         # to commit later on, we will at least know something is wrong
-        self.md5sum = None
-        self.md5sum_extensions = None
         self.filepath_extensions = None
         self.filepath = None
-
-        SeeChangeBase.delete_from_database(self, session=session, commit=commit)
 
 
 # load the default paths from the config
@@ -1557,10 +1578,10 @@ class SpatiallyIndexed:
             return
 
         coords = SkyCoord(self.ra, self.dec, unit="deg", frame="icrs")
-        self.gallat = coords.galactic.b.deg
-        self.gallon = coords.galactic.l.deg
-        self.ecllat = coords.barycentrictrueecliptic.lat.deg
-        self.ecllon = coords.barycentrictrueecliptic.lon.deg
+        self.gallat = float(coords.galactic.b.deg)
+        self.gallon = float(coords.galactic.l.deg)
+        self.ecllat = float(coords.barycentrictrueecliptic.lat.deg)
+        self.ecllon = float(coords.barycentrictrueecliptic.lon.deg)
 
     @hybrid_method
     def within( self, fourcorn ):

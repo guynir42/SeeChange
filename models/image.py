@@ -526,7 +526,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             self.load_upstream_products(this_object_session)
 
     def merge_all(self, session):
-        """Use safe_merge to merge all the downstream products and assign them back to self.
+        """Merge self and all its downstream products and assign them back to self.
 
         This includes: sources, psf, wcs, zp.
         This will also merge relationships, such as exposure or upstream_images,
@@ -536,8 +536,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         Returns the merged image with all its products on the same session.
         """
-        new_image = self.safe_merge(session=session)
+        # new_image = self.safe_merge(session=session)
+        new_image = session.merge(self)
         session.flush()  # make sure new_image gets an ID
+
         if self.sources is not None:
             self.sources.image = new_image
             self.sources.image_id = new_image.id
@@ -549,15 +551,38 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             new_image.measurements = new_image.sources.measurements
             new_image._aligned_images = self._aligned_images
 
+            if self.wcs is not None:
+                self.wcs.sources = new_image.sources
+                self.wcs.sources_id = new_image.sources.id
+                self.wcs.provenance_id = self.wcs.provenance.id if self.wcs.provenance is not None else None
+                # new_image.wcs = self.wcs.safe_merge(session=session)
+                new_image.wcs = session.merge(self.wcs)
+
+            if self.zp is not None:
+                self.zp.sources = new_image.sources
+                self.zp.sources_id = new_image.sources.id
+                self.zp.provenance_id = self.zp.provenance.id if self.zp.provenance is not None else None
+                # new_image.zp = self.zp.safe_merge(session=session)
+                new_image.zp = session.merge(self.zp)
+
         if self.psf is not None:
             self.psf.image = new_image
             self.psf.image_id = new_image.id
             self.psf.provenance_id = self.psf.provenance.id if self.psf.provenance is not None else None
-            new_image.psf = self.psf.safe_merge(session=session)
+            # new_image.psf = self.psf.safe_merge(session=session)
+            new_image.psf = session.merge(self.psf)
             if new_image.psf._bitflag is None:  # I don't know why this isn't set to 0 using the default
                 new_image.psf._bitflag = 0
             if new_image.psf._upstream_bitflag is None:  # I don't know why this isn't set to 0 using the default
                 new_image.psf._upstream_bitflag = 0
+
+        # take care of the upstream images and their products
+        if sa.inspect(self).detached:  # self can't load the images, but new_image has them
+            upstream_list = new_image.upstream_images
+        else:
+            upstream_list = self.upstream_images  # can use the original images, before merging into new_image
+        for i, im in enumerate(upstream_list):
+            new_image.upstream_images[i] = im.merge_all(session)
 
         return new_image
 

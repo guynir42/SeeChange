@@ -25,7 +25,6 @@ UPSTREAM_NAMES = {
     'detection': ['subtraction'],
     'cutting': ['detection'],
     'measuring': ['cutting'],
-    'associating': ['measuring'],
 }
 
 UPSTREAM_OBJECTS = {
@@ -40,7 +39,6 @@ UPSTREAM_OBJECTS = {
     'detection': 'detections',
     'cutting': 'cutouts',
     'measuring': 'measurements',
-    'associating': 'objects',
 }
 
 
