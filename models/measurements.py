@@ -314,6 +314,16 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
 
         raise ValueError('Filter number too high for the filter bank. ')
 
+    def passes(self):
+        """check if there are disqualifiers above the threshold
+
+        Note that if a threshold is missing or None, that disqualifier is not checked
+        """
+        for key, value in self.provenance.parameters['thresholds'].items():
+            if value is not None and self.disqualifier_scores[key] > value:
+                return False
+        return True
+
     def associate_object(self, session=None):
         """Find or create a new object and associate it with this measurement.
 

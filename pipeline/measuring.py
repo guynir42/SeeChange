@@ -255,7 +255,7 @@ class Measurer:
                 x = x - c.sub_data.shape[1] // 2 - m.offset_x
                 y = y - c.sub_data.shape[0] // 2 - m.offset_y
                 r = np.sqrt(x ** 2 + y ** 2)
-                bad_pixel_inclusion = r < self.pars.bad_pixel_radius
+                bad_pixel_inclusion = r <= self.pars.bad_pixel_radius + 0.5
                 m.disqualifier_scores['bad pixels'] = np.sum(flags[bad_pixel_inclusion] > 0)
 
                 norm_data_no_nans = norm_data.copy()
@@ -284,12 +284,7 @@ class Measurer:
             objects = []
             with SmartSession(session) as session:
                 for m in measurements_list:
-                    # check if there are disqualifiers above the threshold
-                    # note that if a threshold is missing or None, that disqualifier is not checked
-                    for key, value in self.pars.thresholds.items():
-                        if value is not None and m.disqualifier_scores[key] > value:
-                            break
-                    else:  # all disqualifiers are below threshold
+                    if m.passes():  # all disqualifiers are below threshold
                         saved_measurements.append(m)
                         m.associate_object(session=session)
                         objects.append(m.object)

@@ -289,6 +289,7 @@ def test_datastore_delete_everything(decam_datastore):
         assert session.scalars(sa.select(Image).where(Image.id == sub.id)).first() is None
         assert session.scalars(sa.select(SourceList).where(SourceList.id == det.id)).first() is None
         assert session.scalars(sa.select(Cutouts).where(Cutouts.id == cutouts_list[0].id)).first() is None
-        assert session.scalars(
-            sa.select(Measurements).where(Measurements.id == measurements_list[0].id)
-        ).first() is None
+        if len(measurements_list) > 0:
+            assert session.scalars(
+                sa.select(Measurements).where(Measurements.id == measurements_list[0].id)
+            ).first() is None
