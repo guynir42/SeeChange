@@ -553,7 +553,13 @@ class SeeChangeBase:
         str
             The full path to the output JSON file.
         """
-        if len(obj_list) > 0:
+        if len(obj_list) == 0:
+            if filepath is None:
+                return  # can't do anything without a filepath
+            json_filepath = os.path.join(cache_dir, filepath)
+            if not json_filepath.endswith('.json'):
+                json_filepath += '.json'
+        else:
             types = set([type(obj) for obj in obj_list])
             if len(types) != 1:
                 raise ValueError("All objects must be of the same type!")
