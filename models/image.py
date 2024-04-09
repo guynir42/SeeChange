@@ -590,7 +590,15 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         #     upstream_list = new_image.upstream_images
         # else:
         #     upstream_list = self.upstream_images  # can use the original images, before merging into new_image
-        for i, im in enumerate(new_image.upstream_images):
+        try:
+            upstream_list = self.upstream_images  # can use the original images, before merging into new_image
+        except DetachedInstanceError as e:
+            if "lazy load operation of attribute 'upstream_images' cannot proceed" in str(e):
+                upstream_list = []  # can't access the upstream images, so just we have no use calling merge_all
+            else:  # other errors should be treated normally
+                raise e
+
+        for i, im in enumerate(upstream_list):
             new_image.upstream_images[i] = im.merge_all(session)
 
         return new_image

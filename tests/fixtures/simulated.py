@@ -6,6 +6,7 @@ import uuid
 import numpy as np
 
 import sqlalchemy as sa
+from sqlalchemy.orm.exc import DetachedInstanceError
 
 from astropy.io import fits
 from astropy.time import Time
@@ -393,7 +394,7 @@ def sim_image_list(
             im.zp.aper_cor_radii = im.instrument_object.standard_apertures()
             im.zp.aper_cors = np.random.normal(0, 0.1, len(im.zp.aper_cor_radii))
             im.zp.provenance = provenance_extra
-
+            im.sources.zp = im.zp
             im = im.merge_all(session)
             images.append(im)
 
