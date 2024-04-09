@@ -553,16 +553,17 @@ class SeeChangeBase:
         str
             The full path to the output JSON file.
         """
-        types = set([type(obj) for obj in obj_list])
-        if len(types) != 1:
-            raise ValueError("All objects must be of the same type!")
+        if len(obj_list) > 0:
+            types = set([type(obj) for obj in obj_list])
+            if len(types) != 1:
+                raise ValueError("All objects must be of the same type!")
 
-        filepaths = set([getattr(obj, 'filepath', None) for obj in obj_list])
-        if len(filepaths) != 1:
-            raise ValueError("All objects must have the same filepath!")
+            filepaths = set([getattr(obj, 'filepath', None) for obj in obj_list])
+            if len(filepaths) != 1:
+                raise ValueError("All objects must have the same filepath!")
 
-        # save the JSON file and copy associated files
-        json_filepath = obj_list[0].copy_to_cache(cache_dir, filepath=filepath)
+            # save the JSON file and copy associated files
+            json_filepath = obj_list[0].copy_to_cache(cache_dir, filepath=filepath)
 
         # overwrite the JSON file with the list of dictionaries
         with open(json_filepath, 'w') as fp:
