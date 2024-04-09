@@ -295,6 +295,8 @@ class Measurer:
                         objects.append(m.object)
 
             # add the resulting objects and measurements to the data store
+            ds.all_measurements = measurements_list  # debugging only
+            ds.failed_measurements = [m for m in measurements_list if m not in saved_measurements]  # debugging only
             ds.measurements = saved_measurements  # only keep measurements that passed the disqualifiers cuts.
             ds.objects = objects
 

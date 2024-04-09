@@ -1483,11 +1483,13 @@ class DataStore:
                         for j, o in enumerate(obj):
                             if o.id is not None:
                                 for att in ['image', 'sources']:
-                                    if hasattr(o, att):
+                                    try:
                                         setattr(o, att, None)  # clear any back references before merging
+                                    except AttributeError:
+                                        pass  # ignore when the object doesn't have attribute, or it has no setter
                                 obj_list[i][j] = session.merge(o)
                         continue
-                    if obj.id is not None:  # don't merge new objects, as that just "adds" them to DB!
+                    if sa.inspect(obj).transient:  # don't merge new objects, as that just "adds" them to DB!
                         obj_list[i] = session.merge(obj)
 
                 for obj in obj_list:  # now do the deleting without flushing

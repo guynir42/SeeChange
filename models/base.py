@@ -347,8 +347,10 @@ class SeeChangeBase:
                 session.expunge(self)
                 need_commit = True
             elif info.detached:
-                session.execute(sa.delete(self.__class__).where(self.__class__.id == self.id))
-                need_commit = True
+                obj = session.scalars(sa.select(self.__class__).where(self.__class__.id == self.id)).first()
+                if obj is not None:
+                    session.delete(obj)
+                    need_commit = True
 
             if commit and need_commit:
                 session.commit()
@@ -1604,6 +1606,42 @@ class SpatiallyIndexed:
                                                 fourcorn.ra_corner_11, fourcorn.dec_corner_11,
                                                 fourcorn.ra_corner_10, fourcorn.dec_corner_10 ] ) )
 
+    @classmethod
+    def cone_search( cls, ra, dec, rad, radunit='arcsec', ra_col='ra', dec_col='dec' ):
+        """Find all objects of this class that are within a cone.
+
+        Parameters
+        ----------
+          ra: float
+            The central right ascension in decimal degrees
+          dec: float
+            The central declination in decimal degrees
+          rad: float
+            The radius of the circle on the sky
+          radunit: str
+            The units of rad.  One of 'arcsec', 'arcmin', 'degrees', or
+            'radians'.  Defaults to 'arcsec'.
+          ra_col: str
+            The name of the ra column in the table.  Defaults to 'ra'.
+          dec_col: str
+            The name of the dec column in the table.  Defaults to 'dec'.
+
+        Returns
+        -------
+          A query with the cone search.
+
+        """
+        if radunit == 'arcmin':
+            rad /= 60.
+        elif radunit == 'arcsec':
+            rad /= 3600.
+        elif radunit == 'radians':
+            rad *= 180. / math.pi
+        elif radunit != 'degrees':
+            raise ValueError( f'SpatiallyIndexed.cone_search: unknown radius unit {radunit}' )
+
+        return func.q3c_radial_query( getattr(cls, ra_col), getattr(cls, dec_col), ra, dec, rad )
+
 
 class FourCorners:
     """A mixin for tables that have four RA/Dec corners"""
@@ -1740,42 +1778,6 @@ class FourCorners:
             objs = sess.scalars( sa.select( cls ).from_statement( query ) ).all()
             sess.execute( sa.text( "DROP TABLE temp_find_containing" ) )
             return objs
-
-    @classmethod
-    def cone_search( cls, ra, dec, rad, radunit='arcsec', ra_col='ra', dec_col='dec' ):
-        """Find all objects of this class that are within a cone.
-
-        Parameters
-        ----------
-          ra: float
-            The central right ascension in decimal degrees
-          dec: float
-            The central declination in decimal degrees
-          rad: float
-            The radius of the circle on the sky
-          radunit: str
-            The units of rad.  One of 'arcsec', 'arcmin', 'degrees', or
-            'radians'.  Defaults to 'arcsec'.
-          ra_col: str
-            The name of the ra column in the table.  Defaults to 'ra'.
-          dec_col: str
-            The name of the dec column in the table.  Defaults to 'dec'.
-
-        Returns
-        -------
-          A query with the cone search.
-
-        """
-        if radunit == 'arcmin':
-            rad /= 60.
-        elif radunit == 'arcsec':
-            rad /= 3600.
-        elif radunit == 'radians':
-            rad *= 180. / math.pi
-        elif radunit != 'degrees':
-            raise ValueError( f'SpatiallyIndexed.cone_search: unknown radius unit {radunit}' )
-
-        return func.q3c_radial_query( getattr(cls, ra_col), getattr(cls, dec_col), ra, dec, rad )
 
 
 class HasBitFlagBadness:

@@ -161,6 +161,24 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
     def pixel_scale(self):
         return self.cutouts.sources.image.new_image.wcs.get_pixel_scale()
 
+    @property
+    def sources(self):
+        if self.cutouts is None:
+            return None
+        return self.cutouts.sources
+
+    @property
+    def image(self):
+        if self.cutouts is None or self.cutouts.sources is None:
+            return None
+        return self.cutouts.sources.image
+
+    @property
+    def instrument_object(self):
+        if self.cutouts is None or self.cutouts.sources is None or self.cutouts.sources.image is None:
+            return None
+        return self.cutouts.sources.image.instrument_object
+
     background = sa.Column(
         sa.Float,
         nullable=False,

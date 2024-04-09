@@ -561,7 +561,6 @@ def datastore_factory(
 
             ds.save_and_commit(session=session)
 
-
             try:  # if no reference is found, simply return the datastore without the rest of the products
                 ref = ds.get_reference()  # first make sure this actually manages to find the reference image
             except ValueError as e:
@@ -657,6 +656,7 @@ def datastore_factory(
                 ds.measurements = Measurements.copy_list_from_cache(cache_dir, cache_name)
                 [setattr(m, 'provenance', prov) for m in ds.measurements]
                 [setattr(m, 'cutouts', c) for m, c in zip(ds.measurements, ds.cutouts)]
+                [m.associate_object(session) for m in ds.measurements]  # create or find an object for each measurement
                 # no need to save list because Measurements is not a FileOnDiskMixin!
             else:  # cannot find measurements on cache
                 ds = measurer.run(ds)

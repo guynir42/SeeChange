@@ -249,31 +249,37 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
 
 def test_datastore_delete_everything(decam_datastore):
     im = decam_datastore.image
+    im_paths = im.get_fullpath(as_list=True)
     sources = decam_datastore.sources
+    sources_path = sources.get_fullpath()
     psf = decam_datastore.psf
+    psf_paths = psf.get_fullpath(as_list=True)
     sub = decam_datastore.sub_image
+    sub_paths = sub.get_fullpath(as_list=True)
     det = decam_datastore.detections
+    det_path = det.get_fullpath()
     cutouts_list = decam_datastore.cutouts
+    cutouts_file_path = cutouts_list[0].get_fullpath()
     measurements_list = decam_datastore.measurements
 
     # make sure we can delete everything
     decam_datastore.delete_everything()
 
     # make sure everything is deleted
-    for path in im.get_fullpath(as_list=True):
+    for path in im_paths:
         assert not os.path.exists(path)
 
-    assert not os.path.exists(sources.get_fullpath())
+    assert not os.path.exists(sources_path)
 
-    for path in psf.get_fullpath(as_list=True):
+    for path in psf_paths:
         assert not os.path.exists(path)
 
-    for path in sub.get_fullpath(as_list=True):
+    for path in sub_paths:
         assert not os.path.exists(path)
 
-    assert not os.path.exists(det.get_fullpath())
+    assert not os.path.exists(det_path)
 
-    assert not os.path.exists(cutouts_list[0].get_fullpath())
+    assert not os.path.exists(cutouts_file_path)
 
     # check these don't exist on the DB:
     with SmartSession() as session:
