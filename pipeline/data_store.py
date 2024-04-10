@@ -1513,7 +1513,12 @@ class DataStore:
                     if obj in session and sa.inspect(obj).persistent:
                         session.delete(obj)
 
-                    if hasattr(obj, 'provenance') and obj.provenance is not None and obj.provenance in session:
+                    if (
+                            not sa.inspect(obj).detached and
+                            hasattr(obj, 'provenance') and
+                            obj.provenance is not None
+                            and obj.provenance in session
+                    ):
                         session.expunge(obj.provenance)
 
                 # verify that the objects are in fact deleted by deleting the image at the root of the datastore

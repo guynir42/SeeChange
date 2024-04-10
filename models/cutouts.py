@@ -715,20 +715,23 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
                 if commit:
                     session.commit()
 
-    def __eq__(self, other):
-        """Compare if two cutouts have the same data. """
-        attributes = self.get_data_attributes()
-        attributes += ['ra', 'dec', 'x', 'y', 'filepath', 'format']
-
-        for att in attributes:
-            if isinstance(getattr(self, att), np.ndarray):
-                if not np.array_equal(getattr(self, att), getattr(other, att)):
-                    return False
-            else:  # other attributes get compared directly
-                if getattr(self, att) != getattr(other, att):
-                    return False
-
-        return True
+    # def __eq__(self, other):
+    #     """Compare if two cutouts have the same data. """
+    #     if not isinstance(other, Cutouts):
+    #         return super().__eq__(other)  # any other comparisons use the base class
+    #
+    #     attributes = self.get_data_attributes()
+    #     attributes += ['ra', 'dec', 'x', 'y', 'filepath', 'format']
+    #
+    #     for att in attributes:
+    #         if isinstance(getattr(self, att), np.ndarray):
+    #             if not np.array_equal(getattr(self, att), getattr(other, att)):
+    #                 return False
+    #         else:  # other attributes get compared directly
+    #             if getattr(self, att) != getattr(other, att):
+    #                 return False
+    #
+    #     return True
 
 
 # use these two functions to quickly add the "property" accessor methods

@@ -241,7 +241,7 @@ def iterative_photometry(
         # reposition based on the last centroids
         reposition_cx = cx
         reposition_cy = cy
-        for j, r in enumerate(radii):
+        for j, r in enumerate(radii[::-1]):  # go over radii in reverse order
             # make a circle-mask based on the centroid position
             if not np.isfinite(reposition_cx) or not np.isfinite(reposition_cy):
                 raise ValueError("Centroid is not finite, cannot proceed with photometry")
@@ -260,7 +260,7 @@ def iterative_photometry(
             # background and variance only need to be calculated once (they are the same for all apertures)
             # but moments/centroids can be calculated for each aperture, but we will only want to save one
             # so how about we use the smallest one?
-            if j == 0:  # smallest aperture only
+            if j == 0:  # largest aperture only
                 # TODO: consider replacing this with a hard-edge annulus and do median or sigma clipping on the pixels
                 background = np.nansum(nandata * annulus_map) / np.nansum(annulus_map)  # b/g per pixel
                 variance = np.nansum(((nandata - background) * annulus_map) ** 2) / np.nansum(annulus_map)  # per pixel

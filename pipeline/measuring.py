@@ -197,7 +197,7 @@ class Measurer:
 
                 annulus_radii_pixels = self.pars.annulus_radii
                 if self.pars.annulus_units == 'fwhm':
-                    annulus_radii_pixels /= c.source.image.get_psf().fwhm_pixels
+                    annulus_radii_pixels = [rad * c.source.image.get_psf().fwhm_pixels for rad in annulus_radii_pixels]
 
                 # TODO: consider if there are any additional parameters that photometry needs
                 output = iterative_photometry(

@@ -345,7 +345,7 @@ def sim_image_list(
         fake_sources_data,
         ztf_filepaths_image_sources_psf
 ):
-    num = 3
+    num = 5
     width = 1.0
     # use the ZTF files to generate a legitimate PSF (that has get_clip())
     # TODO: remove this ZTF dependence when doing issue #242
@@ -523,7 +523,7 @@ def fake_sources_data():
     ra = np.random.uniform(0, 360)
     ra = [x / 3600 + ra for x in xx]  # assume pixel scale is 1"/pixel
     dec = np.random.uniform(-10, 10)  # make it close to the equator to avoid having to consider cos(dec)
-    dec = [y / 3600 + dec for y in yy] # assume pixel scale is 1"/pixel
+    dec = [y / 3600 + dec for y in yy]  # assume pixel scale is 1"/pixel
     flux = np.random.uniform(1000, 2000, num_x * num_y)
     flux_err = np.random.uniform(100, 200, num_x * num_y)
     dtype = [('x', 'f4'), ('y', 'f4'), ('ra', 'f4'), ('dec', 'f4'), ('flux', 'f4'), ('flux_err', 'f4')]

@@ -1,3 +1,4 @@
+import pytest
 import re
 import sqlalchemy as sa
 
@@ -23,4 +24,16 @@ def test_object_creation():
 
 
 def test_objects_from_measurements(sim_lightcurves):
-    pass
+    for lc in sim_lightcurves:
+        expected_flux = []
+        expected_error = []
+        measured_flux = []
+
+        for m in lc:
+            measured_flux.append(m.flux_apertures[3] - m.background * m.area_apertures[3])
+            expected_flux.append(m.sources.data['flux'][m.cutouts.index_in_sources])
+            expected_error.append(m.sources.data['flux_err'][m.cutouts.index_in_sources])
+
+        assert len(expected_flux) == len(measured_flux)
+        for i in range(len(measured_flux)):
+            assert measured_flux[i] == pytest.approx(expected_flux[i], abs=expected_error[i] * 3)
