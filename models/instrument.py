@@ -231,31 +231,31 @@ class SensorSection(Base, AutoIDMixin):
     #  general low-precision instrument comparison.
 
     read_noise = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         doc='Read noise of the sensor section (in electrons). '
     )
 
     dark_current = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         doc='Dark current of the sensor section (in electrons/pixel/second). '
     )
 
     gain = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         doc='Gain of the sensor section (in electrons/ADU). '
     )
 
     saturation_limit = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         doc='Saturation level of the sensor section (in electrons). '
     )
 
     non_linearity_limit = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         doc='Non-linearity of the sensor section (in electrons). '
     )

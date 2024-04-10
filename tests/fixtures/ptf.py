@@ -513,3 +513,4 @@ def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, ptf_cache_dir):
     yield im
 
     im.delete_from_disk_and_database(remove_downstreams=True)
+

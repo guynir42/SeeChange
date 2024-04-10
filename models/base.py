@@ -24,7 +24,10 @@ from sqlalchemy.ext.hybrid import hybrid_method, hybrid_property
 from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.dialects.postgresql import UUID as sqlUUID
 from sqlalchemy.dialects.postgresql import array as sqlarray
+from sqlalchemy.dialects.postgresql import ARRAY
+
 from sqlalchemy.schema import CheckConstraint
+
 
 from models.enums_and_bitflags import (
     data_badness_dict,
@@ -863,7 +866,7 @@ class FileOnDiskMixin:
         )
 
     filepath_extensions = sa.Column(
-        sa.ARRAY(sa.Text),
+        ARRAY(sa.Text, zero_indexes=True),
         nullable=True,
         doc="If non-null, array of text appended to filepath to get actual saved filenames."
     )
@@ -876,7 +879,7 @@ class FileOnDiskMixin:
     )
 
     md5sum_extensions = sa.Column(
-        sa.ARRAY(sqlUUID(as_uuid=True)),
+        ARRAY(sqlUUID(as_uuid=True), zero_indexes=True),
         nullable=True,
         default=None,
         doc="md5sum of extension files; must have same number of elements as filepath_extensions"

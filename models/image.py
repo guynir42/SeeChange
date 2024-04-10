@@ -311,7 +311,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     exp_time = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=False,
         index=True,
         doc="Exposure time in seconds. Multi-exposure images will have the total exposure time."
@@ -383,7 +383,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     fwhm_estimate = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         index=True,
         doc=(
@@ -393,7 +393,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     zero_point_estimate = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         index=True,
         doc=(
@@ -403,7 +403,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     lim_mag_estimate = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         index=True,
         doc=(
@@ -413,7 +413,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     bkg_mean_estimate = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         index=True,
         doc=(
@@ -423,7 +423,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     )
 
     bkg_rms_estimate = sa.Column(
-        sa.Float,
+        sa.REAL,
         nullable=True,
         index=True,
         doc=(

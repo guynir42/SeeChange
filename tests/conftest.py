@@ -58,14 +58,11 @@ def pytest_sessionfinish(session, exitstatus):
                 dbsession.delete(prov)
         dbsession.commit()
 
-        # remove any Object objects from tests, as these are usually not cleaned up:
-        dbsession.execute(sa.delete(Object).where(Object.is_test.is_(True)))
-
         objects = get_all_database_objects(session=dbsession)
         any_objects = False
         for Class, ids in objects.items():
             # TODO: check that surviving provenances have test_parameter
-            if Class.__name__ in ['CodeVersion', 'CodeHash', 'SensorSection', 'CatalogExcerpt', 'Provenance']:
+            if Class.__name__ in ['CodeVersion', 'CodeHash', 'SensorSection', 'CatalogExcerpt', 'Provenance', 'Object']:
                 _logger.debug(f'There are {len(ids)} {Class.__name__} objects in the database. These are OK to stay.')
             elif len(ids) > 0:
                 _logger.info(
@@ -78,6 +75,9 @@ def pytest_sessionfinish(session, exitstatus):
 
         # delete the CodeVersion object (this should remove all provenances as well)
         dbsession.execute(sa.delete(CodeVersion).where(CodeVersion.id == 'test_v1.0.0'))
+
+        # remove any Object objects from tests, as these are not automatically cleaned up:
+        dbsession.execute(sa.delete(Object).where(Object.is_test.is_(True)))
 
         dbsession.commit()
 

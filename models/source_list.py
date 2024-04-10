@@ -10,6 +10,7 @@ from sqlalchemy import orm
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.schema import UniqueConstraint
+from sqlalchemy.dialects.postgresql import ARRAY
 
 import astropy.table
 
@@ -82,7 +83,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     is_coadd = association_proxy('image', 'is_coadd')
 
     aper_rads = sa.Column(
-        sa.ARRAY( sa.REAL ),
+        ARRAY( sa.REAL, zero_indexes=True ),
         nullable=True,
         default=None,
         index=False,

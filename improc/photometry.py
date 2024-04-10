@@ -263,7 +263,7 @@ def iterative_photometry(
             if j == 0:  # smallest aperture only
                 # TODO: consider replacing this with a hard-edge annulus and do median or sigma clipping on the pixels
                 background = np.nansum(nandata * annulus_map) / np.nansum(annulus_map)  # b/g per pixel
-                variance = np.nansum((nandata - background) * annulus_map) ** 2 / np.nansum(annulus_map)  # per pixel
+                variance = np.nansum(((nandata - background) * annulus_map) ** 2) / np.nansum(annulus_map)  # per pixel
 
                 normalization = (fluxes[j] - background * areas[j])
                 masked_data_bg = (nandata - background) * mask

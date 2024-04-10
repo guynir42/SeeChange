@@ -54,12 +54,12 @@ class ParsMeasurer(Parameters):
             'Which kinds of analytic cuts are used to give scores to this measurement. '
         )
 
-        self.negative_positive_threshold = self.add_par(
-            'negative_positive_threshold',
+        self.outlier_sigma = self.add_par(
+            'outlier_sigma',
             3.0,
             float,
             'How many times the local background RMS for each pixel counts '
-            'as being a negative or positive pixel. '
+            'as being a negative or positive outlier pixel. '
         )
 
         self.bad_pixel_radius = self.add_par(
@@ -160,6 +160,7 @@ class Measurer:
         # try to find some measurements in memory or in the database:
         measurements_list = ds.get_measurements(prov, session=session)
 
+        # note that if measurements_list is found, there will not be an all_measurements appended to datastore!
         if measurements_list is None or len(measurements_list) == 0:  # must create a new list of Measurements
             self.has_recalculated = True
             # use the latest source list in the data store,
@@ -179,8 +180,11 @@ class Measurer:
 
             # go over each cutouts object and produce a measurements object
             measurements_list = []
-            for c in cutouts:
+            for i, c in enumerate(cutouts):
                 m = Measurements(cutouts=c)
+                # make sure to remember which cutout belongs to this measurement,
+                # before either of them is in the DB and then use the cutouts_id instead
+                m._cutouts_list_index = i
 
                 m.aper_radii = c.sources.image.new_image.zp.aper_cor_radii  # zero point corrected aperture radii
 
@@ -237,13 +241,13 @@ class Measurer:
 
                 # Apply analytic cuts to each stamp image, to rule out artefacts.
                 m.disqualifier_scores = {}
-                if m.background != 0 and m.background_err > 0:
+                if m.background != 0 and m.background_err > 0.1:
                     norm_data = (c.sub_nandata - m.background) / m.background_err  # normalize
                 else:
                     norm_data = c.sub_nandata  # no good background measurement, do not normalize!
 
-                positives = np.sum(norm_data > 3)
-                negatives = np.sum(norm_data < -3)
+                positives = np.sum(norm_data > self.pars.outlier_sigma)
+                negatives = np.sum(norm_data < -self.pars.outlier_sigma)
                 if negatives == 0:
                     m.disqualifier_scores['negatives'] = 0.0
                 elif positives == 0:

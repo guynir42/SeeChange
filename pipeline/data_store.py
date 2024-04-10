@@ -1428,14 +1428,18 @@ class DataStore:
 
             if self.detections is not None:
                 if self.cutouts is not None:
+                    if self.measurements is not None:  # keep track of which cutouts goes to which measurements
+                        for m in self.measurements:
+                            m._cutouts_list_index = self.cutouts.index(m.cutouts)
                     for cutout in self.cutouts:
                         cutout.sources = self.detections
                     self.cutouts = Cutouts.merge_list(self.cutouts, session)
 
                 if self.measurements is not None:
                     for i, m in enumerate(self.measurements):
-                        self.measurements[i].cutouts = self.cutouts[i]  # use the new, merged cutouts
-                        self.measurements[i] = session.merge(m)
+                        # use the new, merged cutouts
+                        self.measurements[i].cutouts = self.measurements[i].find_cutouts_in_list(self.cutouts)
+                        self.measurements[i] = session.merge(self.measurements[i])
 
             self.psf = self.image.psf
             self.sources = self.image.sources

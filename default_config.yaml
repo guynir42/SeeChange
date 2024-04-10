@@ -97,7 +97,7 @@ measuring:
   annulus_units: pixels
   chosen_aperture: 0
   analytical_cuts: ['negatives', 'bad pixels', 'offsets', 'filter bank']
-  negative_positive_threshold: 0.3
+  outlier_sigma: 3.0
   bad_pixel_radius: 3.0
   bad_pixel_exclude: []
   streak_filter_angle_step: 5.0

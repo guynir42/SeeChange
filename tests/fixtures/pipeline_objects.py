@@ -663,8 +663,6 @@ def datastore_factory(
                 ds = measurer.run(ds)
                 Measurements.copy_list_to_cache(ds.all_measurements, cache_dir, cache_name)  # must provide filepath!
 
-            # TODO: add the same cache/load and processing for the rest of the pipeline
-
             ds.save_and_commit(session=session)
 
             return ds
