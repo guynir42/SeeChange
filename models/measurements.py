@@ -373,7 +373,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
                 )
                 obj.is_test = self.provenance.is_testing
 
-            self.object = obj  # this should also add self to the Object's measurements
+            self.object = obj
 
     @classmethod
     def delete_list(cls, measurements_list, session=None, commit=True):

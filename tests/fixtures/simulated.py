@@ -6,27 +6,24 @@ import uuid
 import numpy as np
 
 import sqlalchemy as sa
-from sqlalchemy.orm.exc import DetachedInstanceError
 
 from astropy.io import fits
 from astropy.time import Time
 
-from models.base import SmartSession, _logger
+from models.base import SmartSession
 from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
 from models.source_list import SourceList
 from models.psf import PSF
-from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
 from models.reference import Reference
 from models.cutouts import Cutouts
 from models.instrument import DemoInstrument
 
-import util.config as config
+from improc.tools import make_gaussian
 
 from tests.conftest import rnd_str
-
 
 def make_sim_exposure():
     e = Exposure(
@@ -349,6 +346,7 @@ def sim_image_list(
         ztf_filepaths_image_sources_psf
 ):
     num = 3
+    width = 1.0
     # use the ZTF files to generate a legitimate PSF (that has get_clip())
     # TODO: remove this ZTF dependence when doing issue #242
     _, _, _, _, psf, psfxml = ztf_filepaths_image_sources_psf
@@ -362,19 +360,29 @@ def sim_image_list(
             exp.update_instrument()
             im = Image.from_exposure(exp, section_id=0)
             im.data = np.float32(im.raw_data)  # this replaces the bias/flat preprocessing
-            im.flags = np.random.randint(0, 100, size=im.raw_data.shape, dtype=np.uint32)
+            im.flags = np.random.uniform(0, 1.01, size=im.raw_data.shape)  # 1% bad pixels
+            im.flags = np.floor(im.flags).astype(np.uint16)
             im.weight = np.full(im.raw_data.shape, 4., dtype=np.float32)
             # TODO: remove ZTF depenedence and make a simpler PSF model (issue #242)
 
             # save the images to disk and database
             im.provenance = session.merge(provenance_preprocessing)
-            im.save()
 
             # add some additional products we may need down the line
             im.sources = SourceList(format='filter', data=fake_sources_data)
             # must randomize the sources data to get different MD5sum
             im.sources.data['x'] += np.random.normal(0, 1, len(fake_sources_data))
             im.sources.data['y'] += np.random.normal(0, 1, len(fake_sources_data))
+
+            for j in range(len(im.sources.data)):
+                dx = im.sources.data['x'][j] - im.raw_data.shape[1] / 2
+                dy = im.sources.data['y'][j] - im.raw_data.shape[0] / 2
+                gaussian = make_gaussian(imsize=im.raw_data.shape, offset_x=dx, offset_y=dy, norm=1, sigma_x=width)
+                gaussian *= np.random.normal(im.sources.data['flux'][j], im.sources.data['flux_err'][j])
+                im.data += gaussian
+
+            im.save()
+
             im.sources.provenance = provenance_extraction
             im.sources.image = im
             im.sources.save()
@@ -384,7 +392,7 @@ def sim_image_list(
             im.psf.data += np.random.normal(0, 0.001, im.psf.data.shape)
             im.psf.info = im.psf.info.replace('Emmanuel Bertin', uuid.uuid4().hex)
 
-            im.psf.fwhm_pixels = 1.0  # this is a fake value, but we need it to be there
+            im.psf.fwhm_pixels = width * 2.3  # this is a fake value, but we need it to be there
             im.psf.provenance = provenance_extraction
             im.psf.image = im
             im.psf.save()
@@ -507,8 +515,8 @@ def fake_sources_data():
     size_x = DemoInstrument.fake_image_size_x
     size_y = DemoInstrument.fake_image_size_y
 
-    x_list = np.linspace(size_x * 0.1, size_x * 0.9, num_x)
-    y_list = np.linspace(size_y * 0.1, size_y * 0.9, num_y)
+    x_list = np.linspace(size_x * 0.2, size_x * 0.8, num_x)
+    y_list = np.linspace(size_y * 0.2, size_y * 0.8, num_y)
 
     xx = np.array([np.random.normal(x, 1) for x in x_list for _ in y_list]).flatten()
     yy = np.array([np.random.normal(y, 1) for _ in x_list for y in y_list]).flatten()
@@ -597,12 +605,19 @@ def sim_sub_image_list(
 def sim_lightcurves(sim_sub_image_list, measurer):
     # a nested list of measurements, each one for a different part of the images,
     # for each image contains a list of measurements for the same source
+    measurer.pars.thresholds['bad pixels'] = 100  # avoid losing measurements to random bad pixels
 
     lightcurves = []
 
-    for im in sim_sub_image_list:
-        ds = measurer.run(im.sources.cutouts)
-        print(im.measurements)
+    with SmartSession() as session:
+        for im in sim_sub_image_list:
+            ds = measurer.run(im.sources.cutouts)
+            ds.save_and_commit(session=session)
+
+        # grab all the measurements associated with each Object
+        for m in ds.measurements:
+            m = session.merge(m)
+            lightcurves.append(m.object.measurements)
 
     yield lightcurves
 

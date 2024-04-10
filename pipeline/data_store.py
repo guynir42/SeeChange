@@ -437,6 +437,7 @@ class DataStore:
                 code_version=code_version,
                 parameters=pars_dict,
                 upstreams=upstreams,
+                is_testing="test_parameter" in pars_dict, # this is a flag for testing purposes
             )
             db_prov = session.scalars(sa.select(Provenance).where(Provenance.id == prov.id)).first()
             if db_prov is not None:  # only merge if this provenance already exists
@@ -1423,7 +1424,7 @@ class DataStore:
             if self.sub_image is not None:
                 self.sub_image.new_image = self.image  # update with the now-merged image
                 self.sub_image = self.sub_image.merge_all(session)  # merges the upstream_images and downstream products
-                self.ref_image.id = self.sub_image.ref_image_id  # just to make sure the ref has an ID for merging
+                self.sub_image.ref_image.id = self.sub_image.ref_image_id  # just to make sure the ref has an ID for merging
                 self.detections = self.sub_image.sources
 
             if self.detections is not None:
@@ -1439,7 +1440,9 @@ class DataStore:
                     for i, m in enumerate(self.measurements):
                         # use the new, merged cutouts
                         self.measurements[i].cutouts = self.measurements[i].find_cutouts_in_list(self.cutouts)
+                        self.measurements[i].associate_object(session)
                         self.measurements[i] = session.merge(self.measurements[i])
+                        self.measurements[i].object.measurements.append(self.measurements[i])
 
             self.psf = self.image.psf
             self.sources = self.image.sources
