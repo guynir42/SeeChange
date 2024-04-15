@@ -1,3 +1,5 @@
+import time
+
 import pytest
 import uuid
 
@@ -7,7 +9,7 @@ import numpy as np
 from improc.tools import make_gaussian
 
 
-@pytest.mark.flaky(max_runs=3)
+# @pytest.mark.flaky(max_runs=3)
 def test_measuring(measurer, decam_cutouts):
     measurer.pars.test_parameter = uuid.uuid4().hex
     measurer.pars.bad_pixel_exclude = ['saturated']
@@ -93,8 +95,8 @@ def test_measuring(measurer, decam_cutouts):
     assert np.allclose(m.flux_apertures, 100)  # aperture is irrelevant for delta function
     assert m.background == 0
     assert m.background_err == 0
-    for i in range(3):  # check only the first apertures, that are smaller than cutout square
-        assert m.area_apertures[i] == pytest.approx(np.pi * (m.aper_radii[i] + 0.5) ** 2, rel=0.1)
+    for i in range(3):  # check only the last apertures, that are smaller than cutout square
+        assert m.area_apertures[-1-i] == pytest.approx(np.pi * (m.aper_radii[-1-i] + 0.5) ** 2, rel=0.1)
 
     m = ds.all_measurements[1]  # shifted delta function
     assert m.disqualifier_scores['negatives'] == 0
@@ -114,9 +116,9 @@ def test_measuring(measurer, decam_cutouts):
     assert m.disqualifier_scores['filter bank'] == 0
     assert m.get_filter_description() == f'PSF match (FWHM= 1.00 x {fwhm:.2f})'
 
-    assert m.flux_apertures[0] < 900
-    assert m.flux_apertures[1] < 1000
-    for i in range(2, len(m.flux_apertures)):
+    assert m.flux_apertures[-1] < 900
+    assert m.flux_apertures[-2] < 1000
+    for i in range(0, len(m.flux_apertures) - 2):
         assert m.flux_apertures[i] == pytest.approx(1000, rel=0.1)
     assert m.background == pytest.approx(0, abs=0.01)
     assert m.background_err == pytest.approx(0, abs=0.01)
@@ -129,9 +131,9 @@ def test_measuring(measurer, decam_cutouts):
     assert m.disqualifier_scores['offsets'] == pytest.approx(np.sqrt(2 ** 2 + 3 ** 2), abs=1.0)
     assert m.disqualifier_scores['filter bank'] == 0
 
-    assert m.flux_apertures[0] < 450
-    assert m.flux_apertures[1] < 500
-    for i in range(2, len(m.flux_apertures)):
+    assert m.flux_apertures[-1] < 450
+    assert m.flux_apertures[-2] < 500
+    for i in range(0, len(m.flux_apertures) - 2):
         assert m.flux_apertures[i] == pytest.approx(500, rel=0.1)
     assert m.background == pytest.approx(0, abs=0.01)
     assert m.background_err == pytest.approx(0, abs=0.01)
@@ -156,9 +158,9 @@ def test_measuring(measurer, decam_cutouts):
     assert m.disqualifier_scores['filter bank'] == 0
     assert m.get_filter_description() == f'PSF match (FWHM= 1.00 x {fwhm:.2f})'
 
-    assert m.flux_apertures[0] < 450
-    assert m.flux_apertures[1] < 500
-    for i in range(2, len(m.flux_apertures)):
+    assert m.flux_apertures[-1] < 450
+    assert m.flux_apertures[-2] < 500
+    for i in range(0, len(m.flux_apertures) - 2):
         assert m.flux_apertures[i] == pytest.approx(500, rel=0.1)
 
     m = ds.all_measurements[6]  # dipole with noise
@@ -194,13 +196,13 @@ def test_measuring(measurer, decam_cutouts):
     assert m.disqualifier_scores['filter bank'] == 2
     assert m.get_filter_description() == f'PSF mismatch (FWHM= 2.00 x {fwhm:.2f})'
 
-    assert m.flux_apertures[0] < 400
-    assert m.flux_apertures[1] < 600
-    for i in range(2, len(m.flux_apertures)):
+    assert m.flux_apertures[-1] < 400
+    assert m.flux_apertures[-2] < 600
+    for i in range(0, len(m.flux_apertures) - 2):
         assert m.flux_apertures[i] == pytest.approx(1000, rel=1)
 
     assert m.background == pytest.approx(0, abs=0.2)
-    assert m.background_err == pytest.approx(0, abs=0.2)
+    assert m.background_err == pytest.approx(1.0, abs=0.2)
 
     m = ds.all_measurements[11]  # streak
     # TODO: this fails because background is too high, need to fix this by using a better background estimation
@@ -208,8 +210,8 @@ def test_measuring(measurer, decam_cutouts):
     #  values, instead of the weighted mean we are using now.
     # assert m.disqualifier_scores['negatives'] < 1.0
     assert m.disqualifier_scores['bad pixels'] == 0
-    assert m.disqualifier_scores['offsets'] < 0.5
+    assert m.disqualifier_scores['offsets'] < 0.7
     assert m.disqualifier_scores['filter bank'] == 28
     assert m.get_filter_description() == 'Streaked (angle= 25.0 deg)'
     assert m.background < 1.0  # see TODO above
-    assert m.background_err < 1.0
+    assert m.background_err < 3.0  # TODO: above

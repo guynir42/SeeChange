@@ -1068,7 +1068,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         for i, image in enumerate(self.upstream_images):
             new_image = self._aligner.run(image, alignment_target)
             aligned.append(new_image)
-            ImageAligner.temp_images.append(new_image)  # keep track of all these images for cleanup purposes
+            # ImageAligner.temp_images.append(new_image)  # keep track of all these images for cleanup purposes
 
         self._aligned_images = aligned
 
