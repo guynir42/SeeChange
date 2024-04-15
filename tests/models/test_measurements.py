@@ -25,7 +25,7 @@ def test_measurements_attributes(measurer, ptf_datastore):
     # grab one example measurements object
     m = ds.measurements[0]
     new_im = m.cutouts.sources.image.new_image
-    assert np.allclose(m.aper_radii, new_im.zp.aper_cor_radii)
+    assert np.allclose(m.aper_radii[::-1], new_im.zp.aper_cor_radii)  # aper radii are in reverse order
     assert np.allclose(
         new_im.zp.aper_cor_radii,
         new_im.psf.fwhm_pixels * np.array(new_im.instrument_object.standard_apertures()),
