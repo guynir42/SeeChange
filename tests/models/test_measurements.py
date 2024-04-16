@@ -79,11 +79,11 @@ def test_filtering_measurements(ptf_datastore):
 
     # test that we can filter on some measurements properties
     with SmartSession() as session:
-        ms = session.scalars(sa.select(Measurements).where(Measurements.flux_apertures[-1] > 0)).all()
+        ms = session.scalars(sa.select(Measurements).where(Measurements.flux_apertures[0] > 0)).all()
         assert len(ms) == len(measurements)  # saved measurements will probably have a positive flux
 
-        ms = session.scalars(sa.select(Measurements).where(Measurements.flux_apertures[-1] > 100)).all()
-        assert len(ms) < len(measurements)  # only some measurements have a flux above 100
+        ms = session.scalars(sa.select(Measurements).where(Measurements.flux_apertures[0] > 150)).all()
+        assert len(ms) < len(measurements)  # only some measurements have a flux above 150
 
         ms = session.scalars(
             sa.select(Measurements).join(Cutouts).join(SourceList).join(Image).where(
