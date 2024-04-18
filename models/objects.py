@@ -136,7 +136,7 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
         if prov_hash_list is None:
             # sort by most recent first
             last_created = max(self.measurements, key=operator.attrgetter('created_at'))
-            prov_hash_list = [last_created.proveneance.id]
+            prov_hash_list = [last_created.provenance.id]
 
         passed_measurements = []
         for m in measurements:

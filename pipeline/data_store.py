@@ -1442,7 +1442,7 @@ class DataStore:
                         self.measurements[i].cutouts = self.measurements[i].find_cutouts_in_list(self.cutouts)
                         self.measurements[i].associate_object(session)
                         self.measurements[i] = session.merge(self.measurements[i])
-                        # self.measurements[i].object.measurements.append(self.measurements[i])
+                        self.measurements[i].object.measurements.append(self.measurements[i])
 
             self.psf = self.image.psf
             self.sources = self.image.sources
