@@ -206,7 +206,7 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
             # get the current year, month, and day
             replacements = {}
             replacements['yyyy'] = str(obj.created_at.year)
-            replacements['yy'] = f'{obj.created_at.year % 100, :02d}'
+            replacements['yy'] = f'{obj.created_at.year % 100:02d}'
             replacements['mm'] = f'{obj.created_at.month:02d}'
             replacements['dd'] = f'{obj.created_at.day:02d}'
 
