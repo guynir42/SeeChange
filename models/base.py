@@ -44,7 +44,7 @@ utcnow = func.timezone("UTC", func.current_timestamp())
 
 _logger = logging.getLogger("main")
 if len(_logger.handlers) == 0:
-    _logout = logging.StreamHandler( sys.stdout )
+    _logout = logging.StreamHandler( sys.stderr )
     _logger.addHandler( _logout )
     _formatter = logging.Formatter( f"[%(asctime)s - %(levelname)s] - %(message)s", datefmt="%Y-%m-%d %H:%M:%S" )
     _logout.setFormatter( _formatter )

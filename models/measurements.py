@@ -337,7 +337,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         Note that if a threshold is missing or None, that disqualifier is not checked
         """
         for key, value in self.provenance.parameters['thresholds'].items():
-            if value is not None and self.disqualifier_scores[key] > value:
+            if value is not None and self.disqualifier_scores[key] >= value:
                 return False
         return True
 
@@ -350,8 +350,8 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         If no Object is found, a new one is created, and its coordinates will be identical
         to those of this Measurements object.
 
-        This should only be done for measurements that have passed all cuts and are considered
-        to be real sources.
+        This should only be done for measurements that have passed all preliminary cuts,
+        which mostly rules out obvious artefacts.
         """
         from models.objects import Object  # avoid circular import
 

@@ -1,5 +1,5 @@
 import datetime
-
+import operator
 from functools import partial
 import numpy as np
 from collections import defaultdict
@@ -80,7 +80,7 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
         radius: float, optional
             Will use the radius parameter to narrow down to measurements within a certain distance of the object's
             coordinates (can only narrow down measurements that are already associated with the object).
-            Default is 2.0 arcsec.
+            Default is to grab all pre-associated measurements.
         thresholds: dict, optional
             Provide a dictionary of thresholds to cut on the Measurements object's disqualifier_scores.
             Can provide keys that match the keys of the disqualifier_scores dictionary, in which case the cuts
@@ -123,19 +123,20 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
             mjd_end = Time(time_end).mjd
 
         measurements = []
-        for m in self.measurements:  # include only Measurements objects inside the given radius
-            delta_ra = np.cos(m.dec * np.pi / 180) * (m.ra - self.ra)
-            delta_dec = m.dec - self.dec
-            if np.sqrt(delta_ra**2 + delta_dec**2) < radius / 3600:
-                measurements.append(m)
+        if radius is not None:
+            for m in self.measurements:  # include only Measurements objects inside the given radius
+                delta_ra = np.cos(m.dec * np.pi / 180) * (m.ra - self.ra)
+                delta_dec = m.dec - self.dec
+                if np.sqrt(delta_ra**2 + delta_dec**2) < radius / 3600:
+                    measurements.append(m)
 
         if thresholds is None:
             thresholds = {}
 
         if prov_hash_list is None:
-            sorted_measurements = self.measurements.copy()
-            sorted_measurements.sort(key=lambda m: m.created_at, reverse=True)  # sort by most recent first
-            prov_hash_list = [sorted_measurements[0].provenance.id]  # use the most recent provenance hash
+            # sort by most recent first
+            last_created = max(self.measurements, key=operator.attrgetter('created_at'))
+            prov_hash_list = [last_created.provneance.id]
 
         passed_measurements = []
         for m in measurements:
@@ -204,10 +205,10 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
         def name_func(obj, starting_id=0, fmt=''):
             # get the current year, month, and day
             replacements = {}
-            replacements['yyyy'] = obj.created_at.year
-            replacements['yy'] = obj.created_at.year % 100
-            replacements['mm'] = obj.created_at.month
-            replacements['dd'] = obj.created_at.day
+            replacements['yyyy'] = str(obj.created_at.year)
+            replacements['yy'] = f'{obj.created_at.year % 100, :02d}'
+            replacements['mm'] = f'{obj.created_at.month:02d}'
+            replacements['dd'] = f'{obj.created_at.day:02d}'
 
             replacements['number'] = obj.id - starting_id
 
@@ -220,7 +221,7 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
             num_to_letters = replacements['number']
             need_letters = 0
             while num_to_letters >= 1:
-                num_to_letters /= 26
+                num_to_letters //= 26
                 need_letters += 1
 
             if need_letters == 0:

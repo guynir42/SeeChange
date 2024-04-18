@@ -124,7 +124,15 @@ def check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session
     assert len(ds.cutouts) == len(cutouts)
     assert set([c.id for c in ds.cutouts]) == set([c.id for c in cutouts])
 
-    # TODO: add the measurements, but we need to produce them first!
+    # Measurements
+    measurements = session.scalars(
+        sa.select(Measurements).where(
+            Measurements.cutouts_id.in_([c.id for c in cutouts]),
+            Measurements.provenance_id == ds.measurements[0].provenance_id,
+        )
+    ).all()
+    assert len(measurements) > 0
+    assert len(ds.measurements) == len(measurements)
 
 
 def test_parameters( test_config ):

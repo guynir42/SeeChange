@@ -102,7 +102,7 @@ class ParsMeasurer(Parameters):
             },
             dict,
             'Thresholds for the disqualifier scores. '
-            'If the score is higher than the threshold, the measurement is disqualified. '
+            'If the score is higher than (or equal to) the threshold, the measurement is disqualified. '
         )
 
         self.association_radius = self.add_par(
