@@ -1652,6 +1652,16 @@ class SpatiallyIndexed:
 
         return func.q3c_radial_query( getattr(cls, ra_col), getattr(cls, dec_col), ra, dec, rad )
 
+    def distance_to(self, other, units='arcsec'):
+        """Calculate the angular distance between this object and another object."""
+        if not isinstance(other, (SpatiallyIndexed, SkyCoord)):
+            raise ValueError(f'Cannot calculate distance between {type(self)} and {type(other)}')
+
+        coord1 = SkyCoord(self.ra, self.dec, unit='deg')
+        coord2 = SkyCoord(other.ra, other.dec, unit='deg')
+
+        return coord1.separation(coord2).to(units).value
+
 
 class FourCorners:
     """A mixin for tables that have four RA/Dec corners"""

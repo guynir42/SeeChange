@@ -283,16 +283,12 @@ class Measurer:
 
                 measurements_list.append(m)
 
-            # associate some of these measurements with Objects
             saved_measurements = []
-            # objects = []
             for m in measurements_list:
                 if m.passes():  # all disqualifiers are below threshold
                     saved_measurements.append(m)
-                    # m.associate_object(session=session)
-                    # objects.append(m.object)
 
-            # add the resulting objects and measurements to the data store
+            # add the resulting measurements to the data store
             ds.all_measurements = measurements_list  # debugging only
             ds.failed_measurements = [m for m in measurements_list if m not in saved_measurements]  # debugging only
             ds.measurements = saved_measurements  # only keep measurements that passed the disqualifiers cuts.

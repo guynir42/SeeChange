@@ -7,6 +7,8 @@ from collections import defaultdict
 import sqlalchemy as sa
 from sqlalchemy import orm
 
+from astropy.time import Time
+
 from models.base import Base, SeeChangeBase, SmartSession, AutoIDMixin, SpatiallyIndexed
 from models.measurements import Measurements
 
@@ -57,7 +59,16 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
 
         self.calculate_coordinates()
 
-    def get_measurements_list(self, prov_hash_list=None, radius=2.0, thresholds=None, session=None):
+    def get_measurements_list(
+            self,
+            prov_hash_list=None,
+            radius=2.0,
+            thresholds=None,
+            mjd_start=None,
+            mjd_end=None,
+            time_start=None,
+            time_end=None,
+    ):
         """Filter the measurements associated with this object.
 
         Parameters
@@ -82,9 +93,14 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
             in the Measurements object's Provenance will be used (the original threshold).
             If a disqualifier score is given but no corresponding threshold is given, then the cut will not be applied.
             To override an existing threshold, provide a new value but set it to None.
-        session: sqlalchemy.orm.session.Session, optional
-            The session to use for the query. If not given, will open a new session
-            that will be automatically closed at the end of this function.
+        mjd_start: float, optional
+            The minimum MJD to consider. If not given, will default to the earliest MJD.
+        mjd_end: float, optional
+            The maximum MJD to consider. If not given, will default to the latest MJD.
+        time_start: datetime.datetime or ISO date string, optional
+            The minimum time to consider. If not given, will default to the earliest time.
+        time_end: datetime.datetime or ISO date string, optional
+            The maximum time to consider. If not given, will default to the latest time.
 
         Returns
         -------
@@ -94,6 +110,18 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
         # measurements = session.scalars(
         #     sa.select(Measurements).where(Measurements.cone_search(self.ra, self.dec, radius))
         # ).all()
+
+        if time_start is not None and mjd_start is not None:
+            raise ValueError('Cannot provide both time_start and mjd_start. ')
+        if time_end is not None and mjd_end is not None:
+            raise ValueError('Cannot provide both time_end and mjd_end. ')
+
+        if time_start is not None:
+            mjd_start = Time(time_start).mjd
+
+        if time_end is not None:
+            mjd_end = Time(time_end).mjd
+
         measurements = []
         for m in self.measurements:  # include only Measurements objects inside the given radius
             delta_ra = np.cos(m.dec * np.pi / 180) * (m.ra - self.ra)
@@ -111,7 +139,7 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
 
         passed_measurements = []
         for m in measurements:
-            local_thresh = m.provenance.parameters.get('thresholds', {})
+            local_thresh = m.provenance.parameters.get('thresholds', {}).copy()  # don't change provenance parameters!
             if m.provenance.id in thresholds:
                 new_thresh = thresholds[m.provenance.id]  # specific thresholds for this provenance
             else:
@@ -120,7 +148,7 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
             local_thresh.update(new_thresh)  # override the Measurements object's thresholds with the new ones
 
             for key, value in local_thresh.items():
-                if value is not None and m.disqualifier_scores.get(key, 0.0) > value:
+                if value is not None and m.disqualifier_scores.get(key, 0.0) >= value:
                     break
             else:
                 passed_measurements.append(m)  # only append if all disqualifiers are below the threshold
@@ -145,6 +173,14 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
 
         # remove the missing dates
         output = [m for m in measurements_per_mjd.values() if m is not None]
+
+        # remove measurements before mjd_start
+        if mjd_start is not None:
+            output = [m for m in output if m.mjd >= mjd_start]
+
+        # remove measurements after mjd_end
+        if mjd_end is not None:
+            output = [m for m in output if m.mjd <= mjd_end]
 
         return output
 

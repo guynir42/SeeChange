@@ -303,9 +303,9 @@ def iterative_photometry(
         photometry['psf_flux'] = 0.0  # TODO: update this!
         photometry['psf_err'] = 0.0  # TODO: update this!
         photometry['psf_area'] = 0.0  # TODO: update this!
-        photometry['radii'] = radii
-        photometry['fluxes'] = fluxes
-        photometry['areas'] = areas
+        photometry['radii'] = radii[::-1]  # return radii and fluxes in increasing order
+        photometry['fluxes'] = fluxes[::-1]  # return radii and fluxes in increasing order
+        photometry['areas'] = areas[::-1]  # return radii and fluxes in increasing order
         photometry['background'] = background
         photometry['variance'] = variance
         photometry['offset_x'] = cx

@@ -25,7 +25,7 @@ def test_measurements_attributes(measurer, ptf_datastore):
     # grab one example measurements object
     m = ds.measurements[0]
     new_im = m.cutouts.sources.image.new_image
-    assert np.allclose(m.aper_radii[::-1], new_im.zp.aper_cor_radii)  # aper radii are in reverse order
+    assert np.allclose(m.aper_radii, new_im.zp.aper_cor_radii)
     assert np.allclose(
         new_im.zp.aper_cor_radii,
         new_im.psf.fwhm_pixels * np.array(new_im.instrument_object.standard_apertures()),
@@ -82,8 +82,8 @@ def test_filtering_measurements(ptf_datastore):
         ms = session.scalars(sa.select(Measurements).where(Measurements.flux_apertures[0] > 0)).all()
         assert len(ms) == len(measurements)  # saved measurements will probably have a positive flux
 
-        ms = session.scalars(sa.select(Measurements).where(Measurements.flux_apertures[0] > 150)).all()
-        assert len(ms) < len(measurements)  # only some measurements have a flux above 150
+        ms = session.scalars(sa.select(Measurements).where(Measurements.flux_apertures[0] > 100)).all()
+        assert len(ms) < len(measurements)  # only some measurements have a flux above 100
 
         ms = session.scalars(
             sa.select(Measurements).join(Cutouts).join(SourceList).join(Image).where(
@@ -123,7 +123,8 @@ def test_filtering_measurements(ptf_datastore):
 
         # filter on a specific disqualifier score
         ms = session.scalars(sa.select(Measurements).where(
-            Measurements.disqualifier_scores['negatives'].astext.cast(sa.REAL) < 0.1, Measurements.provenance_id == m.provenance.id
+            Measurements.disqualifier_scores['negatives'].astext.cast(sa.REAL) < 0.1,
+            Measurements.provenance_id == m.provenance.id
         )).all()
         assert len(ms) <= len(measurements)
 

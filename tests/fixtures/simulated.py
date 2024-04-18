@@ -606,7 +606,7 @@ def sim_lightcurves(sim_sub_image_list, measurer):
     # a nested list of measurements, each one for a different part of the images,
     # for each image contains a list of measurements for the same source
     measurer.pars.thresholds['bad pixels'] = 100  # avoid losing measurements to random bad pixels
-
+    measurer.pars.thresholds['offsets'] = 10  # avoid losing measurements to random offsets
     lightcurves = []
 
     with SmartSession() as session:
