@@ -6,7 +6,7 @@ from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 from pipeline.utils import parse_session
 
-from models.base import SmartSession
+from models.base import _logger
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 from models.enums_and_bitflags import BitFlagConverter
@@ -244,6 +244,7 @@ class Measurer:
                 if m.background != 0 and m.background_err > 0.1:
                     norm_data = (c.sub_nandata - m.background) / m.background_err  # normalize
                 else:
+                    _logger.warning(f'Background mean= {m.background}, std= {m.background_err}, normalization skipped!')
                     norm_data = c.sub_nandata  # no good background measurement, do not normalize!
 
                 positives = np.sum(norm_data > self.pars.outlier_sigma)
