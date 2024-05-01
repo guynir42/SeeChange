@@ -255,6 +255,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
         shutil.rmtree(os.path.join(os.path.dirname(exposure.get_fullpath()), '115'), ignore_errors=True)
         shutil.rmtree(os.path.join(archive.test_folder_path, '115'), ignore_errors=True)
 
+
 def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_calibrators, archive):
     """
     Test that adding a bitflag to the exposure propagates to all downstreams as they are created
@@ -282,7 +283,6 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         for cutout in ds.cutouts:   # cutouts is a list of cutout objects
             assert cutout._upstream_bitflag == 2
 
-
         # test part 2: Add a second bitflag partway through and check it propagates to downstreams
 
         # delete downstreams of ds.sources
@@ -291,6 +291,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         ds.sub_image = None
         ds.detections = None
         ds.cutouts = None
+        ds.measurements = None
 
         ds.sources._bitflag = 2**17  # bitflag 2**17 is 'many sources'
         desired_bitflag = 2**1 + 2**17 # bitflag for 'banding' and 'many sources'
@@ -304,7 +305,6 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         for cutout in ds.cutouts:
             assert cutout._upstream_bitflag == desired_bitflag
         assert ds.image.bitflag == 2 # not in the downstream of sources
-
 
         # test part 3: test update_downstream_badness() function by adding and removing flags
         # and observing propagation
@@ -321,11 +321,11 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
             ds.image.exposure.update_downstream_badness(session)
             session.commit()
 
-            desired_bitflag = 2**1 + 2**4 + 2**17  # 'banding' 'bad subtraction' 'many sources'
-            assert ds.exposure.bitflag == 2**1
-            assert ds.image.bitflag == 2**1 + 2**4  # 'banding' and 'bad subtraction'
+            desired_bitflag = 2 ** 1 + 2 ** 4 + 2 ** 17  # 'banding' 'bad subtraction' 'many sources'
+            assert ds.exposure.bitflag == 2 ** 1
+            assert ds.image.bitflag == 2 ** 1 + 2 ** 4  # 'banding' and 'bad subtraction'
             assert ds.sources.bitflag == desired_bitflag
-            assert ds.psf.bitflag == 2**1 + 2**4 # pending psf re-structure, only downstream of image
+            assert ds.psf.bitflag == 2 ** 1 + 2 ** 4  # pending psf re-structure, only downstream of image
             assert ds.wcs.bitflag == desired_bitflag
             assert ds.zp.bitflag == desired_bitflag
             assert ds.sub_image.bitflag == desired_bitflag
@@ -338,18 +338,17 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
             session.commit()
             ds.image.exposure.update_downstream_badness(session)
             session.commit()
-            desired_bitflag = 2**1 + 2**17  # 'banding' 'many sources'
-            assert ds.exposure.bitflag == 2**1
-            assert ds.image.bitflag == 2**1  # just 'banding' left on image
+            desired_bitflag = 2 ** 1 + 2 ** 17  # 'banding' 'many sources'
+            assert ds.exposure.bitflag == 2 ** 1
+            assert ds.image.bitflag == 2 ** 1  # just 'banding' left on image
             assert ds.sources.bitflag == desired_bitflag
-            assert ds.psf.bitflag == 2**1 #  pending psf re-structure, only downstream of image
+            assert ds.psf.bitflag == 2 ** 1  # pending psf re-structure, only downstream of image
             assert ds.wcs.bitflag == desired_bitflag
             assert ds.zp.bitflag == desired_bitflag
             assert ds.sub_image.bitflag == desired_bitflag
             assert ds.detections.bitflag == desired_bitflag
             for cutout in ds.cutouts:
                 assert cutout.bitflag == desired_bitflag
-
 
     finally:
         if 'ds' in locals():
