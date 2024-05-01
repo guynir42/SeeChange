@@ -18,7 +18,7 @@ from astropy.coordinates import SkyCoord
 from models.base import Base, SmartSession, AutoIDMixin,_logger
 
 from pipeline.catalog_tools import Bandpass
-from pipeline.utils import parse_dateobs, read_fits_image
+from util.util import parse_dateobs, read_fits_image
 
 
 # dictionary of regex for filenames, pointing at instrument names
@@ -738,7 +738,7 @@ class Instrument:
     def load_section_image(self, filepath, section_id):
         """
         Load one section of an exposure file.
-        The default loader uses the pipeline.utils.read_fits_image function,
+        The default loader uses the util.util.read_fits_image function,
         which is a basic FITS reader utility. More advanced instruments should
         override this function to use more complex file reading code.
 
@@ -778,7 +778,7 @@ class Instrument:
         Load the header from file.
 
         By default, instruments use a "standard" FITS header that is read
-        out using pipeline.utils.read_fits_image.
+        out using util.util.read_fits_image.
         Subclasses can override this method to use a different header format.
         Note that all keyword translations and value conversions happen later,
         in the extract_header_info function.
@@ -1194,11 +1194,11 @@ class Instrument:
         return 5
 
     # Gaia specific methods
-    # For GaiaDR3, catdata has fields:
+    # For gaia_dr3, catdata has fields:
     # X_WORLD, Y_WORLD, MAG_G, MAGERR_G, MAG_BP, MAGERR_BP, MAG_RP, MAGERR_RP, STARPROB
 
     @classmethod
-    def GaiaDR3_prune_star_cat(cls, catdata, gaiaminbp_rp=0.5, gaiamaxbp_rp=3.0):
+    def gaia_dr3_prune_star_cat(cls, catdata, gaiaminbp_rp=0.5, gaiamaxbp_rp=3.0):
         """Choose only rows from a catalog that have stars.
 
         Usually this is done by choosing a subset of the catalog
@@ -1245,7 +1245,7 @@ class Instrument:
         return output
 
     @classmethod
-    def GaiaDR3_get_skycoords(cls, catdata, image_mjd=None):
+    def gaia_dr3_get_skycoords(cls, catdata, image_mjd=None):
         """Use the RA/Dec from a Gaia catalog data array to initialize an array of SkyCoord objects
 
         Parameters
@@ -1281,7 +1281,7 @@ class Instrument:
         return coords
 
     @classmethod
-    def GaiaDR3_to_instrument_mag( cls, filter, catdata ):
+    def gaia_dr3_to_instrument_mag( cls, filter, catdata ):
         """Transform Gaia DR3 magnitudes to instrument magnitudes.
 
         Could use a polynomial based on the colors, or any other method.
@@ -1310,7 +1310,7 @@ class Instrument:
         trans_magerr: float or numpy array
             The instrument magnitude error(s).
         """
-        raise NotImplementedError( f"{cls.__name__} needs to implement GaiaDR3_to_instrument_mag" )
+        raise NotImplementedError( f"{cls.__name__} needs to implement gaia_dr3_to_instrument_mag" )
 
     # ----------------------------------------
     # Preprocessing functions.  These live here rather than

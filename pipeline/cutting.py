@@ -1,7 +1,7 @@
 
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
-from pipeline.utils import parse_session
+from util.util import parse_session
 
 from models.source_list import SourceList
 from models.cutouts import Cutouts
@@ -98,6 +98,8 @@ class Cutter:
                 cutout.new_data = new_stamps_data[i]
                 cutout.new_weight = new_stamps_weight[i]
                 cutout.new_flags = new_stamps_flags[i]
+                cutout._upstream_bitflag = 0
+                cutout._upstream_bitflag |= detections.bitflag
                 cutout_list.append(cutout)
 
         # add the resulting list to the data store
