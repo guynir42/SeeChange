@@ -37,7 +37,28 @@ ARCHIVE_PATH = None
 # (session is the pytest session, not the SQLAlchemy session)
 def pytest_sessionstart(session):
     # Will be executed before the first test
+
+    # this is only to make the warnings into errors, so it is easier to track them down...
+    warnings.filterwarnings('error', append=True)
+
+    # ignore any warnings from photometry code
+    warnings.filterwarnings('ignore', message=r'.*Background mean=.*, std=.*, normalization skipped!.*')
+    warnings.filterwarnings('ignore', message=r'.*Removed redundant SIP distortion parameters.*')
+
+    # if you want to add the provenance, you should do it explicitly, not by adding it to a CodeVersion
+    warnings.filterwarnings(
+        'ignore',
+        # message=r".*Object.*"
+        message=r".*Object of type <Provenance> not in session, "
+                r"add operation along 'CodeVersion\.provenances' will not proceed.*"
+    )
     # _logger.debug('Initial setup fixture loaded! ')
+
+    # this happens when loading/merging something that refers to another thing that refers back to the original thing
+    warnings.filterwarnings(
+        'ignore',
+        message=r".*Loader depth for query is excessively deep; caching will be disabled for additional loaders.*"
+    )
 
     # make sure to load the test config
     test_config_file = str((pathlib.Path(__file__).parent.parent / 'tests' / 'seechange_config_test.yaml').resolve())

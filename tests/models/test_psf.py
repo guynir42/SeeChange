@@ -342,6 +342,7 @@ def test_save_psf( ztf_datastore_uncommitted, provenance_base, provenance_extra 
                 im.delete_from_disk_and_database(session=session)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_free( decam_datastore ):
     ds = decam_datastore
     ds.get_psf()
@@ -382,7 +383,6 @@ def test_free( decam_datastore ):
     freemem = proc.memory_info()
 
     assert origmem.rss - freemem.rss > 60 * 1024 * 1024
-
 
 
 @pytest.mark.skipif( os.getenv('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )

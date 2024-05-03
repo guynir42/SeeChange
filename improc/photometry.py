@@ -205,8 +205,8 @@ def iterative_photometry(
     else:
         # find a rough estimate of the centroid using non-tapered cutout
         normalization = np.nansum(nandata)
-        if normalization < 1.0:
-            normalization = 1.0  # prevent division by zero and other rare cases
+        if abs(normalization) < 1.0:
+            normalization = 1.0 * np.sign(normalization)  # prevent division by zero and other rare cases
         cx = np.nansum(xgrid * nandata) / normalization
         cy = np.nansum(ygrid * nandata) / normalization
         cxx = np.nansum((xgrid - cx) ** 2 * nandata) / normalization
@@ -234,6 +234,9 @@ def iterative_photometry(
         moment_yy=cyy,
         moment_xy=cxy,
     )
+
+    if abs(cx) > nandata.shape[1] or abs(cy) > nandata.shape[0]:
+        iterations = 0  # skip iterations if the centroid measurement is outside the cutouts
 
     # Loop over the iterations
     for i in range(iterations):
@@ -269,11 +272,22 @@ def iterative_photometry(
                 # TODO: if we move the reposition into the aperture loop, this will need to be updated!
                 #  We would have to calculate the background/variance on the last positions, or all positions?
                 # TODO: consider replacing this with a hard-edge annulus and do median or sigma clipping on the pixels
-                background = np.nansum(nandata * annulus_map) / np.nansum(annulus_map)  # b/g per pixel
-                variance = np.nansum(((nandata - background) * annulus_map) ** 2) / np.nansum(annulus_map)  # per pixel
+                annulus_map_sum = np.nansum(annulus_map)
+                if annulus_map_sum == 0:  # this should only happen in tests or if the annulus is way too large
+                    background = 0
+                    variance = 0
+                else:
+                    # b/g mean and variance (per pixel)
+                    background = np.nansum(nandata * annulus_map) / annulus_map_sum
+                    variance = np.nansum(((nandata - background) * annulus_map) ** 2) / annulus_map_sum
 
                 normalization = (fluxes[j] - background * areas[j])
                 masked_data_bg = (nandata - background) * mask
+
+                if normalization == 0:  # this should only happen in pathological cases
+                    cx = cy = cxx = cyy = cxy = 0
+                    need_break = True
+                    break
 
                 # update the centroids
                 cx = np.nansum(xgrid * masked_data_bg) / normalization
@@ -316,10 +330,13 @@ def iterative_photometry(
 
     # calculate from 2nd moments the width, ratio and angle of the source
     # ref: https://en.wikipedia.org/wiki/Image_moment
-    major = np.sqrt(2 * (cxx + cyy + np.sqrt((cxx - cyy) ** 2 + 4 * cxy ** 2)))
-    minor = np.sqrt(2 * (cxx + cyy - np.sqrt((cxx - cyy) ** 2 + 4 * cxy ** 2)))
+    major = 2 * (cxx + cyy + np.sqrt((cxx - cyy) ** 2 + 4 * cxy ** 2))
+    major = np.sqrt(major) if major > 0 else 0
+    minor = 2 * (cxx + cyy - np.sqrt((cxx - cyy) ** 2 + 4 * cxy ** 2))
+    minor = np.sqrt(minor) if minor > 0 else 0
+
     angle = np.arctan2(2 * cxy, cxx - cyy) / 2
-    elongation = major / minor
+    elongation = major / minor if minor > 0 else 0
 
     photometry['major'] = major
     photometry['minor'] = minor

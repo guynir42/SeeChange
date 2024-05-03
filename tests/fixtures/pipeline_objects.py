@@ -295,7 +295,7 @@ def datastore_factory(
         measurer.pars.augment(augments.get('measurement', {}))
 
         with SmartSession(session) as session:
-            code_version = session.merge(code_version)
+            # code_version = session.merge(code_version)
             if ds.image is not None:  # if starting from an externally provided Image, must merge it first
                 ds.image = ds.image.merge_all(session)
 

@@ -1,3 +1,4 @@
+import warnings
 import sys
 import os
 import math
@@ -81,6 +82,20 @@ def Session():
         _engine = sa.create_engine(url, future=True, poolclass=sa.pool.NullPool)
 
         _Session = sessionmaker(bind=_engine, expire_on_commit=False)
+
+        # if you want to add the provenance, you should do it explicitly, not by adding it to a CodeVersion
+        warnings.filterwarnings(
+            'ignore',
+            message=r".*Object.*"
+            # message=r".*Object of type <Provenance> not in session, "
+            #         r"add operation along 'CodeVersion\.provenances' will not proceed.*"
+        )
+
+        # if the object is not in the session, why do I care that we removed some related object from it?
+        warnings.filterwarnings(
+            'ignore',
+            message=r".*Object of type .* not in session, delete operation along .* won't proceed.*"
+        )
 
     session = _Session()
 
