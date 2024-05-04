@@ -204,17 +204,20 @@ def iterative_photometry(
         iterations = 0  # skip the iterative mode if there's no data
     else:
         # find a rough estimate of the centroid using non-tapered cutout
-        normalization = np.nansum(nandata)
+        bkg_estimate = np.nanmedian(nandata)
+        normalization = np.nansum(nandata - bkg_estimate)
+        if normalization == 0:
+            normalization = 1.0
         if abs(normalization) < 1.0:
             normalization = 1.0 * np.sign(normalization)  # prevent division by zero and other rare cases
-        cx = np.nansum(xgrid * nandata) / normalization
-        cy = np.nansum(ygrid * nandata) / normalization
-        cxx = np.nansum((xgrid - cx) ** 2 * nandata) / normalization
-        cyy = np.nansum((ygrid - cy) ** 2 * nandata) / normalization
-        cxy = np.nansum((xgrid - cx) * (ygrid - cy) * nandata) / normalization
+        cx = np.nansum(xgrid * (nandata - bkg_estimate)) / normalization
+        cy = np.nansum(ygrid * (nandata - bkg_estimate)) / normalization
+        cxx = np.nansum((xgrid - cx) ** 2 * (nandata - bkg_estimate)) / normalization
+        cyy = np.nansum((ygrid - cy) ** 2 * (nandata - bkg_estimate)) / normalization
+        cxy = np.nansum((xgrid - cx) * (ygrid - cy) * (nandata - bkg_estimate)) / normalization
 
     # get some very rough estimates just so we have something in case of immediate failure of the loop
-    fluxes = [np.nansum(nandata)] * len(radii)
+    fluxes = [np.nansum((nandata - bkg_estimate))] * len(radii)
     areas = [float(np.nansum(~np.isnan(nandata)))] * len(radii)
     background = 0.0
     variance = np.nanvar(nandata)

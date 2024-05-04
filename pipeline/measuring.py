@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 
 from scipy import signal
@@ -244,7 +245,7 @@ class Measurer:
                 if m.background != 0 and m.background_err > 0.1:
                     norm_data = (c.sub_nandata - m.background) / m.background_err  # normalize
                 else:
-                    _logger.warning(f'Background mean= {m.background}, std= {m.background_err}, normalization skipped!')
+                    warnings.warn(f'Background mean= {m.background}, std= {m.background_err}, normalization skipped!')
                     norm_data = c.sub_nandata  # no good background measurement, do not normalize!
 
                 positives = np.sum(norm_data > self.pars.outlier_sigma)

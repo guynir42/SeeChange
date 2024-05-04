@@ -52,7 +52,12 @@ def pytest_sessionstart(session):
         message=r".*Object of type <Provenance> not in session, "
                 r"add operation along 'CodeVersion\.provenances' will not proceed.*"
     )
-    # _logger.debug('Initial setup fixture loaded! ')
+
+    # if the object is not in the session, why do I care that we removed some related object from it?
+    warnings.filterwarnings(
+        'ignore',
+        message=r".*Object of type .* not in session, delete operation along .* won't proceed.*"
+    )
 
     # this happens when loading/merging something that refers to another thing that refers back to the original thing
     warnings.filterwarnings(

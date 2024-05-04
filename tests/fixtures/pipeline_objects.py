@@ -651,7 +651,7 @@ def datastore_factory(
 
             cache_name = os.path.join(cache_dir, cache_sub_name + f'.measurements_{prov.id[:6]}.json')
 
-            if os.path.isfile(cache_name):  # note that the cache contains ALL the measurements, not only the good ones
+            if False and os.path.isfile(cache_name):  # note that the cache contains ALL the measurements, not only the good ones
                 _logger.debug('loading measurements from cache. ')
                 ds.all_measurements = Measurements.copy_list_from_cache(cache_dir, cache_name)
                 [setattr(m, 'provenance', prov) for m in ds.all_measurements]
