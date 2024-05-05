@@ -45,6 +45,7 @@ def pytest_sessionstart(session):
     warnings.filterwarnings('ignore', message=r'.*Background mean=.*, std=.*, normalization skipped!.*')
     warnings.filterwarnings('ignore', message=r'.*Removed redundant SIP distortion parameters.*')
     warnings.filterwarnings('ignore', message=r".*'datfix' made the change 'Set MJD-OBS to.*")
+    warnings.filterwarnings('ignore', message=r".*the RADECSYS keyword is deprecated, use RADESYSa.*")
     # if you want to add the provenance, you should do it explicitly, not by adding it to a CodeVersion
     warnings.filterwarnings(
         'ignore',
@@ -63,6 +64,12 @@ def pytest_sessionstart(session):
     warnings.filterwarnings(
         'ignore',
         message=r".*Loader depth for query is excessively deep; caching will be disabled for additional loaders.*"
+    )
+
+    warnings.filterwarnings(
+        'ignore',
+        "Can't emit change event for attribute 'Image.md5sum' "
+        "- parent object of type <Image> has been garbage collected",
     )
 
     # make sure to load the test config
