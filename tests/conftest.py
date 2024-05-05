@@ -44,7 +44,7 @@ def pytest_sessionstart(session):
     # ignore any warnings from photometry code
     warnings.filterwarnings('ignore', message=r'.*Background mean=.*, std=.*, normalization skipped!.*')
     warnings.filterwarnings('ignore', message=r'.*Removed redundant SIP distortion parameters.*')
-
+    warnings.filterwarnings('ignore', message=r".*'datfix' made the change 'Set MJD-OBS to.*")
     # if you want to add the provenance, you should do it explicitly, not by adding it to a CodeVersion
     warnings.filterwarnings(
         'ignore',
