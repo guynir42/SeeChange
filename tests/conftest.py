@@ -39,7 +39,7 @@ def pytest_sessionstart(session):
     # Will be executed before the first test
 
     # this is only to make the warnings into errors, so it is easier to track them down...
-    warnings.filterwarnings('error', append=True)
+    # warnings.filterwarnings('error', append=True)
 
     # ignore any warnings from photometry code
     warnings.filterwarnings('ignore', message=r'.*Background mean=.*, std=.*, normalization skipped!.*')

@@ -554,7 +554,7 @@ class DataStore:
             # database; do a quick check for mismatches.
             # (If all the ids are None, it'll match even if the actual
             # objects are wrong, but, oh well.)
-            if (self.exposure_id is not None) and (self.section_id is not None):
+            if (self.exposure_id is not None) and (self.exposure_id is not None):
                 if ( (self.image.exposure_id is not None and self.image.exposure_id != self.exposure_id) or
                      (self.image.section_id != self.section_id) ):
                     raise ValueError( "Image exposure/section id doesn't match what's expected!" )

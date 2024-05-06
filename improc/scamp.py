@@ -113,7 +113,7 @@ def solve_wcs_scamp( sources, catalog, crossid_radius=2.,
                    ]
 
         t0 = time.perf_counter()
-        res = subprocess.run( command, capture_output=True )
+        res = subprocess.run( command, capture_output=True, timeout=120 )
         t1 = time.perf_counter()
         _logger.debug( f"Scamp with {len(sources)} sources and {len(cat)} catalog stars "
                        f"(with match_nmax={max_nmatch}) took {t1-t0:.2f} seconds" )
