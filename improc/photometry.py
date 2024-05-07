@@ -125,7 +125,7 @@ class Circle:
         return im
 
 
-def iterative_photometry(
+def iterative_cutouts_photometry(
         image, weight, flags, psf, radii=[3.0, 5.0, 7.0], annulus=[7.5, 10.0], iterations=3, verbose=False
 ):
     """Perform aperture and PSF photometry on an image, at positions, using a list of apertures.

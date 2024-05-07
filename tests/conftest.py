@@ -1,6 +1,5 @@
 import os
 import warnings
-import logging
 import pytest
 import uuid
 import shutil
