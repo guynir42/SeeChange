@@ -39,38 +39,41 @@ def pytest_sessionstart(session):
     # Will be executed before the first test
 
     # this is only to make the warnings into errors, so it is easier to track them down...
-    # warnings.filterwarnings('error', append=True)
+    warnings.filterwarnings('error', append=True)
 
-    # ignore any warnings from photometry code
+    # ignore warnings from photometry code that occur for cutouts with mostly zero values
     warnings.filterwarnings('ignore', message=r'.*Background mean=.*, std=.*, normalization skipped!.*')
-    warnings.filterwarnings('ignore', message=r'.*Removed redundant SIP distortion parameters.*')
-    warnings.filterwarnings('ignore', message=r".*'datfix' made the change 'Set MJD-OBS to.*")
-    warnings.filterwarnings('ignore', message=r".*the RADECSYS keyword is deprecated, use RADESYSa.*")
-    # if you want to add the provenance, you should do it explicitly, not by adding it to a CodeVersion
-    warnings.filterwarnings(
-        'ignore',
-        # message=r".*Object.*"
-        message=r".*Object of type <Provenance> not in session, "
-                r"add operation along 'CodeVersion\.provenances' will not proceed.*"
-    )
 
-    # if the object is not in the session, why do I care that we removed some related object from it?
-    warnings.filterwarnings(
-        'ignore',
-        message=r".*Object of type .* not in session, delete operation along .* won't proceed.*"
-    )
-
-    # this happens when loading/merging something that refers to another thing that refers back to the original thing
-    warnings.filterwarnings(
-        'ignore',
-        message=r".*Loader depth for query is excessively deep; caching will be disabled for additional loaders.*"
-    )
-
-    warnings.filterwarnings(
-        'ignore',
-        "Can't emit change event for attribute 'Image.md5sum' "
-        "- parent object of type <Image> has been garbage collected",
-    )
+    # # ignore FITS file warnings
+    # warnings.filterwarnings('ignore', message=r'.*Removed redundant SIP distortion parameters.*')
+    # warnings.filterwarnings('ignore', message=r".*'datfix' made the change 'Set MJD-OBS to.*")
+    # warnings.filterwarnings('ignore', message=r"(?s).*the RADECSYS keyword is deprecated, use RADESYSa.*")
+    #
+    # # if you want to add the provenance, you should do it explicitly, not by adding it to a CodeVersion
+    # warnings.filterwarnings(
+    #     'ignore',
+    #     # message=r".*Object.*"
+    #     message=r".*Object of type <Provenance> not in session, "
+    #             r"add operation along 'CodeVersion\.provenances' will not proceed.*"
+    # )
+    #
+    # # if the object is not in the session, why do I care that we removed some related object from it?
+    # warnings.filterwarnings(
+    #     'ignore',
+    #     message=r".*Object of type .* not in session, delete operation along .* won't proceed.*"
+    # )
+    #
+    # # this happens when loading/merging something that refers to another thing that refers back to the original thing
+    # warnings.filterwarnings(
+    #     'ignore',
+    #     message=r".*Loader depth for query is excessively deep; caching will be disabled for additional loaders.*"
+    # )
+    #
+    # warnings.filterwarnings(
+    #     'ignore',
+    #     "Can't emit change event for attribute 'Image.md5sum' "
+    #     "- parent object of type <Image> has been garbage collected",
+    # )
 
     # make sure to load the test config
     test_config_file = str((pathlib.Path(__file__).parent.parent / 'tests' / 'seechange_config_test.yaml').resolve())
