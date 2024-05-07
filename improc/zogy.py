@@ -355,7 +355,7 @@ def zogy_add_weights_flags(ref_weight, new_weight, ref_flags, new_flags, ref_psf
     # divide without dividing by zero (ref: https://stackoverflow.com/a/37977222)
     w1 = np.divide(1, ref_weight, out=np.zeros_like(ref_weight), where=ref_weight != 0)
     w2 = np.divide(1, new_weight, out=np.zeros_like(new_weight), where=new_weight != 0)
-    outwt = np.divide(1, w1 + w2, out=np.zeros_like(w1), where=(mask != 0) | ((w1 + w2) != 0))
+    outwt = np.divide(1, w1 + w2, out=np.zeros_like(w1), where=(mask != 0) & ((w1 + w2) != 0))
 
     # expand the flags of the new image
     splash_pixels = int(np.ceil(max(ref_psf_fwhm, new_psf_fwhm)))
