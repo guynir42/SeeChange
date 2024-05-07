@@ -356,4 +356,3 @@ if __name__ == '__main__':
     c = get_circle(radius=3.0)
     plt.imshow(c.get_image(0.0, 0.0))
     plt.show()
-    print('done')

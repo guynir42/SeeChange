@@ -1,7 +1,7 @@
 import pytest
 
 import numpy as np
-
+import models.base
 from pipeline.parameters import Parameters, ParsDemoSubclass
 
 
