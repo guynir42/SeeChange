@@ -146,7 +146,7 @@ class PSFPaletteMaker:
                     '-BACK_VALUE', '0.0',
                     self.imagename
                    ]
-        res = subprocess.run( command, capture_output=True )
+        res = subprocess.run( command, capture_output=True, timeout=60 )
         assert res.returncode == 0
 
         _logger.info( "Runing psfex..." )
@@ -163,7 +163,7 @@ class PSFPaletteMaker:
                     '-XML_URL', 'file:///usr/share/psfex/psfex.xsl',
                     self.catname
                    ]
-        res = subprocess.run( command, capture_output=True )
+        res = subprocess.run( command, capture_output=True, timeout=60 )
         assert res.returncode == 0
 
         self.psf = PSF( format='psfex' )
@@ -289,7 +289,7 @@ def test_write_psfex_psf( ztf_filepaths_image_sources_psf ):
                     '-BACK_FILTERSIZE', '3',
                     '-PSF_NAME', psffullpath,
                     image ]
-        res = subprocess.run( command, capture_output=True )
+        res = subprocess.run( command, capture_output=True, timeout=60 )
         assert res.returncode == 0
 
     finally:

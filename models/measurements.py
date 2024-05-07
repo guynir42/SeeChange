@@ -121,7 +121,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
     def mag_psf_err(self):
         if self.flux_psf <= 0:
             return np.nan
-        return np.sqrt( (2.5 / np.log(10) * self.flux_psf_err / self.flux_psf) ** 2 + self.zp.dzp ** 2)
+        return np.sqrt((2.5 / np.log(10) * self.flux_psf_err / self.flux_psf) ** 2 + self.zp.dzp ** 2)
 
     @property
     def mag_apertures(self):
@@ -129,7 +129,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         for flux, correction in zip(self.flux_apertures, self.zp.aper_cors):
             new_mag = -2.5 * np.log10(flux) + self.zp.zp + correction if flux > 0 else np.nan
             mags.append(new_mag)
-        # return [-2.5 * np.log10(f) + self.zp.zp + self.zp.aper_cors[i] for i, f in enumerate(self.flux_apertures)]
+
         return mags
 
     @property
@@ -137,7 +137,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         errs = []
         for flux, flux_err in zip(self.flux_apertures, self.flux_apertures_err):
             if flux > 0:
-                new_err = np.sqrt( (2.5 / np.log(10) * flux_err / flux) ** 2 + self.zp.dzp ** 2)
+                new_err = np.sqrt((2.5 / np.log(10) * flux_err / flux) ** 2 + self.zp.dzp ** 2)
             else:
                 new_err = np.nan
             errs.append(new_err)

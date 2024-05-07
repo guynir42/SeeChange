@@ -208,7 +208,7 @@ def iterative_photometry(
         normalization = np.nansum(nandata - bkg_estimate)
         if normalization == 0:
             normalization = 1.0
-        if abs(normalization) < 1.0:
+        elif abs(normalization) < 1.0:
             normalization = 1.0 * np.sign(normalization)  # prevent division by zero and other rare cases
         cx = np.nansum(xgrid * (nandata - bkg_estimate)) / normalization
         cy = np.nansum(ygrid * (nandata - bkg_estimate)) / normalization
