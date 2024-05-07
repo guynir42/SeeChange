@@ -65,7 +65,6 @@ def setup_warning_filters():
     # if you want to add the provenance, you should do it explicitly, not by adding it to a CodeVersion
     warnings.filterwarnings(
         'ignore',
-        # message=r".*Object.*"
         message=r".*Object of type <Provenance> not in session, "
                 r"add operation along 'CodeVersion\.provenances' will not proceed.*"
     )
