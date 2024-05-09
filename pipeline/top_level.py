@@ -14,6 +14,27 @@ from util.config import Config
 # should this come from db.py instead?
 from models.base import SmartSession
 
+# describes the pipeline objects that are used to produce each step of the pipeline
+# if multiple objects are used in one step, replace the string with a sub-dictionary,
+# where the sub-dictionary keys are the keywords inside the expected critical parameters
+# that come from all the different objects.
+PROCESS_OBJECTS = {
+    'preprocessing': 'preprocessor',
+    'extraction': 'extractor',  # the same object also makes the PSF (and background?)
+    # TODO: when joining the astro/photo cal into extraction, use this format:
+    # 'extraction': {
+    #     'sources': 'extractor',
+    #     'astro_cal': 'astro_cal',
+    #     'photo_cal': 'photo_cal',
+    # }
+    'astro_cal': 'astro_cal',
+    'photo_cal': 'photo_cal',
+    'subtraction': 'subtractor',
+    'detection': 'detector',
+    'cutting': 'cutter',
+    'measuring': 'measurer',
+    # TODO: add one more for R/B deep learning scores
+}
 
 # put all the top-level pipeline parameters in the init of this class:
 class ParsPipeline(Parameters):
@@ -130,4 +151,30 @@ class Pipeline:
         """
         with SmartSession() as session:
             self.run(session=session)
+
+    def make_provenance_tree(self, exposure, session=None, commit=True):
+        """Use the current configuration of the pipeline and all the objects it has
+        to generate the provenances for all the processing steps.
+        This will conclude with the reporting step, which simply has an upstreams
+        list of provenances to the measuring provenance and to the machine learning score
+        provenances. From those, a user can recreate the entire tree of provenances.
+
+        Parameters
+        ----------
+        exposure : Exposure
+            The exposure to use to get the initial provenance.
+            This provenance should be automatically created by the exposure.
+        session : SmartSession, optional
+            The function needs to work with the database to merge existing provenances.
+            If a session is given, it will use that, otherwise it will open a new session,
+            which will also close automatically at the end of the function.
+        commit: bool, optional, default True
+            By default, the provenances are merged and committed inside this function.
+            To disable this, set commit=False. This may leave the provenances in a
+            transient state, and is most likely not what you want.
+
+        """
+        provs = {'exposure': exposure.provenance}  # TODO: does this always work on any exposure?
+
+        for step in
 

@@ -16,7 +16,8 @@ from models.measurements import Measurements
 from models.objects import Object
 
 
-UPSTREAM_NAMES = {
+# for each process step, list the steps that go into its upstream
+UPSTREAM_STEPS = {
     'exposure': [],  # no upstreams
     'preprocessing': ['exposure'],
     'extraction': ['preprocessing'],
@@ -28,11 +29,13 @@ UPSTREAM_NAMES = {
     'measuring': ['cutting'],
 }
 
-UPSTREAM_OBJECTS = {
+# The products that are made at each processing step.
+# Usually it is only one, but sometimes there are multiple products for one step (e.g., extraction)
+PROCESS_PRODUCTS = {
     'exposure': 'exposure',
     'preprocessing': 'image',
     'coaddition': 'image',
-    'extraction': 'sources',
+    'extraction': ['sources', 'psf'],  # TODO: add background, maybe move wcs and zp in here too? 
     'astro_cal': 'wcs',
     'photo_cal': 'zp',
     'reference': 'reference',
@@ -49,7 +52,7 @@ class DataStore:
     to be fetched from the database, and keep a cached version of the products for
     use downstream in the pipeline.
     """
-    attributes_to_save = [
+    products_to_save = [
         'exposure',
         'image',
         'sources',
@@ -62,7 +65,7 @@ class DataStore:
         'measurements'
     ]
 
-    attributes_to_clear = [
+    products_to_clear = [
         'ref_image',
         'sub_image',
         'reference',
@@ -102,7 +105,7 @@ class DataStore:
         """
         See the parse_args method for details on how to initialize this object.
 
-        Please make sure to add any new attributes to the attributes_to_save list.
+        Please make sure to add any new attributes to the products_to_save list.
         """
         # these are data products that can be cached in the store
         self._exposure = None  # single image, entire focal plane
@@ -110,7 +113,7 @@ class DataStore:
 
         self.upstream_provs = None  # provenances to override the upstreams if no upstream objects exist
 
-        # these all need to be added to the attributes_to_save list
+        # these all need to be added to the products_to_save list
         self.image = None  # single image from one sensor section
         self.sources = None  # extracted sources (a SourceList object, basically a catalog)
         self.psf = None  # psf determined from the extracted sources
@@ -123,7 +126,7 @@ class DataStore:
         self.measurements = None  # photometry and other measurements for each source
         self.objects = None  # a list of Object associations of Measurements
 
-        # these need to be added to the attributes_to_clear list
+        # these need to be added to the products_to_clear list
         self.ref_image = None  # to be used to make subtractions
         self.sub_image = None  # subtracted image
         self.reference = None  # the Reference object needed to make subtractions
@@ -406,9 +409,12 @@ class DataStore:
 
             # check if we can find the upstream provenances
             upstreams = []
-            for name in UPSTREAM_NAMES[process]:
+            for name in UPSTREAM_STEPS[process]:
                 # first try to load an upstream that was given explicitly:
-                obj = getattr(self, UPSTREAM_OBJECTS[name], None)
+                obj_names = PROCESS_PRODUCTS[name]
+                if isinstance(obj_names, str):
+                    obj_names = [obj_names]
+                obj = getattr(self, obj_names[0], None)  # only need one object to get the provenance
                 if isinstance(obj, list):
                     obj = obj[0]  # for cutouts or measurements just use the first one
                 if upstream_provs is not None and name in [p.process for p in upstream_provs]:
@@ -429,7 +435,7 @@ class DataStore:
 
                 upstreams.append(prov)
 
-            if len(upstreams) != len(UPSTREAM_NAMES[process]):
+            if len(upstreams) != len(UPSTREAM_STEPS[process]):
                 raise ValueError(f'Could not find all upstream provenances for process {process}.')
 
             # we have a code version object and upstreams, we can make a provenance
@@ -1356,7 +1362,7 @@ class DataStore:
 
         """
         # save to disk whatever is FileOnDiskMixin
-        for att in self.attributes_to_save:
+        for att in self.products_to_save:
             obj = getattr(self, att, None)
             if obj is None:
                 continue
@@ -1542,8 +1548,8 @@ class DataStore:
                 session.autoflush = autoflush_state
 
         # Make sure all data products are None so that they aren't used again now that they're gone
-        # for att in self.attributes_to_save:
+        # for att in self.products_to_save:
         #     setattr(self, att, None)
         #
-        # for att in self.attributes_to_clear:
+        # for att in self.products_to_clear:
         #     setattr(self, att, None)
