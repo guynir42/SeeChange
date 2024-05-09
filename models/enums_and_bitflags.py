@@ -409,3 +409,43 @@ class BitFlagConverter( EnumConverter ):
     _allowed_values = flag_image_bits
     _dict_filtered = None
     _dict_inverse = None
+
+
+# the list of possible processing steps from a section of an exposure up to measurments, r/b scores, and report
+report_progress_dict = {
+    1: 'preprocessing',  # creates an Image from a section of the Exposure
+    2: 'extraction',     # creates a SourceList from an Image, and a PSF
+    3: 'astro_cal',      # creates a WorldCoordinates from a SourceList
+    4: 'phot_cal',       # creates a ZeroPoint from a WorldCoordinates
+    5: 'subtraction',    # creates a subtraction Image
+    6: 'detection',      # creates a SourceList from a subtraction Image
+    7: 'cutting',        # creates Cutouts from a subtraction Image
+    8: 'measuring',      # creates Measurements from Cutouts
+    # TODO: add R/B scores and maybe an extra step for finalizing a report
+}
+report_progress_inverse = {EnumConverter.c(v): k for k, v in image_badness_dict.items()}
+
+
+# these are all the ways a PSF object is allowed to be bad
+psf_badness_dict = {
+    11: 'psf fit failed',
+}
+psf_badness_inverse = {EnumConverter.c(v): k for k, v in report_progress_dict.items()}
+
+
+# the list of objects that could be loaded to a datastore after running the pipeline
+pipeline_products_dict = {
+    1: 'image',
+    2: 'sources',
+    3: 'psf',
+    4: 'background', # not yet implemented
+    5: 'wcs',
+    6: 'zp',
+    7: 'sub_image',
+    8: 'detections',
+    9: 'cutouts',
+    10: 'measurements',
+    11: 'rb_scores',
+}
+
+pipeline_products_inverse = {EnumConverter.c(v): k for k, v in pipeline_products_dict.items()}
