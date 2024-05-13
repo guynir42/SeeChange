@@ -444,7 +444,7 @@ class DataStore:
                 code_version=code_version,
                 parameters=pars_dict,
                 upstreams=upstreams,
-                is_testing="test_parameter" in pars_dict, # this is a flag for testing purposes
+                is_testing="test_parameter" in pars_dict,  # this is a flag for testing purposes
             )
             db_prov = session.scalars(sa.select(Provenance).where(Provenance.id == prov.id)).first()
             if db_prov is not None:  # only merge if this provenance already exists
@@ -921,7 +921,7 @@ class DataStore:
             the current code version and critical parameters.
             If none is given, will use the latest provenance
             for the "coaddition" process.
-        session: sqlalchemy.orm.session.Session or SmartSession
+        session: sqlalchemy.orm.session.Session
             An optional session to use for the database query.
             If not given, will use the session stored inside the
             DataStore object; if there is none, will open a new session
@@ -937,38 +937,13 @@ class DataStore:
             image = self.get_image(session=session)
 
             if self.reference is not None:
-                if not (
-                        (self.reference.validity_start is None or
-                         self.reference.validity_start <= image.observation_time) and
-                        (self.reference.validity_end is None or
-                         self.reference.validity_end >= image.observation_time) and
-                        self.reference.filter == image.filter and
-                        self.reference.target == image.target and
-                        self.reference.is_bad is False
-                ):
+                if not Reference.check_reference(self.reference, image.filter, image.target, image.observation_time):
                     self.reference = None
 
             if self.reference is None:
-                ref = session.scalars(
-                    sa.select(Reference).where(
-                        sa.or_(
-                            Reference.validity_start.is_(None),
-                            Reference.validity_start <= image.observation_time
-                        ),
-                        sa.or_(
-                            Reference.validity_end.is_(None),
-                            Reference.validity_end >= image.observation_time
-                        ),
-                        Reference.filter == image.filter,
-                        Reference.target == image.target,
-                        Reference.is_bad.is_(False),
-                    )
-                ).first()
-
-                if ref is None:
-                    raise ValueError(f'No reference image found for image {image.id}')
-
-                self.reference = ref
+                self.reference = Reference.get_reference(
+                    image.filter, image.target, image.observation_time, session=session
+                )
 
         return self.reference
 

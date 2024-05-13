@@ -454,7 +454,7 @@ class SeeChangeBase:
     @classmethod
     def from_dict(cls, dictionary):
         """Convert a dictionary into a new object. """
-        dictionary.pop('modified')  # we do not want to recreate the object with an old "modified" time
+        dictionary.pop('modified', None)  # we do not want to recreate the object with an old "modified" time
 
         md5sum = dictionary.get('md5sum', None)
         if md5sum is not None:

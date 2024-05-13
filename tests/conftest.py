@@ -4,6 +4,7 @@ import pytest
 import uuid
 import shutil
 import pathlib
+import logging
 
 import numpy as np
 

@@ -273,3 +273,76 @@ class Reference(Base, AutoIDMixin):
         new_ref.image = self.image.merge_all(session)
 
         return new_ref
+
+    @staticmethod
+    def check_reference(ref, filter, target, obs_time):
+        """Check if the given reference is valid for the given filter, target, and observation time.
+        If the reference has is_bad==True, it will also not be considered valid.
+        Parameters
+        ----------
+        filter: str
+            The filter of the image/exposure.
+        target: str
+            The target of the image/exposure, or the name of the field.  # TODO: can we replace this with coordinates?
+        obs_time: datetime
+            The observation time of the image.
+
+        Returns
+        -------
+        bool:
+            True if the reference is valid for the given filter, target, and observation time.
+        """
+        return (
+                (ref.validity_start is None or ref.validity_start <= obs_time) and
+                (ref.validity_end is None or ref.validity_end >= obs_time) and
+                ref.filter == filter and ref.target == target and
+                ref.is_bad is False
+        )
+
+    @staticmethod
+    def get_reference(filter, target, obs_time, session=None):
+        """
+        Get a reference for a given filter, target, and observation time.
+        References with is_bad==True will not be considered.
+
+        Parameters
+        ----------
+        filter: str
+            The filter of the image/exposure.
+        target: str
+            The target of the image/exposure, or the name of the field.  # TODO: can we replace this with coordinates?
+        obs_time: datetime
+            The observation time of the image.
+        session: sqlalchemy.orm.session.Session
+            An optional session to use for the database query.
+            If not given, will use the session stored inside the
+            DataStore object; if there is none, will open a new session
+            and close it at the end of the function.
+
+        Returns
+        -------
+        ref: Image object
+            The reference image for this image, or None if no reference is found.
+
+        """
+        with SmartSession(session) as session:
+            ref = session.scalars(
+                sa.select(Reference).where(
+                    sa.or_(
+                        Reference.validity_start.is_(None),
+                        Reference.validity_start <= obs_time
+                    ),
+                    sa.or_(
+                        Reference.validity_end.is_(None),
+                        Reference.validity_end >= obs_time
+                    ),
+                    Reference.filter == filter,
+                    Reference.target == target,
+                    Reference.is_bad.is_(False),
+                )
+            ).first()
+
+            if ref is None:
+                raise ValueError(f'No reference found with filter={filter}, target={target}, obs_time={obs_time}')
+
+        return ref

@@ -522,6 +522,14 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
             return None
         return self.mjd + self.exp_time / 86400.0
 
+    @property
+    def observation_time(self):
+        """Translation of the MJD column to datetime object."""
+        if self.mjd is None:
+            return None
+        else:
+            return Time(self.mjd, format='mjd').datetime
+
     def __repr__(self):
 
         filter_str = '--'

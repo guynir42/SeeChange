@@ -67,6 +67,14 @@ class Report(Base, AutoIDMixin):
         )
     )
 
+    worker_id = sa.Column(
+        sa.Text,
+        nullable=False,
+        doc=(
+            "ID of the worker/process that ran this section. "
+        )
+    )
+
     error_step = sa.Column(
         sa.Text,
         nullable=True,

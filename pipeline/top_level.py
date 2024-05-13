@@ -1,6 +1,7 @@
+import sqlalchemy as sa
 
 from pipeline.parameters import Parameters
-from pipeline.data_store import DataStore
+from pipeline.data_store import DataStore, UPSTREAM_STEPS
 from pipeline.preprocessing import Preprocessor
 from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
@@ -13,6 +14,8 @@ from util.config import Config
 
 # should this come from db.py instead?
 from models.base import SmartSession
+from models.provenance import Provenance
+from models.reference import Reference
 
 # describes the pipeline objects that are used to produce each step of the pipeline
 # if multiple objects are used in one step, replace the string with a sub-dictionary,
@@ -35,6 +38,7 @@ PROCESS_OBJECTS = {
     'measuring': 'measurer',
     # TODO: add one more for R/B deep learning scores
 }
+
 
 # put all the top-level pipeline parameters in the init of this class:
 class ParsPipeline(Parameters):
@@ -103,10 +107,26 @@ class Pipeline:
         self.cutter = Cutter(**cutting_config)
 
         # measure photometry, analytical cuts, and deep learning models on the Cutouts:
-        measurement_config = self.config.value('measuring', {})
-        measurement_config.update(kwargs.get('measuring', {}))
-        self.pars.add_defaults_to_dict(measurement_config)
-        self.measurer = Measurer(**measurement_config)
+        measuring_config = self.config.value('measuring', {})
+        measuring_config.update(kwargs.get('measuring', {}))
+        self.pars.add_defaults_to_dict(measuring_config)
+        self.measurer = Measurer(**measuring_config)
+
+    def override_parameters(self, **kwargs):
+        """Override some of the parameters for this object and its sub-objects, using Parameters.override(). """
+        for key, value in kwargs.items():
+            if key in PROCESS_OBJECTS:
+                getattr(self, PROCESS_OBJECTS[key]).pars.override(value)
+            else:
+                self.pars.override({key: value})
+
+    def augment_parameters(self, **kwargs):
+        """Add some parameters to this object and its sub-objects, using Parameters.augment(). """
+        for key, value in kwargs.items():
+            if key in PROCESS_OBJECTS:
+                getattr(self, PROCESS_OBJECTS[key]).pars.augment(value)
+            else:
+                self.pars.augment({key: value})
 
     def run(self, *args, **kwargs):
         """
@@ -152,6 +172,33 @@ class Pipeline:
         with SmartSession() as session:
             self.run(session=session)
 
+    @staticmethod
+    def get_reference(filter, target, obs_time, session=None):
+        """
+        Get a reference for a given filter, target, and observation time.
+
+        Parameters
+        ----------
+        filter: str
+            The filter of the image/exposure.
+        target: str
+            The target of the image/exposure, or the name of the field.  # TODO: can we replace this with coordinates?
+        obs_time: datetime
+            The observation time of the image.
+        session: sqlalchemy.orm.session.Session
+            An optional session to use for the database query.
+            If not given, will use the session stored inside the
+            DataStore object; if there is none, will open a new session
+            and close it at the end of the function.
+
+        Returns
+        -------
+        ref: Image object
+            The reference image for this image, or None if no reference is found.
+
+        """
+        return Reference.get_reference(filter, target, obs_time, session=session)
+
     def make_provenance_tree(self, exposure, session=None, commit=True):
         """Use the current configuration of the pipeline and all the objects it has
         to generate the provenances for all the processing steps.
@@ -173,8 +220,59 @@ class Pipeline:
             To disable this, set commit=False. This may leave the provenances in a
             transient state, and is most likely not what you want.
 
+        Returns
+        -------
+        dict
+            A dictionary of all the provenances that were created in this function,
+            keyed according to the different steps in the pipeline.
+            The provenances are all merged to the session.
         """
-        provs = {'exposure': exposure.provenance}  # TODO: does this always work on any exposure?
+        with SmartSession(session) as session:
+            # start by getting the exposure and reference
+            exposure = session.merge(exposure)  # also merges the provenance and code_version
+            reference = self.get_reference(exposure.filter, exposure.target, exposure.observation_time, session=session)
 
-        for step in
+            provs = {'exposure': exposure.provenance}  # TODO: does this always work on any exposure?
+            code_version = exposure.provenance.code_version
+            is_testing = exposure.provenance.is_testing
 
+            for step in PROCESS_OBJECTS:
+                if isinstance(PROCESS_OBJECTS[step], dict):
+                    parameters = {}
+                    for key, value in PROCESS_OBJECTS[step].items():
+                        parameters[key] = getattr(self, value).pars.get_critical_pars()
+                else:
+                    parameters = getattr(self, PROCESS_OBJECTS[step]).pars.get_critical_pars()
+
+                # some preprocessing parameters (the "preprocessing_steps") doesn't come from the
+                # config file, but instead comes from the preprocessing itself.
+                # TODO: fix this as part of issue #147
+                if step == 'preprocessing':
+                    if 'preprocessing_steps' not in parameters:
+                        parameters['preprocessing_steps'] = ['overscan', 'linearity', 'flat', 'fringe']
+
+                # figure out which provenances go into the upstreams for this step
+                up_steps = UPSTREAM_STEPS[step]
+                if isinstance(up_steps, str):
+                    up_steps = [up_steps]
+                upstreams = []
+                for upstream in up_steps:
+                    if upstream == 'reference':
+                        upstreams += reference.provenance.upstreams
+                    else:
+                        upstreams.append(provs[upstream])
+
+                provs[step] = Provenance(
+                    code_version=code_version,
+                    process=step,
+                    parameters=parameters,
+                    upstreams=upstreams,
+                    is_testing=is_testing,
+                )
+
+                provs[step] = session.merge(provs[step])
+
+            if commit:
+                session.commit()
+
+            return provs
