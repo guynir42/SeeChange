@@ -587,6 +587,7 @@ def datastore_factory(data_dir, pipeline_factory):
                 if os.path.isfile(os.path.join(cache_dir, cache_name)):
                     _logger.debug('loading subtraction image from cache. ')
                     ds.sub_image = Image.copy_from_cache(cache_dir, cache_name)
+
                     ds.sub_image.provenance = prov
                     ds.sub_image.upstream_images.append(ref.image)
                     ds.sub_image.ref_image_id = ref.image_id
@@ -618,7 +619,7 @@ def datastore_factory(data_dir, pipeline_factory):
                         is_testing=True,
                     )
                     # TODO: can we find a less "hacky" way to do this?
-                    f = ds.sub_image.ref_image.invent_filepath()
+                    f = ref.image.invent_filepath()
                     f = f.replace('ComSci', 'Warped')  # not sure if this or 'Sci' will be in the filename
                     f = f.replace('Sci', 'Warped')     # in any case, replace it with 'Warped'
                     f = f[:-6] + prov_aligned_ref.id[:6]  # replace the provenance ID
@@ -676,9 +677,9 @@ def datastore_factory(data_dir, pipeline_factory):
 
             # make sure that the aligned images get into the cache, too
             if (
-                    cache_name_ref in locals() and
+                    'cache_name_ref' in locals() and
                     os.path.isfile(os.path.join(cache_dir, cache_name_ref)) and
-                    cache_name_new in locals() and
+                    'cache_name_new' in locals() and
                     os.path.isfile(os.path.join(cache_dir, cache_name_new))
             ):
                 for im in ds.sub_image.aligned_images:
