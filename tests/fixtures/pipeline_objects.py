@@ -654,7 +654,7 @@ def datastore_factory(data_dir, pipeline_factory):
                         image_aligned_ref.provenance = prov_aligned_ref
                         image_aligned_ref.info['original_image_id'] = ds.ref_image_id
                         image_aligned_ref.info['original_image_filepath'] = ds.ref_image.filepath
-                        image_aligned_ref.save(verify_md5=False)  # make sure it is also saved to archive
+                        image_aligned_ref.save(verify_md5=False, no_archive=True)
                         # TODO: should we also load the aligned image's sources, PSF, and ZP?
 
                         _logger.debug('loading aligned new image from cache. ')
@@ -662,7 +662,7 @@ def datastore_factory(data_dir, pipeline_factory):
                         image_aligned_new.provenance = prov_aligned_new
                         image_aligned_new.info['original_image_id'] = ds.image_id
                         image_aligned_new.info['original_image_filepath'] = ds.image.filepath
-                        image_aligned_new.save(verify_md5=False)  # make sure it is also saved to archive
+                        image_aligned_new.save(verify_md5=False, no_archive=True)
                         # TODO: should we also load the aligned image's sources, PSF, and ZP?
 
                         if image_aligned_ref.mjd < image_aligned_new.mjd:

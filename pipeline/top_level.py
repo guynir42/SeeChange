@@ -1,3 +1,5 @@
+import datetime
+
 import sqlalchemy as sa
 
 from pipeline.parameters import Parameters
@@ -16,6 +18,7 @@ from util.config import Config
 from models.base import SmartSession
 from models.provenance import Provenance
 from models.reference import Reference
+from models.report import Report
 
 # describes the pipeline objects that are used to produce each step of the pipeline
 # if multiple objects are used in one step, replace the string with a sub-dictionary,
@@ -135,31 +138,88 @@ class Pipeline:
         and calculate and commit any new data that did not exist.
         """
 
-        ds, session = DataStore.from_args(*args, **kwargs)
+        try:
+            ds, session = DataStore.from_args(*args, **kwargs)
+        except Exception as e:
+            ds = DataStore.catch_failure_to_parse(e, *args)
 
-        # run dark/flat and sky subtraction tools, save the results as Image objects to DB and disk
+        if ds.exposure is None:
+            raise RuntimeError('Not sure if there is a way to run this pipeline method without an exposure!')
+
+        try:  # must make sure the exposure is on the DB
+            with SmartSession(session) as dbsession:
+                ds.exposure = dbsession.merge(ds.exposure)
+                dbsession.commit()
+        except Exception as e:
+            raise RuntimeError('Failed to merge the exposure into the session!') from e
+
+        try:  # make sure we have a reference for this exposure
+            with SmartSession(session) as dbsession:
+                reference = Reference.get_reference(ds.exposure.filter, ds.exposure.target, ds.exposure.observation_time, dbsession)
+                if reference is None:
+                    raise RuntimeError('No reference found!')
+        except Exception as e:
+            raise RuntimeError(f'Cannot get reference exposure {ds.exposure.filepath}!') from e
+
+
+        try:  # create (and commit, if not existing) all provenances for the products
+            with SmartSession(session) as dbsession:
+                provs = self.make_provenance_tree(ds.exposure, session=dbsession, commit=True)
+        except Exception as e:
+            raise RuntimeError('Failed to create the provenance tree!') from e
+
+        try:  # must make sure the report is on the DB
+            report = Report(exposure=ds.exposure, section_id=ds.section_id)
+            report.started_at = datetime.datetime.utcnow()
+            prov = Provenance(
+                process='report',
+                code_version=ds.exposure.provenance.code_version,
+                parameters={},
+                upstreams=[provs['measuring']],
+                is_testing=ds.exposure.provenance.is_testing,
+            )
+            report.provenance = prov
+            with SmartSession(session) as dbsession:
+                report = dbsession.merge(report)
+                dbsession.commit()
+
+            if report.exposure_id is None:
+                raise RuntimeError('Report did not get a valid exposure_id!')
+        except Exception as e:
+            raise RuntimeError('Failed to create or merge a report for the exposure!') from e
+
+        # run dark/flat preprocessing, cut out a specific section of the sensor
+        # TODO: save the results as Image objects to DB and disk? Or save at the end?
         ds = self.preprocessor.run(ds, session)
+        report.scan_datastore(ds, 'preprocessing', session)
 
-        # extract sources and make a SourceList from the regular image
+        # extract sources and make a SourceList and PSF from the image
         ds = self.extractor.run(ds, session)
+        report.scan_datastore(ds, 'extraction', session)
 
         # find astrometric solution, save WCS into Image object and FITS headers
         ds = self.astro_cal.run(ds, session)
+        report.scan_datastore(ds, 'astro_cal', session)
 
         # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
         ds = self.photo_cal.run(ds, session)
+        report.scan_datastore(ds, 'photo_cal', session)
 
         # fetch reference images and subtract them, save SubtractedImage objects to DB and disk
         ds = self.subtractor.run(ds, session)
+        report.scan_datastore(ds, 'subtraction', session)
 
         # find sources, generate a source list for detections
         ds = self.detector.run(ds, session)
+        report.scan_datastore(ds, 'detection', session)
 
         # make cutouts of all the sources in the "detections" source list
         ds = self.cutter.run(ds, session)
+        report.scan_datastore(ds, 'cutting', session)
 
         # extract photometry, analytical cuts, and deep learning models on the Cutouts:
         ds = self.measurer.run(ds, session)
+        report.scan_datastore(ds, 'measuring', session)
 
         return ds
 
