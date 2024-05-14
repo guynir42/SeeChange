@@ -1462,7 +1462,7 @@ class DataStore:
                 self.detections = self.sub_image.sources
 
             session.commit()
-            self.products_committed += 'sub_image'
+            self.products_committed += ', sub_image'
 
             if self.detections is not None:
                 if self.cutouts is not None:
@@ -1482,7 +1482,7 @@ class DataStore:
                         self.measurements[i].object.measurements.append(self.measurements[i])
 
             session.commit()
-            self.products_committed += 'detections, cutouts, measurements'
+            self.products_committed += ', detections, cutouts, measurements'
 
     def delete_everything(self, session=None, commit=True):
         """Delete everything associated with this sub-image.
