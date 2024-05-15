@@ -4,7 +4,7 @@ from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-from models.base import Base, SeeChangeBase, AutoIDMixin, SmartSession
+from models.base import Base, SeeChangeBase, AutoIDMixin, SmartSession, _logger
 from models.enums_and_bitflags import (
     bitflag_to_string,
     string_to_bitflag,
@@ -134,7 +134,7 @@ class Report(Base, AutoIDMixin):
         nullable=True,
         doc=(
             "Comma-separated string of warnings that were raised during processing. "
-            "Each warning begins with the processing step name, followed by the warning message and trace. "
+            "Each warning begins with the processing step name, followed by the warning type and message. "
         )
     )
 
@@ -306,7 +306,8 @@ class Report(Base, AutoIDMixin):
         self.process_memory = ds.memory_usages  # update with new dictionary
 
         # parse the warnings, if they exist
-        selfwarnings = ds.read_warnings()
+        if hasattr(ds, 'warnings_list') and isinstance(ds.warnings_list, list):
+            self.warnings = self.read_warnings(process_step, ds.warnings_list)
         
         if exception is not None:
             self.error_type = exception.__class__.__name__
@@ -324,3 +325,13 @@ class Report(Base, AutoIDMixin):
         session.merge(self)
         session.commit()
 
+    @staticmethod
+    def read_warnings(process_step, warnings_list):
+        """Convert a list of warnings into a comma separated string. """
+        formatted_warnings = []
+        for w in warnings_list:
+            text = f'{process_step}: <{w.category}> {w.message} ({w.filename}:{w.lineno})'
+            formatted_warnings.append(text)
+            _logger.warn(text)  # make sure warnings also get printed to the log/on screen.
+
+        return ', '.join(formatted_warnings)

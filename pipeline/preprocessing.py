@@ -41,6 +41,10 @@ class ParsPreprocessor(Parameters):
         return 'preprocessing'
 
 
+import warnings
+warnings.filterwarnings('error', append=True)
+
+
 class Preprocessor:
     def __init__(self, **kwargs):
         """Create a preprocessor.
@@ -114,6 +118,8 @@ class Preprocessor:
 
             if ( ds.exposure is None ) or ( ds.section_id is None ):
                 raise RuntimeError( "Preprocessing requires an exposure and a sensor section" )
+
+            self.pars.do_warning_exception_hangup_injection_here()
 
             cfg = Config.get()
 

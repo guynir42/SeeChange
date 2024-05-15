@@ -218,6 +218,8 @@ class Detector:
                     import tracemalloc
                     tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
+                self.pars.do_warning_exception_hangup_injection_here()
+
                 prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
                 if ds.sub_image is None and ds.image is not None and ds.image.is_sub:
                     ds.sub_image = ds.image
@@ -274,6 +276,8 @@ class Detector:
                 if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
                     import tracemalloc
                     tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
+
+                self.pars.do_warning_exception_hangup_injection_here()
 
                 sources = ds.get_sources(prov, session=session)
                 psf = ds.get_psf(prov, session=session)

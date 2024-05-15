@@ -247,6 +247,8 @@ class Subtractor:
                 import tracemalloc
                 tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
+            self.pars.do_warning_exception_hangup_injection_here()
+
             # get the provenance for this step:
             with SmartSession(session) as session:
                 prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)

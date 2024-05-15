@@ -1,5 +1,7 @@
 import os
 import datetime
+import warnings
+
 import sqlalchemy as sa
 
 from pipeline.parameters import Parameters
@@ -240,46 +242,48 @@ class Pipeline:
             import tracemalloc
             tracemalloc.start()  # trace the size of memory that is being used
 
-        # run dark/flat preprocessing, cut out a specific section of the sensor
-        # TODO: save the results as Image objects to DB and disk? Or save at the end?
-        ds = self.preprocessor.run(ds, session)
-        report.scan_datastore(ds, 'preprocessing', session)
+        with warnings.catch_warnings(record=True) as w:
+            ds.warnings_list = w  # appends warning to this list as it goes along
+            # run dark/flat preprocessing, cut out a specific section of the sensor
+            # TODO: save the results as Image objects to DB and disk? Or save at the end?
+            ds = self.preprocessor.run(ds, session)
+            report.scan_datastore(ds, 'preprocessing', session)
 
-        # extract sources and make a SourceList and PSF from the image
-        ds = self.extractor.run(ds, session)
-        report.scan_datastore(ds, 'extraction', session)
+            # extract sources and make a SourceList and PSF from the image
+            ds = self.extractor.run(ds, session)
+            report.scan_datastore(ds, 'extraction', session)
 
-        # find astrometric solution, save WCS into Image object and FITS headers
-        ds = self.astro_cal.run(ds, session)
-        report.scan_datastore(ds, 'astro_cal', session)
+            # find astrometric solution, save WCS into Image object and FITS headers
+            ds = self.astro_cal.run(ds, session)
+            report.scan_datastore(ds, 'astro_cal', session)
 
-        # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
-        ds = self.photo_cal.run(ds, session)
-        report.scan_datastore(ds, 'photo_cal', session)
+            # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
+            ds = self.photo_cal.run(ds, session)
+            report.scan_datastore(ds, 'photo_cal', session)
 
-        # fetch reference images and subtract them, save SubtractedImage objects to DB and disk
-        ds = self.subtractor.run(ds, session)
-        report.scan_datastore(ds, 'subtraction', session)
+            # fetch reference images and subtract them, save SubtractedImage objects to DB and disk
+            ds = self.subtractor.run(ds, session)
+            report.scan_datastore(ds, 'subtraction', session)
 
-        # find sources, generate a source list for detections
-        ds = self.detector.run(ds, session)
-        report.scan_datastore(ds, 'detection', session)
+            # find sources, generate a source list for detections
+            ds = self.detector.run(ds, session)
+            report.scan_datastore(ds, 'detection', session)
 
-        # make cutouts of all the sources in the "detections" source list
-        ds = self.cutter.run(ds, session)
-        report.scan_datastore(ds, 'cutting', session)
+            # make cutouts of all the sources in the "detections" source list
+            ds = self.cutter.run(ds, session)
+            report.scan_datastore(ds, 'cutting', session)
 
-        # extract photometry, analytical cuts, and deep learning models on the Cutouts:
-        ds = self.measurer.run(ds, session)
-        report.scan_datastore(ds, 'measuring', session)
+            # extract photometry, analytical cuts, and deep learning models on the Cutouts:
+            ds = self.measurer.run(ds, session)
+            report.scan_datastore(ds, 'measuring', session)
 
-        report.success = True
-        report.finish_time = datetime.datetime.utcnow()
-        with SmartSession(session) as dbsession:
-            dbsession.merge(report)
-            dbsession.commit()
+            report.success = True
+            report.finish_time = datetime.datetime.utcnow()
+            with SmartSession(session) as dbsession:
+                dbsession.merge(report)
+                dbsession.commit()
 
-        return ds
+            return ds
 
     def run_with_session(self):
         """

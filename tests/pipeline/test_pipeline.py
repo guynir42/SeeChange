@@ -504,7 +504,9 @@ def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, de
     assert ds.measurements[0].provenance_id == provs['measuring'].id
 
     with SmartSession() as session:
-        report = session.scalars(sa.select(Report).where(Report.exposure_id == decam_exposure.id)).first()
+        report = session.scalars(
+            sa.select(Report).where(Report.exposure_id == decam_exposure.id).order_by(Report.start_time.desc())
+        ).first()
         assert report is not None
         assert report.success
         assert abs(report.start_time - t_start) < datetime.timedelta(seconds=1)

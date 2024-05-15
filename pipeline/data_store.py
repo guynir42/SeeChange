@@ -237,9 +237,10 @@ class DataStore:
         self.exception = None
         return output
 
-    def read_warnings(self):
-        """Turn all the warnings recorded in the datastore into a format that Report can save to DB. """
-        pass  # TODO: implement this! It should go along with actually recording the warnings...
+    def reraise(self):
+        """If an exception is logged to the datastore, raise it. Otherwise pass. """
+        if self.exception is not None:
+            raise self.exception
 
     def __init__(self, *args, **kwargs):
         """
