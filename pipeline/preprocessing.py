@@ -1,4 +1,6 @@
+import os
 import pathlib
+import time
 
 import numpy as np
 
@@ -105,6 +107,11 @@ class Preprocessor:
         self._ds = ds  # TODO: is there a reason not to just use the output datastore?
 
         try:  # catch any exceptions and save them in the datastore
+            t_start = time.perf_counter()
+            if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                import tracemalloc
+                tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
+
             if ( ds.exposure is None ) or ( ds.section_id is None ):
                 raise RuntimeError( "Preprocessing requires an exposure and a sensor section" )
 
@@ -313,6 +320,12 @@ class Preprocessor:
             image._upstream_bitflag |= ds.exposure.bitflag
 
             ds.image = image
+
+            ds.runtimes['preprocessing'] = time.perf_counter() - t_start
+            if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                import tracemalloc
+                ds.memory_usages['preprocessing'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
+
         except Exception as e:
             ds.catch_exception(e)
         finally:

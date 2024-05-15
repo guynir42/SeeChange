@@ -1,5 +1,5 @@
+import os
 import datetime
-
 import sqlalchemy as sa
 
 from pipeline.parameters import Parameters
@@ -14,7 +14,6 @@ from pipeline.measuring import Measurer
 
 from util.config import Config
 
-# should this come from db.py instead?
 from models.base import SmartSession
 from models.provenance import Provenance
 from models.reference import Reference
@@ -158,10 +157,7 @@ class Pipeline:
         session: sqlalchemy.orm.session.Session
             An optional session. If not given, this will be None
         """
-        try:
-            ds, session = DataStore.from_args(*args, **kwargs)
-        except Exception as e:
-            ds = DataStore.catch_failure_to_parse(e, *args)
+        ds, session = DataStore.from_args(*args, **kwargs)
 
         if ds.exposure is None:
             raise RuntimeError('Not sure if there is a way to run this pipeline method without an exposure!')
@@ -199,6 +195,15 @@ class Pipeline:
             )
             report.provenance = prov
             with SmartSession(session) as dbsession:
+                # check how many times this report was generated before
+                prev_rep = dbsession.scalars(
+                    sa.select(Report).where(
+                        Report.exposure_id == ds.exposure.id,
+                        Report.section_id == ds.section_id,
+                        Report.provenance_id == prov.id,
+                    )
+                ).all()
+                report.num_prev_reports = len(prev_rep)
                 report = dbsession.merge(report)
                 dbsession.commit()
 
@@ -229,6 +234,11 @@ class Pipeline:
             The DataStore object that includes all the data products.
         """
         ds, report, session = self.setup_datastore_and_report(*args, **kwargs)
+
+        if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+            # ref: https://docs.python.org/3/library/tracemalloc.html#record-the-current-and-peak-size-of-all-traced-memory-blocks
+            import tracemalloc
+            tracemalloc.start()  # trace the size of memory that is being used
 
         # run dark/flat preprocessing, cut out a specific section of the sensor
         # TODO: save the results as Image objects to DB and disk? Or save at the end?

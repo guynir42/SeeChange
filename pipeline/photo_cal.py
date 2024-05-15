@@ -1,13 +1,15 @@
+import os
+import time
 import numpy as np
 
 import astropy.units as u
 
-from pipeline.parameters import Parameters
-from pipeline.data_store import DataStore
-import pipeline.catalog_tools
-
 from models.base import _logger
 from models.zero_point import ZeroPoint
+
+import pipeline.catalog_tools
+from pipeline.parameters import Parameters
+from pipeline.data_store import DataStore
 
 from util.exceptions import BadMatchException
 
@@ -227,65 +229,83 @@ class PhotCalibrator:
         will add a ZeroPoint object to the .zp field of the DataStore.
 
         """
+
         self.has_recalculated = False
-        ds, session = DataStore.from_args(*args, **kwargs)
+        try:  # first make sure we get back a datastore, even an empty one
+            ds, session = DataStore.from_args(*args, **kwargs)
+        except Exception as e:
+            return DataStore.catch_failure_to_parse(e, *args)
 
-        # get the provenance for this step:
-        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
+        try:
+            t_start = time.perf_counter()
+            if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                import tracemalloc
+                tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
-        # try to find the world coordinates in memory or in the database:
-        zp = ds.get_zp(prov, session=session)
+            # get the provenance for this step:
+            prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
 
-        if zp is None:  # must create a new ZeroPoint object
-            self.has_recalculated = True
-            if self.pars.cross_match_catalog != 'gaia_dr3':
-                raise NotImplementedError( f"Currently only know how to calibrate to gaia_dr3, not "
-                                           f"{self.pars.cross_match_catalog}" )
+            # try to find the world coordinates in memory or in the database:
+            zp = ds.get_zp(prov, session=session)
 
-            image = ds.get_image(session=session)
+            if zp is None:  # must create a new ZeroPoint object
+                self.has_recalculated = True
+                if self.pars.cross_match_catalog != 'gaia_dr3':
+                    raise NotImplementedError( f"Currently only know how to calibrate to gaia_dr3, not "
+                                               f"{self.pars.cross_match_catalog}" )
 
-            sources = ds.get_sources(session=session)
-            if sources is None:
-                raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
+                image = ds.get_image(session=session)
 
-            wcs = ds.get_wcs( session=session )
-            if wcs is None:
-                raise ValueError( f'Cannot find a wcs for image {image.filepath}' )
+                sources = ds.get_sources(session=session)
+                if sources is None:
+                    raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
 
-            catname = self.pars.cross_match_catalog
-            fetch_func = getattr(pipeline.catalog_tools, f'fetch_{catname}_excerpt')
-            catexp = fetch_func(
-                image=image,
-                minstars=self.pars.min_catalog_stars,
-                maxmags=self.pars.max_catalog_mag,
-                magrange=self.pars.mag_range_catalog,
-                session=session,
-            )
+                wcs = ds.get_wcs( session=session )
+                if wcs is None:
+                    raise ValueError( f'Cannot find a wcs for image {image.filepath}' )
 
-            # Save for testing/evaluation purposes
-            self.catexp = catexp
+                catname = self.pars.cross_match_catalog
+                fetch_func = getattr(pipeline.catalog_tools, f'fetch_{catname}_excerpt')
+                catexp = fetch_func(
+                    image=image,
+                    minstars=self.pars.min_catalog_stars,
+                    maxmags=self.pars.max_catalog_mag,
+                    magrange=self.pars.mag_range_catalog,
+                    session=session,
+                )
 
-            zpval, dzpval = self._solve_zp( image, sources, wcs, catexp )
+                # Save for testing/evaluation purposes
+                self.catexp = catexp
 
-            # Add the aperture corrections
-            apercors = []
-            for i, rad in enumerate( sources.aper_rads ):
-                if i == sources.inf_aper_num:
-                    apercors.append( 0. )
-                else:
-                    apercors.append( sources.calc_aper_cor( aper_num=i ) )
+                zpval, dzpval = self._solve_zp( image, sources, wcs, catexp )
 
-            # Make the ZeroPoint object
-            ds.zp = ZeroPoint( sources=ds.sources, provenance=prov, zp=zpval, dzp=dzpval,
-                               aper_cor_radii=sources.aper_rads, aper_cors=apercors )
-            
-            if ds.zp._upstream_bitflag is None:
-                ds.zp._upstream_bitflag = 0
-            ds.zp._upstream_bitflag |= sources.bitflag
-            ds.zp._upstream_bitflag |= wcs.bitflag
+                # Add the aperture corrections
+                apercors = []
+                for i, rad in enumerate( sources.aper_rads ):
+                    if i == sources.inf_aper_num:
+                        apercors.append( 0. )
+                    else:
+                        apercors.append( sources.calc_aper_cor( aper_num=i ) )
 
-            ds.image.zero_point_estimate = ds.zp.zp  # TODO: should we only write if the property is None?
-            # TODO: we should also add a limiting magnitude calculation here.
+                # Make the ZeroPoint object
+                ds.zp = ZeroPoint( sources=ds.sources, provenance=prov, zp=zpval, dzp=dzpval,
+                                   aper_cor_radii=sources.aper_rads, aper_cors=apercors )
 
-        # make sure the DataStore is returned to be used in the next step
-        return ds
+                if ds.zp._upstream_bitflag is None:
+                    ds.zp._upstream_bitflag = 0
+                ds.zp._upstream_bitflag |= sources.bitflag
+                ds.zp._upstream_bitflag |= wcs.bitflag
+
+                ds.image.zero_point_estimate = ds.zp.zp  # TODO: should we only write if the property is None?
+                # TODO: we should also add a limiting magnitude calculation here.
+
+                ds.runtimes['photo_cal'] = time.perf_counter() - t_start
+                if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                    import tracemalloc
+                    ds.memory_usages['photo_cal'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
+
+        except Exception as e:
+            ds.catch_exception(e)
+        finally:
+            # make sure the DataStore is returned to be used in the next step
+            return ds

@@ -1,9 +1,15 @@
+import os
+import time
 import pathlib
+
 import improc.scamp
+
 from util.exceptions import CatalogNotFoundError, SubprocessFailure, BadMatchException
+
 from models.base import _logger
 from models.catalog_excerpt import CatalogExcerpt
 from models.world_coordinates import WorldCoordinates
+
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 from pipeline.catalog_tools import fetch_gaia_dr3_excerpt
@@ -263,33 +269,50 @@ class AstroCalibrator:
         Returns a DataStore object with the products of the processing.
         """
         self.has_recalculated = False
-        ds, session = DataStore.from_args(*args, **kwargs)
+        try:  # first make sure we get back a datastore, even an empty one
+            ds, session = DataStore.from_args(*args, **kwargs)
+        except Exception as e:
+            return DataStore.catch_failure_to_parse(e, *args)
 
-        # get the provenance for this step:
-        prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
+        try:
+            t_start = time.perf_counter()
+            if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                import tracemalloc
+                tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
-        # try to find the world coordinates in memory or in the database:
-        wcs = ds.get_wcs(prov, session=session)
+            # get the provenance for this step:
+            prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
 
-        if wcs is None:  # must create a new WorldCoordinate object
-            self.has_recalculated = True
-            image = ds.get_image(session=session)
-            if image.astro_cal_done:
-                _logger.warning( f"Failed to find a wcs for image {pathlib.Path( image.filepath ).name}, "
-                                 f"but it has astro_cal_done=True" )
+            # try to find the world coordinates in memory or in the database:
+            wcs = ds.get_wcs(prov, session=session)
 
-            if self.pars.solution_method == 'scamp':
-                self._run_scamp( ds, prov, session=session )
-            else:
-                raise ValueError( f'Unknown solution method {self.pars.solution_method}' )
-            
-            # update the upstream bitflag
-            sources = ds.get_sources( session=session )
-            if sources is None:
-                raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
-            if ds.wcs._upstream_bitflag is None:
-                ds.wcs._upstream_bitflag = 0
-            ds.wcs._upstream_bitflag |= sources.bitflag
+            if wcs is None:  # must create a new WorldCoordinate object
+                self.has_recalculated = True
+                image = ds.get_image(session=session)
+                if image.astro_cal_done:
+                    _logger.warning( f"Failed to find a wcs for image {pathlib.Path( image.filepath ).name}, "
+                                     f"but it has astro_cal_done=True" )
 
-        # make sure this is returned to be used in the next step
-        return ds
+                if self.pars.solution_method == 'scamp':
+                    self._run_scamp( ds, prov, session=session )
+                else:
+                    raise ValueError( f'Unknown solution method {self.pars.solution_method}' )
+
+                # update the upstream bitflag
+                sources = ds.get_sources( session=session )
+                if sources is None:
+                    raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
+                if ds.wcs._upstream_bitflag is None:
+                    ds.wcs._upstream_bitflag = 0
+                ds.wcs._upstream_bitflag |= sources.bitflag
+
+                ds.runtimes['astro_cal'] = time.perf_counter() - t_start
+                if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                    import tracemalloc
+                    ds.memory_usages['astro_cal'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
+
+        except Exception as e:
+            ds.catch_exception(e)
+        finally:
+            # make sure datastore is returned to be used in the next step
+            return ds

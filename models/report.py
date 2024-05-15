@@ -44,6 +44,7 @@ class Report(Base, AutoIDMixin):
     section_id = sa.Column(
         sa.Text,
         nullable=False,
+        index=True,
         doc=(
             "ID of the section of the exposure for which the report was made. "
         )
@@ -52,6 +53,7 @@ class Report(Base, AutoIDMixin):
     start_time = sa.Column(
         sa.DateTime,
         nullable=False,
+        index=True,
         doc=(
             "Time when processing of the section started. "
         )
@@ -60,6 +62,7 @@ class Report(Base, AutoIDMixin):
     finish_time = sa.Column(
         sa.DateTime,
         nullable=True,
+        index=True,
         doc=(
             "Time when processing of the section finished. "
             "If an error occurred, this will show the time of the error. "
@@ -70,17 +73,35 @@ class Report(Base, AutoIDMixin):
     success = sa.Column(
         sa.Boolean,
         nullable=False,
+        index=True,
         default=False,
         doc=(
             "Whether the processing of this section was successful. "
         )
     )
 
+    num_prev_reports = sa.Column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        doc=(
+            "Number of previous reports for this exposure, section, and provenance. "
+        )
+    )
+
     worker_id = sa.Column(
         sa.Text,
-        nullable=False,
+        nullable=True,
         doc=(
             "ID of the worker/process that ran this section. "
+        )
+    )
+
+    node_id = sa.Column(
+        sa.Text,
+        nullable=True,
+        doc=(
+            "ID of the node where the worker/process ran this section. "
         )
     )
 
@@ -248,6 +269,7 @@ class Report(Base, AutoIDMixin):
 
         # verify these attributes get their default even if the object is not committed to DB
         self.success = False
+        self.num_prev_reports = 0
         self.progress_steps_bitflag = 0
         self.products_exist_bitflag = 0
         self.products_committed_bitflag = 0
@@ -256,9 +278,6 @@ class Report(Base, AutoIDMixin):
 
         # manually set all properties (columns or not)
         self.set_attributes_from_dict(kwargs)
-
-        if self.worker_id is None:
-            self.worker_id = 'unknown'  # TODO: replace this with a real worker ID
 
     @orm.reconstructor
     def init_on_load(self):
@@ -283,6 +302,8 @@ class Report(Base, AutoIDMixin):
         self.products_committed = ds.products_committed
         
         # store the runtime and memory usage statistics
+        self.process_runtime = ds.runtimes  # update with new dictionary
+        self.process_memory = ds.memory_usages  # update with new dictionary
 
         # parse the warnings, if they exist
         selfwarnings = ds.read_warnings()
