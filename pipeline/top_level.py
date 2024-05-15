@@ -131,13 +131,33 @@ class Pipeline:
             else:
                 self.pars.augment({key: value})
 
-    def run(self, *args, **kwargs):
-        """
-        Run the entire pipeline on a specific CCD in a specific exposure.
-        Will open a database session and grab any existing data,
-        and calculate and commit any new data that did not exist.
-        """
+    def setup_datastore_and_report(self, *args, **kwargs):
+        """Initialize a datastore and report to use in the pipeline run.
 
+        Will raise an exception if there is no valid Exposure,
+        if there's no reference available, or if the report cannot
+        be posted to the database.
+
+        After these objects are instantiated, the pipeline will proceed
+        and record any exceptions into the report object before raising them.
+
+        Parameters
+        ----------
+        Inputs should include the exposure and section_id, or a datastore
+        with these things already loaded. If a session is passed in as
+        one of the arguments, it will be used as a single session for
+        running the entire pipeline (instead of opening and closing
+        sessions where needed).
+
+        Returns
+        -------
+        ds : DataStore
+            The DataStore object that was created or loaded.
+        report : Report
+            The Report object that is associated with the exposure/section_id.
+        session: sqlalchemy.orm.session.Session
+            An optional session. If not given, this will be None
+        """
         try:
             ds, session = DataStore.from_args(*args, **kwargs)
         except Exception as e:
@@ -161,7 +181,6 @@ class Pipeline:
         except Exception as e:
             raise RuntimeError(f'Cannot get reference exposure {ds.exposure.filepath}!') from e
 
-
         try:  # create (and commit, if not existing) all provenances for the products
             with SmartSession(session) as dbsession:
                 provs = self.make_provenance_tree(ds.exposure, session=dbsession, commit=True)
@@ -170,7 +189,7 @@ class Pipeline:
 
         try:  # must make sure the report is on the DB
             report = Report(exposure=ds.exposure, section_id=ds.section_id)
-            report.started_at = datetime.datetime.utcnow()
+            report.start_time = datetime.datetime.utcnow()
             prov = Provenance(
                 process='report',
                 code_version=ds.exposure.provenance.code_version,
@@ -187,6 +206,29 @@ class Pipeline:
                 raise RuntimeError('Report did not get a valid exposure_id!')
         except Exception as e:
             raise RuntimeError('Failed to create or merge a report for the exposure!') from e
+
+        return ds, report, session
+
+    def run(self, *args, **kwargs):
+        """
+        Run the entire pipeline on a specific CCD in a specific exposure.
+        Will open a database session and grab any existing data,
+        and calculate and commit any new data that did not exist.
+
+        Parameters
+        ----------
+        Inputs should include the exposure and section_id, or a datastore
+        with these things already loaded. If a session is passed in as
+        one of the arguments, it will be used as a single session for
+        running the entire pipeline (instead of opening and closing
+        sessions where needed).
+
+        Returns
+        -------
+        ds : DataStore
+            The DataStore object that includes all the data products.
+        """
+        ds, report, session = self.setup_datastore_and_report(*args, **kwargs)
 
         # run dark/flat preprocessing, cut out a specific section of the sensor
         # TODO: save the results as Image objects to DB and disk? Or save at the end?
@@ -220,6 +262,12 @@ class Pipeline:
         # extract photometry, analytical cuts, and deep learning models on the Cutouts:
         ds = self.measurer.run(ds, session)
         report.scan_datastore(ds, 'measuring', session)
+
+        report.success = True
+        report.finish_time = datetime.datetime.utcnow()
+        with SmartSession(session) as dbsession:
+            dbsession.merge(report)
+            dbsession.commit()
 
         return ds
 

@@ -49,7 +49,7 @@ class Report(Base, AutoIDMixin):
         )
     )
 
-    started_at = sa.Column(
+    start_time = sa.Column(
         sa.DateTime,
         nullable=False,
         doc=(
@@ -57,7 +57,7 @@ class Report(Base, AutoIDMixin):
         )
     )
 
-    finished_at = sa.Column(
+    finish_time = sa.Column(
         sa.DateTime,
         nullable=True,
         doc=(
@@ -245,6 +245,14 @@ class Report(Base, AutoIDMixin):
 
     def __init__(self, **kwargs):
         SeeChangeBase.__init__(self)  # do not pass kwargs to Base.__init__, as there may be non-column attributes
+
+        # verify these attributes get their default even if the object is not committed to DB
+        self.success = False
+        self.progress_steps_bitflag = 0
+        self.products_exist_bitflag = 0
+        self.products_committed_bitflag = 0
+        self.process_memory = {}
+        self.process_runtime = {}
 
         # manually set all properties (columns or not)
         self.set_attributes_from_dict(kwargs)

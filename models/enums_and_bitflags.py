@@ -320,7 +320,7 @@ def string_to_bitflag(value, dictionary):
             original_keyword = keyword
             keyword = EnumConverter.c(keyword)
             if keyword not in dictionary:
-                raise ValueError(f'Keyword "{original_keyword}" not recognized in dictionary')
+                raise ValueError(f'Keyword "{original_keyword.strip()}" not recognized in dictionary')
             output += 2 ** dictionary[keyword]
         return output
 

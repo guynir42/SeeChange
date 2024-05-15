@@ -1,6 +1,8 @@
 import os
 import pytest
 import shutil
+import datetime
+
 import sqlalchemy as sa
 import numpy as np
 
@@ -13,6 +15,7 @@ from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
 from models.cutouts import Cutouts
 from models.measurements import Measurements
+from models.report import Report
 
 from pipeline.top_level import Pipeline
 
@@ -486,7 +489,9 @@ def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, de
     provs = p.make_provenance_tree(decam_exposure)
     assert isinstance(provs, dict)
 
+    t_start = datetime.datetime.utcnow()
     ds = p.run(decam_exposure, 'N1')  # the data should all be there so this should be quick
+    t_end = datetime.datetime.utcnow()
 
     assert ds.image.provenance_id == provs['preprocessing'].id
     assert ds.sources.provenance_id == provs['extraction'].id
@@ -498,3 +503,9 @@ def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, de
     assert ds.cutouts[0].provenance_id == provs['cutting'].id
     assert ds.measurements[0].provenance_id == provs['measuring'].id
 
+    with SmartSession() as session:
+        report = session.scalars(sa.select(Report).where(Report.exposure_id == decam_exposure.id)).first()
+        assert report is not None
+        assert report.success
+        assert abs(report.start_time - t_start) < datetime.timedelta(seconds=1)
+        assert abs(report.finish_time - t_end) < datetime.timedelta(seconds=1)
