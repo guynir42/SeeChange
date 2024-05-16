@@ -105,6 +105,14 @@ class ParsDetector(Parameters):
             critical=True
         )
 
+        self.sextractor_timeout = self.add_par(
+            'sextractor_timeout',
+            120,
+            int,
+            'Timeout for SExtractor, in seconds. ',
+            critical=False,
+        )
+
         self._enforce_no_new_attrs = True
 
         self.override(kwargs)
@@ -598,7 +606,7 @@ class Detector:
                     ]
             args.extend( psfargs )
             args.append( tmpimage )
-            res = subprocess.run( args, cwd=tmpimage.parent, capture_output=True, timeout=120 )
+            res = subprocess.run(args, cwd=tmpimage.parent, capture_output=True, timeout=self.pars.sextractor_timeout)
             if res.returncode != 0:
                 _logger.error( f"Got return {res.returncode} from sextractor call; stderr:\n{res.stderr}\n"
                                f"-------\nstdout:\n{res.stdout}" )
@@ -708,7 +716,12 @@ class Detector:
                                 '-XML_URL', 'file:///usr/share/psfex/psfex.xsl',
                                 # '-PSFVAR_DEGREES', '4',  # polynomial order for PSF fitting across image
                                 sourcefile ]
-                    res = subprocess.run( command, cwd=sourcefile.parent, capture_output=True, timeout=120 )
+                    res = subprocess.run(
+                        command,
+                        cwd=sourcefile.parent,
+                        capture_output=True,
+                        timeout=self.pars.sextractor_timeout
+                    )
                     if res.returncode == 0:
                         fwhmmaxtotry = [ fwhmmax ]
                         break
