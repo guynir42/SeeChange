@@ -84,11 +84,11 @@ def test_warnings_and_exceptions(decam_datastore, decam_reference, subtractor):
     with pytest.warns(UserWarning) as record:
         subtractor.run(decam_datastore)
     assert len(record) > 0
-    assert any('Warning injected by pipeline parameters in process "subtraction".' in str(w.message) for w in record)
+    assert any("Warning injected by pipeline parameters in process 'subtraction'." in str(w.message) for w in record)
 
     subtractor.pars.inject_warnings = 0
     subtractor.pars.inject_exceptions = 1
     with pytest.raises(Exception) as excinfo:
         ds = subtractor.run(decam_datastore)
         ds.reraise()
-    assert 'Exception injected by pipeline parameters in process "subtraction"' in str(excinfo.value)
+    assert "Exception injected by pipeline parameters in process 'subtraction'." in str(excinfo.value)

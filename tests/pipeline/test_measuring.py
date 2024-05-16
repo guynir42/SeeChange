@@ -223,12 +223,12 @@ def test_warnings_and_exceptions(decam_datastore, measurer):
     with pytest.warns(UserWarning) as record:
         measurer.run(decam_datastore)
     assert len(record) > 0
-    assert any('Warning injected by pipeline parameters in process "measuring".' in str(w.message) for w in record)
+    assert any("Warning injected by pipeline parameters in process 'measuring'." in str(w.message) for w in record)
 
     measurer.pars.inject_exceptions = 1
     measurer.pars.inject_warnings = 0
     with pytest.raises(Exception) as excinfo:
         ds = measurer.run(decam_datastore)
         ds.reraise()
-    assert 'Exception injected by pipeline parameters in process "measuring"' in str(excinfo.value)
+    assert "Exception injected by pipeline parameters in process 'measuring'." in str(excinfo.value)
 
