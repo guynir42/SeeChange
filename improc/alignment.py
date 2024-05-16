@@ -312,6 +312,7 @@ class ImageAligner:
                 min_frac_matched=self.pars.min_frac_matched,
                 min_matched=self.pars.min_matched,
                 max_arcsec_residual=self.pars.max_arcsec_residual,
+                timeout=self.pars.swarp_timeout,
             )
 
             # Write out the .head file that swarp will use to figure out what to do
