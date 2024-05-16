@@ -41,10 +41,6 @@ class ParsPreprocessor(Parameters):
         return 'preprocessing'
 
 
-import warnings
-warnings.filterwarnings('error', append=True)
-
-
 class Preprocessor:
     def __init__(self, **kwargs):
         """Create a preprocessor.

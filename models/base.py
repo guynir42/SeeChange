@@ -87,6 +87,7 @@ def setup_warning_filters():
         "- parent object of type <Image> has been garbage collected",
     )
 
+
 setup_warning_filters()  # need to call this here and also call it explicitly when setting up tests
 
 _engine = None

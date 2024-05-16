@@ -306,8 +306,12 @@ class Report(Base, AutoIDMixin):
         self.process_memory = ds.memory_usages  # update with new dictionary
 
         # parse the warnings, if they exist
-        if hasattr(ds, 'warnings_list') and isinstance(ds.warnings_list, list):
-            self.warnings = self.read_warnings(process_step, ds.warnings_list)
+        if isinstance(ds.warnings_list, list):
+            new_string = self.read_warnings(process_step, ds.warnings_list)
+            if self.warnings is None or self.warnings == '':
+                self.warnings = new_string
+            else:
+                self.warnings += ', ' + new_string
         
         if exception is not None:
             self.error_type = exception.__class__.__name__
@@ -315,23 +319,28 @@ class Report(Base, AutoIDMixin):
             self.error_step = process_step
 
         with SmartSession(session) as session:
-            self.commit_to_database(session=session)
+            new_report = self.commit_to_database(session=session)
 
         if exception is not None:
             raise exception
 
+        return new_report
+
     def commit_to_database(self, session):
         """Commit this report to the database. """
-        session.merge(self)
+        new_report = session.merge(self)
         session.commit()
+        return new_report
 
     @staticmethod
     def read_warnings(process_step, warnings_list):
         """Convert a list of warnings into a comma separated string. """
         formatted_warnings = []
         for w in warnings_list:
-            text = f'{process_step}: <{w.category}> {w.message} ({w.filename}:{w.lineno})'
+            text = f'{process_step}: {w.category} {w.message} ({w.filename}:{w.lineno})'
             formatted_warnings.append(text)
-            _logger.warn(text)  # make sure warnings also get printed to the log/on screen.
+            _logger.warning(text)  # make sure warnings also get printed to the log/on screen.
+
+        warnings_list.clear()  # remove all the warnings but keep the list object
 
         return ', '.join(formatted_warnings)

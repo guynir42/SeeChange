@@ -2,6 +2,8 @@ import os
 import time
 import uuid
 
+from pprint import pprint
+
 import sqlalchemy as sa
 
 from pipeline.top_level import PROCESS_OBJECTS
@@ -112,7 +114,7 @@ def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_te
             peak_memory = max(peak_memory, ds.memory_usages[step])
 
     total_time = time.perf_counter() - t0
-    from pprint import pprint
+
     print(f'total_time: {total_time:.1f}s')
     print(f'measured_time: {measured_time:.1f}s')
     pprint(ds.runtimes, sort_dicts=False)

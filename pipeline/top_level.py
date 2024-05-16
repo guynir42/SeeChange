@@ -18,6 +18,7 @@ from util.config import Config
 
 from models.base import SmartSession
 from models.provenance import Provenance
+from models.exposure import Exposure
 from models.reference import Reference
 from models.report import Report
 
@@ -132,8 +133,8 @@ class Pipeline:
             else:
                 self.pars.augment({key: value})
 
-    def setup_datastore_and_report(self, *args, **kwargs):
-        """Initialize a datastore and report to use in the pipeline run.
+    def setup_datastore(self, *args, **kwargs):
+        """Initialize a datastore, including an exposure and a report, to use in the pipeline run.
 
         Will raise an exception if there is no valid Exposure,
         if there's no reference available, or if the report cannot
@@ -154,8 +155,6 @@ class Pipeline:
         -------
         ds : DataStore
             The DataStore object that was created or loaded.
-        report : Report
-            The Report object that is associated with the exposure/section_id.
         session: sqlalchemy.orm.session.Session
             An optional session. If not given, this will be None
         """
@@ -165,9 +164,7 @@ class Pipeline:
             raise RuntimeError('Not sure if there is a way to run this pipeline method without an exposure!')
 
         try:  # must make sure the exposure is on the DB
-            with SmartSession(session) as dbsession:
-                ds.exposure = dbsession.merge(ds.exposure)
-                dbsession.commit()
+            ds.exposure = ds.exposure.merge_concurrent(session=session)
         except Exception as e:
             raise RuntimeError('Failed to merge the exposure into the session!') from e
 
@@ -214,7 +211,9 @@ class Pipeline:
         except Exception as e:
             raise RuntimeError('Failed to create or merge a report for the exposure!') from e
 
-        return ds, report, session
+        ds.report = report
+
+        return ds, session
 
     def run(self, *args, **kwargs):
         """
@@ -235,7 +234,7 @@ class Pipeline:
         ds : DataStore
             The DataStore object that includes all the data products.
         """
-        ds, report, session = self.setup_datastore_and_report(*args, **kwargs)
+        ds, session = self.setup_datastore(*args, **kwargs)
 
         if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
             # ref: https://docs.python.org/3/library/tracemalloc.html#record-the-current-and-peak-size-of-all-traced-memory-blocks
@@ -247,41 +246,37 @@ class Pipeline:
             # run dark/flat preprocessing, cut out a specific section of the sensor
             # TODO: save the results as Image objects to DB and disk? Or save at the end?
             ds = self.preprocessor.run(ds, session)
-            report.scan_datastore(ds, 'preprocessing', session)
+            ds.update_report('preprocessing', session)
 
             # extract sources and make a SourceList and PSF from the image
             ds = self.extractor.run(ds, session)
-            report.scan_datastore(ds, 'extraction', session)
+            ds.update_report('extraction', session)
 
             # find astrometric solution, save WCS into Image object and FITS headers
             ds = self.astro_cal.run(ds, session)
-            report.scan_datastore(ds, 'astro_cal', session)
+            ds.update_report('astro_cal', session)
 
             # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
             ds = self.photo_cal.run(ds, session)
-            report.scan_datastore(ds, 'photo_cal', session)
+            ds.update_report('photo_cal', session)
 
             # fetch reference images and subtract them, save SubtractedImage objects to DB and disk
             ds = self.subtractor.run(ds, session)
-            report.scan_datastore(ds, 'subtraction', session)
+            ds.update_report('subtraction', session)
 
             # find sources, generate a source list for detections
             ds = self.detector.run(ds, session)
-            report.scan_datastore(ds, 'detection', session)
+            ds.update_report('detection', session)
 
             # make cutouts of all the sources in the "detections" source list
             ds = self.cutter.run(ds, session)
-            report.scan_datastore(ds, 'cutting', session)
+            ds.update_report('cutting', session)
 
             # extract photometry, analytical cuts, and deep learning models on the Cutouts:
             ds = self.measurer.run(ds, session)
-            report.scan_datastore(ds, 'measuring', session)
+            ds.update_report('measuring', session)
 
-            report.success = True
-            report.finish_time = datetime.datetime.utcnow()
-            with SmartSession(session) as dbsession:
-                dbsession.merge(report)
-                dbsession.commit()
+            ds.finalize_report(session)
 
             return ds
 
@@ -392,9 +387,9 @@ class Pipeline:
                     is_testing=is_testing,
                 )
 
-                provs[step] = session.merge(provs[step])
+                provs[step] = provs[step].merge_concurrent(session=session, commit=commit)
 
-            if commit:
-                session.commit()
+            # if commit:
+            #     session.commit()
 
             return provs

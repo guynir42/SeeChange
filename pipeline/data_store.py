@@ -1,3 +1,4 @@
+import datetime
 import sqlalchemy as sa
 
 from util.util import get_latest_provenance, parse_session
@@ -275,11 +276,12 @@ class DataStore:
         self.section_id = None  # corresponds to SensorSection.identifier (*not* .id)
         self.image_id = None  # use this to specify an image already in the database
 
-        self.warnings = ''  # TODO: think of a better way to keep warnings
+        self.warnings_list = None  # will be replaced by a list of warning objects in top_level.Pipeline.run()
         self.exception = None  # the exception object (so we can re-raise it if needed)
         self.runtimes = {}  # for each process step, the total runtime in seconds
         self.memory_usages = {}  # for each process step, the peak memory usage in MB
         self.products_committed = ''  # a comma separated list of object names (e.g., "image, sources") saved to DB
+        self.report = None  # keep a reference to the report object for this run
 
         # The database session parsed in parse_args; it could still be None even after parse_args
         self.session = None
@@ -390,6 +392,19 @@ class DataStore:
             self.append_image_products(value)
 
         return value
+
+    def update_report(self, process_step, session=None):
+        """Update the report object with the latest results from a processing step that just finished. """
+        self.report = self.report.scan_datastore(self, process_step=process_step, session=session)
+
+    def finalize_report(self, session=None):
+        """Mark the report as successful and set the finish time."""
+        self.report.success = True
+        self.report.finish_time = datetime.datetime.utcnow()
+        with SmartSession(session) as session:
+            new_report = session.merge(self.report)
+            session.commit()
+        self.report = new_report
 
     def get_inputs(self):
         """Get a string with the relevant inputs. """

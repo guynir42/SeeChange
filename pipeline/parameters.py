@@ -758,11 +758,11 @@ class Parameters:
         """
         if self.inject_warnings > 0:
             if random.uniform(0, 1) <= self.inject_warnings:
-                warnings.warn(f'Warning injected by pipeline parameters in process "{self.get_process_name()}".')
+                warnings.warn(f"Warning injected by pipeline parameters in process '{self.get_process_name()}'.")
 
         if self.inject_exceptions > 0:
             if random.uniform(0, 1) <= self.inject_exceptions:
-                raise RuntimeError(f'Exception injected by pipeline parameters in process "{self.get_process_name()}".')
+                raise RuntimeError(f"Exception injected by pipeline parameters in process '{self.get_process_name()}'.")
 
         if self.inject_hangups > 0:
             if random.uniform(0, 1) <= self.inject_hangups:
