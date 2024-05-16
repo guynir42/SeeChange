@@ -360,6 +360,10 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         # this should be removed after we add datastore failure modes (issue #150)
         shutil.rmtree(os.path.join(os.path.dirname(exposure.get_fullpath()), '115'), ignore_errors=True)
         shutil.rmtree(os.path.join(archive.test_folder_path, '115'), ignore_errors=True)
+        with SmartSession() as session:
+            ds.exposure.bitflag = 0
+            session.merge(ds.exposure)
+            session.commit()
 
 
 def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_default_calibrators, archive):

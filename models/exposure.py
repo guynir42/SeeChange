@@ -763,6 +763,12 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
                         exposure = session.merge(self)
                         session.commit()
                     else:
+                        # update the found exposure with any modifications on the existing exposure
+                        columns = Exposure.__table__.columns.keys()
+                        for col in columns:
+                            if col in ['id', 'created_at', 'modified']:
+                                continue
+                            setattr(found_exp, col, getattr(self, col))
                         exposure = found_exp
 
                     break  # if we got here without an exception, we can break out of the loop
@@ -779,6 +785,7 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
                 raise e
 
         return exposure
+
 
 if __name__ == '__main__':
     import os
