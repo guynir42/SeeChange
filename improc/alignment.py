@@ -367,7 +367,7 @@ class ImageAligner:
                         '-WRITE_XML', 'N' ]
 
             t0 = time.perf_counter()
-            res = subprocess.run(command, capture_output=True, timeout=self.pars.scamp_timeout)
+            res = subprocess.run(command, capture_output=True, timeout=self.pars.swarp_timeout)
             t1 = time.perf_counter()
             _logger.debug( f"swarp of image took {t1-t0:.2f} seconds" )
             if res.returncode != 0:
