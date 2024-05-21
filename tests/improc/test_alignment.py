@@ -106,7 +106,6 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
         # add new image to database
         with SmartSession() as session:
             new_image = session.merge(new_image)
-            session.commit()
 
         # should be able to recreate aligned images from scratch
         with SmartSession() as session:

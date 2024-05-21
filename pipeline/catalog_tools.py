@@ -367,7 +367,6 @@ def fetch_gaia_dr3_excerpt( image, minstars=50, maxmags=22, magrange=None, sessi
                 if not os.path.isfile( catexp.get_fullpath() ):
                     _logger.info( f"CatalogExcerpt {catexp.id} has no file at {catexp.filepath}")
                     session.delete( catexp )
-                    session.commit()
                     catexp = None
                 else:
                     break
@@ -392,7 +391,6 @@ def fetch_gaia_dr3_excerpt( image, minstars=50, maxmags=22, magrange=None, sessi
                         session.add( catexp )  # add if it doesn't exist
                     else:
                         raise RuntimeError('CatalogExcerpt already exists in the database!')
-                    session.commit()
                     break
                 else:
                     catexp = None

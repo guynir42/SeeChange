@@ -268,8 +268,8 @@ def test_decam_download_and_commit_exposure(
         with SmartSession() as session:
             exposures = session.query( Exposure ).filter( Exposure.id.in_( eids ) )
             for exposure in exposures:
-                exposure.delete_from_disk_and_database( session=session, commit=False )
-            session.commit()
+                exposure.delete_from_disk_and_database(session=session)
+
             # remove downloaded files from data_dir (a cached version should remain)
             if 'downloaded' in locals():
                 for d in downloaded:

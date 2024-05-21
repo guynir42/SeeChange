@@ -16,7 +16,7 @@ def test_object_creation():
     obj = Object(ra=1.0, dec=2.0, is_test=True)
     with SmartSession() as session:
         session.add(obj)
-        session.commit()
+        session.flush()
         assert obj.id is not None
         assert obj.name is not None
         assert re.match(r'\w+\d{4}\w+', obj.name)
@@ -91,7 +91,7 @@ def test_filtering_measurements_on_object(sim_lightcurves):
             m2 = session.merge(m2)
             new_measurements.append(m2)
 
-        session.commit()
+        session.flush()
         session.refresh(obj)
         all_ids = [m.id for m in new_measurements + measurements]
         all_ids.sort()

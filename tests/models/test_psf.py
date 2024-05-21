@@ -304,8 +304,8 @@ def test_save_psf( ztf_datastore_uncommitted, provenance_base, provenance_extra 
     im = ztf_datastore_uncommitted.image
     psf = ztf_datastore_uncommitted.psf
 
-    with SmartSession() as session:
-        try:
+    try:
+        with SmartSession() as session:
             im.provenance = session.merge(provenance_base)
             im.save()
 
@@ -313,8 +313,8 @@ def test_save_psf( ztf_datastore_uncommitted, provenance_base, provenance_extra 
             psf.provenance = prov
             psf.save()
             session.add(psf)
-            session.commit()
 
+        with SmartSession() as session:
             # make a copy of the PSF (we will not be able to save it, with the same image_id and provenance)
             psf2 = PSF(format='psfex')
             psf2._data = psf.data
@@ -332,8 +332,10 @@ def test_save_psf( ztf_datastore_uncommitted, provenance_base, provenance_extra 
                 session.add(psf2)
                 session.commit()
             session.rollback()
+            session.begin()  # after rollback, we need to start a new transaction
 
-        finally:
+    finally:
+        with SmartSession() as session:
             if 'psf' in locals():
                 psf.delete_from_disk_and_database(session=session)
             if 'psf2' in locals():

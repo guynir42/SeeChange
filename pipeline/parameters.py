@@ -662,10 +662,11 @@ class Parameters:
             A dictionary of Provenance objects, from which the relevant
             upstream ids can be retrieved. If not given, will be filled
             automatically using the most up-to-date provenances.
-        session: sqlalchemy.orm.session.Session or SmartSession
+        session: sqlalchemy.orm.session.Session
             The database session to use to retrieve the provenances.
-            If not given, will open a new session and close it at
-            the end of the function.
+            If not given, will open a new connection on the session
+            and close it at the end of the function by calling commit
+            or rollback.
         """
         if prov_cache is None:
             prov_cache = {}
@@ -717,7 +718,6 @@ class Parameters:
             if existing_p is not None:
                 prov = existing_p
                 session.add(prov)
-                session.commit()  # make sure to add the new provenance
 
         return prov
 

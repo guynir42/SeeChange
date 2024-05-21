@@ -37,8 +37,8 @@ def test_world_coordinates( ztf_datastore_uncommitted, provenance_base, provenan
         assert sc.dec.value == pytest.approx( origsc.dec.value, abs=0.01/3600. )
 
     # save the WCS to file and DB
-    with SmartSession() as session:
-        try:
+    try:
+        with SmartSession() as session:
             provenance_base = session.merge(provenance_base)
             provenance_extra = session.merge(provenance_extra)
             image.sources = ztf_datastore_uncommitted.sources
@@ -62,8 +62,7 @@ def test_world_coordinates( ztf_datastore_uncommitted, provenance_base, provenan
             # TODO: will need to save the WCS object if we turn it into a FileOnDiskMixin
             session.add(wcobj)
 
-            session.commit()
-
+        with SmartSession() as session:
             # add a second WCS object and make sure we cannot accidentally commit it, too
             wcobj2 = WorldCoordinates()
             wcobj2.header_excerpt = hdrkws
@@ -77,6 +76,7 @@ def test_world_coordinates( ztf_datastore_uncommitted, provenance_base, provenan
                 session.add(wcobj2)
                 session.commit()
             session.rollback()
+            session.begin()  # after rollback, we need to start a new transaction
 
             # if we change any of the provenance parameters we should be able to save it
             wcobj2.provenance = Provenance(
@@ -87,10 +87,9 @@ def test_world_coordinates( ztf_datastore_uncommitted, provenance_base, provenan
                 is_testing=True,
             )
             session.add(wcobj2)
-            session.commit()
 
-        finally:
-
+    finally:
+        with SmartSession() as session:
             if 'wcobj' in locals():
                 # wcobj.delete_from_disk_and_database(session=session)
                 if sa.inspect(wcobj).persistent:
@@ -103,7 +102,6 @@ def test_world_coordinates( ztf_datastore_uncommitted, provenance_base, provenan
                     session.delete(wcobj2)
                     image.wcs = None
                     image.sources.wcs = None
-            session.commit()
 
             if 'image' in locals():
-                image.delete_from_disk_and_database(session=session, commit=True)
+                image.delete_from_disk_and_database(session=session)

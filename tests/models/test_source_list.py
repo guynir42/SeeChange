@@ -1,5 +1,4 @@
 import pytest
-import os
 import psutil
 import gc
 import pathlib
@@ -34,7 +33,7 @@ def test_source_list_bitflag(sim_sources):
         sim_sources.image.exposure.badness = 'Banding'
         sim_sources.image.exposure.update_downstream_badness(session)
         session.add(sim_sources.image)
-        session.commit()
+        session.flush()
 
         assert sim_sources.image.bitflag == 2 ** 1 + 2 ** 3
         assert sim_sources.image.badness == 'banding, saturation'
@@ -57,7 +56,7 @@ def test_source_list_bitflag(sim_sources):
         # add badness that works with source lists (e.g., cross-match failures)
         sim_sources.badness = 'few sources'
         session.add(sim_sources)
-        session.commit()
+        session.flush()
 
         assert sim_sources.bitflag == 2 ** 1 + 2 ** 3 + 2 ** 16
         assert sim_sources.badness == 'banding, saturation, few sources'
@@ -72,7 +71,7 @@ def test_source_list_bitflag(sim_sources):
         sim_sources.image.exposure.bitflag = 0
         sim_sources.image.exposure.update_downstream_badness(session)
         session.add(sim_sources.image)
-        session.commit()
+        session.flush()
 
         assert sim_sources.image.badness == 'saturation'
         assert sim_sources.badness == 'saturation, few sources'

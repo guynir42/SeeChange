@@ -69,7 +69,7 @@ def test_image_no_null_values(provenance_base):
                 # without all the required columns on image, it cannot be added to DB
                 with pytest.raises(IntegrityError) as exc:
                     session.add(image)
-                    session.commit()
+                    session.flush()
                     im_id = image.id
                 session.rollback()
 
@@ -86,7 +86,7 @@ def test_image_no_null_values(provenance_base):
         for k in required.keys():
             setattr(image, k, added.get(k, None))
         session.add(image)
-        session.commit()
+        session.flush()
         im_id = image.id
         assert im_id is not None
 
@@ -98,7 +98,6 @@ def test_image_no_null_values(provenance_base):
                 found_image = session.scalars(sa.select(Image).where(Image.id == im_id)).first()
             if found_image is not None:
                 session.delete(found_image)
-                session.commit()
 
 
 def test_image_must_have_md5(sim_image_uncommitted, provenance_base):
@@ -117,11 +116,11 @@ def test_image_must_have_md5(sim_image_uncommitted, provenance_base):
                 im = session.merge(im)
                 session.commit()
             session.rollback()
+            session.begin()  # after rollback, need to start a new transaction
 
             # adding md5sums should fix this problem
             _2 = ImageCleanup.save_image(im, archive=True)
             im = session.merge(im)
-            session.commit()
 
     finally:
         with SmartSession() as session:
@@ -131,7 +130,6 @@ def test_image_must_have_md5(sim_image_uncommitted, provenance_base):
 
             if sa.inspect(exp).persistent:
                 session.delete(exp)
-                session.commit()
 
 
 def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archive, test_config):
@@ -183,13 +181,14 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
             # Make sure that the md5sum is properly saved to the database
             im.provenance = session.merge(im.provenance)
             session.add( im )
-            session.commit()
+
+            # this is not longer a "different session" but it should use the same session and leave it open
             with SmartSession() as differentsession:
                 dbimage = differentsession.query(Image).filter(Image.id == im.id)[0]
                 assert dbimage.md5sum.hex == im.md5sum.hex
 
             # Make sure we can purge the archive
-            im.delete_from_disk_and_database(session=session, commit=True)
+            im.delete_from_disk_and_database(session=session)
             with pytest.raises(FileNotFoundError):
                 ifp = open( archive_path, 'rb' )
                 ifp.close()
@@ -201,7 +200,7 @@ def test_image_archive_singlefile(sim_image_uncommitted, provenance_base, archiv
 
             if sa.inspect(exp).persistent:
                 session.delete(exp)
-                session.commit()
+
         test_config.set_value('storage.images.single_file', single_fileness)
 
 
@@ -270,7 +269,8 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
 
             # Make sure that the md5sum is properly saved to the database
             im = session.merge(im)
-            session.commit()
+
+            # this is not longer a "different session" but it should use the same session and leave it open
             with SmartSession() as differentsession:
                 dbimage = differentsession.scalars(sa.select(Image).where(Image.id == im.id)).first()
                 assert dbimage.md5sum is None
@@ -287,7 +287,7 @@ def test_image_archive_multifile(sim_image_uncommitted, provenance_base, archive
 
             if sa.inspect(exp).persistent:
                 session.delete(exp)
-                session.commit()
+
         test_config.set_value('storage.images.single_file', single_fileness)
 
 
@@ -338,7 +338,6 @@ def test_image_save_justheader( sim_image1 ):
             exp = session.merge(sim_image1.exposure)
             if sa.inspect(exp).persistent:
                 session.delete(exp)
-                session.commit()
 
 
 def test_image_save_onlyimage( sim_image1 ):
@@ -378,13 +377,14 @@ def test_image_enum_values(sim_image1):
                 session.add(sim_image1)
                 session.commit()
             session.rollback()
+            session.begin()  # after rollback, need to start a new transaction
 
             # these should work
             for prepend in ["", "Com"]:
                 for t in ["Sci", "Diff", "Bias", "Dark", "DomeFlat"]:
                     sim_image1.type = prepend+t
                     session.add(sim_image1)
-                    session.commit()
+                    session.flush()
 
             # should have an image with ComDomeFlat type
             assert sim_image1._type == 10  # see image_type_dict
@@ -402,12 +402,13 @@ def test_image_enum_values(sim_image1):
                 session.add(sim_image1)
                 session.commit()
             session.rollback()
+            session.begin()  # after rollback, need to start a new transaction
 
             # these should work
             for f in ['fits', 'hdf5']:
                 sim_image1.format = f
                 session.add(sim_image1)
-                session.commit()
+                session.flush()
 
             # should have an image with ComDomeFlat type
             assert sim_image1._format == 2  # see image_type_dict
@@ -445,7 +446,6 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
         cleanup = ImageCleanup.save_image(new)
 
         session.add(new)
-        session.commit()
 
     # new make sure a new session can find all the upstreams/downstreams
     with SmartSession() as session:
@@ -498,7 +498,7 @@ def test_image_upstreams_downstreams(sim_image1, sim_reference, provenance_extra
         cleanup2 = ImageCleanup.save_image(new2)
 
         session.add(new2)
-        session.commit()
+        session.flush()
 
         session.refresh(upstreams[0])
         assert len(upstreams[0].downstream_images) == 2
@@ -583,18 +583,18 @@ def test_image_badness(sim_image1):
         # now add a third keyword, but on the Exposure
         sim_image1.exposure.badness = 'saturation'
         session.add(sim_image1)
-        session.commit()
+        session.flush()
 
         # a manual way to propagate bitflags downstream
         sim_image1.exposure.update_downstream_badness(session)  # make sure the downstreams get the new badness
-        session.commit()
+        session.flush()
         assert sim_image1.bitflag == 2 ** 5 + 2 ** 3 + 2 ** 1  # saturation bit is 3
         assert sim_image1.badness == 'banding, saturation, bright sky'
 
         # adding the same keyword on the exposure and the image makes no difference
         sim_image1.exposure.badness = 'Banding'
         sim_image1.exposure.update_downstream_badness(session)  # make sure the downstreams get the new badness
-        session.commit()
+        session.flush()
         assert sim_image1.bitflag == 2 ** 5 + 2 ** 1
         assert sim_image1.badness == 'banding, bright sky'
 
@@ -631,23 +631,22 @@ def test_multiple_images_badness(
                 im.project = project
                 session.add(im)
 
-            session.commit()
-
+        with SmartSession() as session:
             # the image itself is marked bad because of bright sky
             sim_image2.badness = 'BrightSky'
             assert sim_image2.badness == 'bright sky'
             assert sim_image2.bitflag == 2 ** 5
-            session.commit()
+            session.flush()
 
             # note that this image is not directly bad, but the exposure has banding
             sim_image3.exposure.badness = 'banding'
             sim_image3.exposure.update_downstream_badness(session)
-            session.commit()
+            session.flush()
 
             assert sim_image3.badness == 'banding'
             assert sim_image1._bitflag == 0  # the exposure is bad!
             assert sim_image3.bitflag == 2 ** 1
-            session.commit()
+            session.flush()
 
             # find the images that are good vs bad
             good_images = session.scalars(sa.select(Image).where(Image.bitflag == 0)).all()
@@ -665,7 +664,7 @@ def test_multiple_images_badness(
             cleanups.append(ImageCleanup.save_image(sim_image4))
             sim_image4 = session.merge(sim_image4)
             images.append(sim_image4)
-            session.commit()
+            session.flush()
 
             assert sim_image4.id is not None
             assert sim_image4.ref_image == sim_image2
@@ -685,7 +684,7 @@ def test_multiple_images_badness(
             # check that adding a badness on the image itself is added to the total badness
             sim_image4.badness = 'saturation'
             session.add(sim_image4)
-            session.commit()
+            session.flush()
             assert sim_image4.badness == 'banding, saturation, bright sky'
             assert sim_image4._bitflag == 2 ** 3  # only this bit is from the image itself
 
@@ -695,7 +694,7 @@ def test_multiple_images_badness(
             cleanups.append(ImageCleanup.save_image(sim_image7))
             sim_image7 = session.merge(sim_image7)
             images.append(sim_image7)
-            session.commit()
+            session.flush()
 
             # check that the new subtraction is not flagged
             assert sim_image7.badness == ''
@@ -723,7 +722,7 @@ def test_multiple_images_badness(
             cleanups.append(ImageCleanup.save_image(sim_image8))
             images.append(sim_image8)
             sim_image8 = session.merge(sim_image8)
-            session.commit()
+            session.flush()
 
             assert sim_image8.badness == 'banding, bright sky'
             assert sim_image8.bitflag == 2 ** 1 + 2 ** 5
@@ -746,7 +745,7 @@ def test_multiple_images_badness(
             cleanups.append(ImageCleanup.save_image(sim_image8))
             sim_image8 = session.merge(sim_image8)
             images.append(sim_image8)
-            session.commit()
+            session.flush()
 
             assert sim_image8.badness == 'banding, saturation, bright sky'
             assert sim_image8.bitflag == 2 ** 1 + 2 ** 3 + 2 ** 5  # this should be 42
@@ -761,7 +760,7 @@ def test_multiple_images_badness(
             sim_image1.exposure.badness = 'shaking'
             session.add(sim_image1)
             sim_image1.exposure.update_downstream_badness(session)
-            session.commit()
+            session.flush()
 
             assert 'shaking' in sim_image1.badness
             assert 'shaking' in sim_image8.badness
@@ -770,14 +769,12 @@ def test_multiple_images_badness(
         with SmartSession() as session:
             session.autoflush = False
             for im in images:
-                im = im.merge_all(session)
+                # im = im.merge_all(session)
                 exp = im.exposure
-                im.delete_from_disk_and_database(session=session, commit=False)
+                im.delete_from_disk_and_database(session=session)
 
                 if exp is not None and sa.inspect(exp).persistent:
                     session.delete(exp)
-
-            session.commit()
 
 
 def test_image_coordinates():
@@ -884,7 +881,6 @@ def test_image_cone_search( provenance_base ):
             for i in [ image1, image2, image3, image4 ]:
                 if ( i is not None ) and sa.inspect( i ).persistent:
                     session.delete( i )
-            session.commit()
 
 
 # Really, we should also do some speed tests, but that
@@ -1046,6 +1042,7 @@ def test_image_from_exposure(sim_exposure1, provenance_base):
                 session.merge(im)
                 session.commit()
             session.rollback()
+            session.begin()  # after rollback, need to start a new transaction
 
             # must add the provenance!
             im.provenance = provenance_base
@@ -1053,11 +1050,12 @@ def test_image_from_exposure(sim_exposure1, provenance_base):
                 im = session.merge(im)
                 session.commit()
             session.rollback()
+            session.begin()  # after rollback, need to start a new transaction
 
             _ = ImageCleanup.save_image(im)  # this will add the filepath and md5 sum!
 
             session.add(im)
-            session.commit()
+            session.flush()
 
             assert im.id is not None
             assert im.provenance_id is not None
@@ -1067,8 +1065,7 @@ def test_image_from_exposure(sim_exposure1, provenance_base):
 
     finally:
         if im_id is not None:
-            with SmartSession() as session:
-                im.delete_from_disk_and_database(commit=True, session=session)
+            im.delete_from_disk_and_database()
 
 
 def test_image_from_exposure_filter_array(sim_exposure_filter_array):
@@ -1116,7 +1113,7 @@ def test_image_with_multiple_upstreams(sim_exposure1, sim_exposure2, provenance_
             sim_exposure1 = session.merge(sim_exposure1)
             sim_exposure2 = session.merge(sim_exposure2)
 
-            session.commit()
+            session.flush()
 
             im_id = im.id
             assert im_id is not None
@@ -1140,9 +1137,7 @@ def test_image_with_multiple_upstreams(sim_exposure1, sim_exposure2, provenance_
     finally:  # make sure to clean up all images
         for image in [im, im1, im2]:
             if image is not None:
-                with SmartSession() as session:
-                    image.delete_from_disk_and_database(session=session, commit=False)
-                    session.commit()
+                image.delete_from_disk_and_database()
 
 
 def test_image_subtraction(sim_exposure1, sim_exposure2, provenance_base):
@@ -1184,7 +1179,7 @@ def test_image_subtraction(sim_exposure1, sim_exposure2, provenance_base):
             sim_exposure1 = session.merge(sim_exposure1)
             sim_exposure2 = session.merge(sim_exposure2)
 
-            session.commit()
+            session.flush()
 
             im_id = im.id
             assert im_id is not None
@@ -1215,7 +1210,6 @@ def test_image_subtraction(sim_exposure1, sim_exposure2, provenance_base):
                 with SmartSession() as session:
                     im = session.scalars(sa.select(Image).where(Image.id == id_)).first()
                     session.delete(im)
-                    session.commit()
 
 
 def test_image_filename_conventions(sim_image1, test_config):
@@ -1334,12 +1328,11 @@ def test_image_multifile(sim_image_uncommitted, provenance_base, test_config):
         with SmartSession() as session:
             im = session.merge(im)
             exp = im.exposure
-            im.delete_from_disk_and_database(session=session, commit=False)
+            im.delete_from_disk_and_database(session=session)
 
             if exp is not None and sa.inspect(exp).persistent:
                 session.delete(exp)
 
-            session.commit()
 
         test_config.set_value('storage.images.single_file', single_fileness)
 

@@ -100,14 +100,14 @@ def decam_default_calibrators(cache_dir, data_dir):
                                 datafilestonuke.add( info[ f'{filetype}_fileid' ] )
             for imid in imagestonuke:
                 im = session.scalars( sa.select(Image).where(Image.id == imid )).first()
-                im.delete_from_disk_and_database( session=session, commit=False )
+                im.delete_from_disk_and_database(session=session)
 
             for dfid in datafilestonuke:
                 df = session.scalars( sa.select(DataFile).where(DataFile.id == dfid )).first()
-                df.delete_from_disk_and_database( session=session, commit=False )
+                df.delete_from_disk_and_database(session=session)
 
-            session.commit()
-
+        # after committing the previous connection, start a new one
+        with SmartSession() as session:
             provs = session.scalars(
                 sa.select(Provenance).where(Provenance.process == 'DECam Default Calibrator')
             ).all()
@@ -116,13 +116,12 @@ def decam_default_calibrators(cache_dir, data_dir):
                 images = session.scalars(sa.select(Image).where(Image.provenance_id == prov.id)).all()
                 if len(datafiles) == 0 and len(images) == 0:
                     session.delete(prov)
-            session.commit()
 
 
 @pytest.fixture(scope='session')
 def provenance_decam_prep(code_version):
     with SmartSession() as session:
-        code_version = session.merge(code_version)
+        # code_version = session.merge(code_version)
         p = Provenance(
             process="preprocessing",
             code_version=code_version,
@@ -139,13 +138,11 @@ def provenance_decam_prep(code_version):
         )
         p.update_id()
         p = session.merge(p)
-        session.commit()
 
     yield p
 
     with SmartSession() as session:
         session.delete(p)
-        session.commit()
 
 
 @pytest.fixture(scope='module')
@@ -215,7 +212,6 @@ def decam_exposure(decam_filename, data_dir):
 
             exposure.provenance = session.merge(exposure.provenance)
             session.add(exposure)
-            session.commit()
 
     yield exposure
 
@@ -440,8 +436,8 @@ def decam_reference(decam_ref_datastore):
         ref = Reference()
         ref.image = ds.image
         ref.provenance = prov
-        ref.validity_start = Time(55000, format='mjd', scale='tai').isot
-        ref.validity_end = Time(65000, format='mjd', scale='tai').isot
+        ref.validity_start = Time(55000, format='mjd', scale='tai').datetime
+        ref.validity_end = Time(65000, format='mjd', scale='tai').datetime
         ref.section_id = ds.image.section_id
         ref.filter = ds.image.filter
         ref.target = ds.image.target
@@ -450,7 +446,6 @@ def decam_reference(decam_ref_datastore):
         ref = ref.merge_all(session=session)
         if not sa.inspect(ref).persistent:
             ref = session.merge(ref)
-        session.commit()
 
     yield ref
 
@@ -459,7 +454,6 @@ def decam_reference(decam_ref_datastore):
             ref = session.merge(ref)
             if sa.inspect(ref).persistent:
                 session.delete(ref.provenance)  # should also delete the reference image
-            session.commit()
 
 
 @pytest.fixture

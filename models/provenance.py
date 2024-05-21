@@ -239,7 +239,7 @@ class Provenance(Base):
         if not isinstance(code_version, CodeVersion):
             raise ValueError(f'Code version must be a models.CodeVersion. Got {type(code_version)}.')
         else:
-            self.code_version = code_version
+            self.code_version_id = code_version.id
 
         self.parameters = kwargs.get('parameters', {})
         upstreams = kwargs.get('upstreams', [])
@@ -266,7 +266,7 @@ class Provenance(Base):
             '<Provenance('
             f'id= {self.id[:6] if self.id else "<None>"}, '
             f'process="{self.process}", '
-            f'code_version="{self.code_version.id}", '
+            f'code_version="{self.code_version_id}", '
             f'parameters={self.parameters}, '
             f'upstreams={upstream_hashes})>'
         )
@@ -297,14 +297,14 @@ class Provenance(Base):
         """
         Update the id using the code_version, parameters and upstream_hashes.
         """
-        if self.process is None or self.parameters is None or self.code_version is None:
-            raise ValueError('Provenance must have process, code_version, and parameters defined. ')
+        if self.process is None or self.parameters is None or self.code_version_id is None:
+            raise ValueError('Provenance must have process, code_version_id, and parameters defined. ')
 
         superdict = dict(
             process=self.process,
             parameters=self.parameters,
             upstream_hashes=self.upstream_hashes,  # this list is ordered by upstream ID
-            code_version=self.code_version.id
+            code_version=self.code_version_id
         )
         json_string = json.dumps(superdict, sort_keys=True)
 
@@ -354,4 +354,5 @@ CodeVersion.provenances = relationship(
     cascade="save-update, merge, expunge, refresh-expire, delete, delete-orphan",
     foreign_keys="Provenance.code_version_id",
     passive_deletes=True,
+    lazy='selectin',
 )

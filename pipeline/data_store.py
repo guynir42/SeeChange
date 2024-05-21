@@ -964,6 +964,8 @@ class DataStore:
 
                 self.reference = ref
 
+            if self.reference is not None:  # make sure reference has sources, psf, zp, wcs, etc.
+                self.reference.load_upstream_products()
         return self.reference
 
     def get_subtraction(self, provenance=None, session=None):
@@ -1348,12 +1350,12 @@ class DataStore:
             testing purposes.
 
         session: sqlalchemy.orm.session.Session
-            An optional session to use for the database query.
-            If not given, will use the session stored inside the
-            DataStore object; if there is none, will open a new session
-            and close it at the end of the function.
-            Note that this method calls session.commit()
-
+            If given a session, it will use that session's connection
+            to do the saving but will not commit at the end
+            (assuming the external scope will do that).
+            If None or not given, will simply open the connection
+            and close it at the end of the function using commit
+            (or rollback).
         """
         # save to disk whatever is FileOnDiskMixin
         for att in self.attributes_to_save:
@@ -1407,7 +1409,7 @@ class DataStore:
                                    f'a md5sum in the database' )
 
         # carefully merge all the objects including the products
-        with SmartSession(session, self.session) as session:
+        with SmartSession(session) as session:
             if self.image is not None:
                 self.image = self.image.merge_all(session)
                 for att in ['sources', 'psf', 'wcs', 'zp']:
@@ -1450,9 +1452,7 @@ class DataStore:
             self.wcs = self.image.wcs
             self.zp = self.image.zp
 
-            session.commit()
-
-    def delete_everything(self, session=None, commit=True):
+    def delete_everything(self, session=None):
         """Delete everything associated with this sub-image.
 
         All data products in the data store are removed from the DB,
@@ -1465,22 +1465,14 @@ class DataStore:
 
         Parameters
         ----------
-        session: sqlalchemy.orm.session.Session or SmartSession
+        session: sqlalchemy.orm.session.Session
             An optional session to use for the database query.
-            If not given, will use the session stored inside the
-            DataStore object; if there is none, will open a new session
-            and close it at the end of the function.
-            Note that this method calls session.commit()
-        commit: bool, default True
-            If True, will commit the transaction.  If False, will not
-            commit the transaction, so the caller can do more work
-            before committing.
-            If session is None, commit must also be True.
+            If given, will use the given session's open connection,
+            and will leave it open. If None or missing, will open
+            a new connection and close it at the end by calling
+            commit (or rollback).
         """
-        if session is None and not commit:
-            raise ValueError('If session is None, commit must be True')
-
-        with SmartSession( session, self.session ) as session:
+        with SmartSession(session) as session:
             autoflush_state = session.autoflush
             try:
                 # no flush to prevent some foreign keys from being voided before all objects are deleted
@@ -1505,20 +1497,20 @@ class DataStore:
                     if isinstance(obj, list):
                         if len(obj) > 0:
                             if hasattr(obj[0], 'delete_list'):
-                                obj[0].delete_list(obj, session=session, commit=False)
+                                obj[0].delete_list(obj, session=session)
                         continue
                     if isinstance(obj, FileOnDiskMixin):
-                        obj.delete_from_disk_and_database(session=session, commit=False, archive=True)
+                        obj.delete_from_disk_and_database(session=session, archive=True)
                     if obj in session and sa.inspect(obj).pending:
                         session.expunge(obj)
                     if obj in session and sa.inspect(obj).persistent:
                         session.delete(obj)
 
                     if (
-                            not sa.inspect(obj).detached and
-                            hasattr(obj, 'provenance') and
-                            obj.provenance is not None
-                            and obj.provenance in session
+                        not sa.inspect(obj).detached and
+                        hasattr(obj, 'provenance') and
+                        obj.provenance is not None
+                        and obj.provenance in session
                     ):
                         session.expunge(obj.provenance)
 
@@ -1535,8 +1527,6 @@ class DataStore:
                     for new_obj in session.new:
                         if type(obj) is type(new_obj) and obj.id is not None and obj.id == new_obj.id:
                             session.expunge(new_obj)  # remove this object
-
-                session.commit()
 
             finally:
                 session.autoflush = autoflush_state

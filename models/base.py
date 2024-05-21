@@ -18,6 +18,7 @@ from astropy.coordinates import SkyCoord
 
 import sqlalchemy as sa
 from sqlalchemy import func, orm
+from sqlalchemy.orm import scoped_session
 
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.declarative import declared_attr
@@ -87,6 +88,7 @@ def setup_warning_filters():
         "- parent object of type <Image> has been garbage collected",
     )
 
+
 setup_warning_filters()  # need to call this here and also call it explicitly when setting up tests
 
 _engine = None
@@ -115,24 +117,35 @@ def Session():
                f'@{cfg.value("db.host")}:{cfg.value("db.port")}/{cfg.value("db.database")}')
         _engine = sa.create_engine(url, future=True, poolclass=sa.pool.NullPool)
 
-        _Session = sessionmaker(bind=_engine, expire_on_commit=False)
+        # _Session = sessionmaker(bind=_engine, expire_on_commit=False)
+        _Session = scoped_session(
+            sessionmaker(bind=_engine, expire_on_commit=False, autobegin=False)
+        )
 
-    session = _Session()
-
-    return session
+    return _Session()
 
 
 @contextmanager
 def SmartSession(*args):
     """
-    Return a Session() instance that may or may not
-    be inside a context manager.
+    Return a session, either the same one that was given as input,
+    or a session that will automatically commit (or rollback)
+    at the end of the context.
 
-    If a given input is already a session, just return that.
-    If all inputs are None, create a session that would
-    close at the end of the life of the calling scope.
+    If a one of the inputs is already a session, just return that.
+    Note that in this case the session must already have an open connection
+    and that at the end of context there will not be an automatic commit,
+    and that the session is returned as-is to the calling scope
+    (so that the calling scope can call commit and close the connection).
+
+    If none of the inputs are a session object, then the session will be
+    returned (it is always the same session thanks to the scoped_session).
+    If the session is already open when this function is called, it will
+    be re-openned after the commit/rollback.
+    Thus, if this function is called internally without being given the session
+    as an argument it would not disrupt the outer scope's session.
     """
-    global _Session, _engine
+    global _Session
 
     for arg in args:
         if isinstance(arg, sa.orm.session.Session):
@@ -148,8 +161,25 @@ def SmartSession(*args):
 
     # none of the given inputs managed to satisfy any of the conditions...
     # open a new session and close it when outer scope is done
-    with Session() as session:
+    # with Session() as session:
+    session = Session()  # grab the current session but make sure it closes the connection at end
+    connection_state = session.in_transaction()
+    try:  # at end of block, session commits (or rolls back if error)
+        if not connection_state:
+            session.begin()
         yield session
+    except:
+        if session.in_transaction():
+            session.rollback()
+        raise  # in this case the session is not re-opened, must handle the exception
+    else:
+        if not session.in_transaction():
+            raise RuntimeError(
+                "Session was closed before the end of the context! Did you explicitly call commit() or rollback? "
+            )
+        session.commit()
+        if connection_state:
+            session.begin()  # re-open the connection if it was open before
 
 
 def db_stat(obj):
@@ -338,7 +368,7 @@ class SeeChangeBase:
         """Get all data products that were created directly from this object (non-recursive)."""
         raise NotImplementedError('get_downstreams not implemented for this class')
 
-    def delete_from_database(self, session=None, commit=True, remove_downstreams=False):
+    def delete_from_database(self, session=None, remove_downstreams=False):
         """Remove the object from the database.
 
         This does not remove any associated files (if this is a FileOnDiskMixin)
@@ -349,30 +379,19 @@ class SeeChangeBase:
         session: sqlalchemy session
             The session to use for the deletion. If None, will open a new session,
             which will also close at the end of the call.
-        commit: bool
-            Whether to commit the deletion to the database.
-            Default is True. When session=None then commit must be True,
-            otherwise the session will exit without committing
-            (in this case the function will raise a RuntimeException).
         remove_downstreams: bool
             If True, will also remove all downstream data products.
             Default is False.
         """
-        if session is None and not commit:
-            raise RuntimeError("When session=None, commit must be True!")
-
         with SmartSession(session) as session:
-            need_commit = False
             if remove_downstreams:
                 try:
                     downstreams = self.get_downstreams()
                     for d in downstreams:
                         if hasattr(d, 'delete_from_database'):
-                            if d.delete_from_database(session=session, commit=False, remove_downstreams=True):
-                                need_commit = True
+                            d.delete_from_database(session=session, remove_downstreams=True)
                         if isinstance(d, list) and len(d) > 0 and hasattr(d[0], 'delete_list'):
-                            d[0].delete_list(d, remove_local=False, archive=False, commit=False, session=session)
-                            need_commit = True
+                            d[0].delete_list(d, remove_local=False, archive=False, session=session)
                 except NotImplementedError as e:
                     pass  # if this object does not implement get_downstreams, it is ok
 
@@ -380,20 +399,12 @@ class SeeChangeBase:
 
             if info.persistent:
                 session.delete(self)
-                need_commit = True
             elif info.pending:
                 session.expunge(self)
-                need_commit = True
             elif info.detached:
                 obj = session.scalars(sa.select(self.__class__).where(self.__class__.id == self.id)).first()
                 if obj is not None:
                     session.delete(obj)
-                    need_commit = True
-
-            if commit and need_commit:
-                session.commit()
-
-        return need_commit  # to be able to recursively report back if there's a need to commit
 
     def to_dict(self):
         """Translate all the SQLAlchemy columns into a dictionary.
@@ -1523,7 +1534,7 @@ class FileOnDiskMixin:
         self.md5sum_extensions = None
 
     def delete_from_disk_and_database(
-            self, session=None, commit=True, remove_folders=True, remove_downstreams=False, archive=True,
+            self, session=None, remove_folders=True, remove_downstreams=False, archive=True,
     ):
         """
         Delete the data from disk, archive and the database.
@@ -1545,11 +1556,6 @@ class FileOnDiskMixin:
         session: sqlalchemy session
             The session to use for the deletion. If None, will open a new session,
             which will also close at the end of the call.
-        commit: bool
-            Whether to commit the deletion to the database.
-            Default is True. When session=None then commit must be True,
-            otherwise the session will exit without committing
-            (in this case the function will raise a RuntimeException).
         remove_folders: bool
             If True, will remove any folders on the path to the files
             associated to this object, if they are empty.
@@ -1562,10 +1568,8 @@ class FileOnDiskMixin:
             If True, will also delete the file from the archive.
             Default is True.
         """
-        if session is None and not commit:
-            raise RuntimeError("When session=None, commit must be True!")
 
-        SeeChangeBase.delete_from_database(self, session=session, commit=commit, remove_downstreams=remove_downstreams)
+        SeeChangeBase.delete_from_database(self, session=session, remove_downstreams=remove_downstreams)
 
         self.remove_data_from_disk(remove_folders=remove_folders, remove_downstreams=remove_downstreams)
 
@@ -1914,7 +1918,7 @@ class HasBitFlagBadness:
         doc='Free text comment about this data product, e.g., why it is bad. '
     )
 
-    def update_downstream_badness(self, session=None, commit=True):
+    def update_downstream_badness(self, session=None):
         """Send a recursive command to update all downstream objects that have bitflags.
 
         Since this function is called recursively, it always updates the current
@@ -1922,20 +1926,13 @@ class HasBitFlagBadness:
         before calling the same function on all downstream objects.
 
         Note that this function will session.add() this object and all its
-        recursive downstreams (to update the changes in bitflag) and will
-        commit the new changes on its own (unless given commit=False)
-        but only at the end of the recursion.
-
-        If session=None and commit=False an exception is raised.
+        recursive downstreams (to update the changes in bitflag).
 
         Parameters
         ----------
         session: sqlalchemy session
-            The session to use for the update. If None, will open a new session,
-            which will also close at the end of the call. In that case, must
-            provide a commit=True to commit the changes.
-        commit: bool (default True)
-            Whether to commit the changes to the database.
+            The session to use for the update. If None, will open a new connection,
+            which will also commit and close at the end of the call.
         """
         # make sure this object is current:
         with SmartSession(session) as session:
@@ -1951,10 +1948,7 @@ class HasBitFlagBadness:
             # recursively do this for all the other objects
             for downstream in self.get_downstreams(session):
                 if hasattr(downstream, 'update_downstream_badness') and callable(downstream.update_downstream_badness):
-                    downstream.update_downstream_badness(session=session, commit=False)
-
-            if commit:
-                session.commit()
+                    downstream.update_downstream_badness(session=session)
 
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object

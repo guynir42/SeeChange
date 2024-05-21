@@ -398,7 +398,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         return []
 
     @classmethod
-    def delete_list(cls, measurements_list, session=None, commit=True):
+    def delete_list(cls, measurements_list, session=None):
         """
         Remove a list of Measurements objects from the database.
 
@@ -407,18 +407,9 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
         measurements_list: list of Measurements
             The list of Measurements objects to remove.
         session: Session, optional
-            The database session to use. If not given, will create a new session.
-        commit: bool
-            If True, will commit the changes to the database.
-            If False, will not commit the changes to the database.
-            If session is not given, commit must be True.
+            The database session to use. If not given, will open a connection
+            and close it by calling commit (or rollback) at the end of the function.
         """
-        if session is None and not commit:
-            raise ValueError('If session is not given, commit must be True.')
-
         with SmartSession(session) as session:
             for m in measurements_list:
-                m.delete_from_database(session=session, commit=False)
-            if commit:
-                session.commit()
-
+                m.delete_from_database(session=session)

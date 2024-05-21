@@ -599,8 +599,6 @@ class Instrument:
                     sec.validity_end = validity_end
                 session.add(sec)
 
-            session.commit()
-
     def get_property(self, section_id, prop):
         """
         Get the value of a property for a given section of the instrument.
@@ -1366,7 +1364,7 @@ class Instrument:
 
         Will load it into the database as both an Image and a Calibrator
         Image; may also load other default calibrator images if they
-        come as a pack. WILL CALL session.commit()!
+        come as a pack.
 
         Should not be called from outside Instrument; instead, use
         preprocessing_calibrator_files.  _get_default_calibrator method
@@ -1407,13 +1405,10 @@ class Instrument:
     def preprocessing_calibrator_files( self, calibset, flattype, section, filter, mjd, nofetch=False, session=None ):
         """Get a dictionary of calibrator images/datafiles for a given mjd and sensor section.
 
-        MIGHT call session.commit(); see below.
-
         Instruments *may* need to override this.
 
         If a calibrator file doesn't exist for calibset 'default', will
-        call the instrument's _get_default_calibrator, which will call
-        session.commit().
+        call the instrument's _get_default_calibrator.
 
         If a calibrator file isn't found (potentially after calling the
         instrument's _get_default_calibrator), then the _isimage and

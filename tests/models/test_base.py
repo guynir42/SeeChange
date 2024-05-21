@@ -6,6 +6,7 @@ import uuid
 import json
 
 import sqlalchemy as sa
+from sqlalchemy.orm.exc import DetachedInstanceError
 
 import numpy as np
 
@@ -15,6 +16,7 @@ import util.config as config
 import models.base
 from models.base import Base, SmartSession, AutoIDMixin, FileOnDiskMixin, FourCorners
 from models.image import Image
+from models.provenance import Provenance
 
 
 def test_to_dict(data_dir):
@@ -76,11 +78,9 @@ class DiskFile(Base, AutoIDMixin, FileOnDiskMixin):
 def diskfiletable():
     with SmartSession() as session:
         DiskFile.__table__.create( session.bind )
-        session.commit()
     yield True
     with SmartSession() as session:
         DiskFile.__table__.drop( session.bind )
-        session.commit()
 
 
 @pytest.fixture
@@ -479,3 +479,40 @@ def test_fourcorners_sort_radec():
     assert ras ==  [ -1.366, -0.366,  0.366, 1.366 ]
     assert decs == [ -0.366,  1.366, -1.366, 0.366 ]
 
+
+def test_connections(provenance_detection, provenance_cutting):
+    # this test is only useful if you are stepping through it in a debugger,
+    # and checking the number of connections to the DB in each step
+
+    # this is just setting up two provenances with a relationship
+    with SmartSession() as session:
+        # provenance_cutting = session.merge(provenance_cutting)
+        # provenance_detection = session.merge(provenance_detection)
+
+        provenance_cutting.upstreams = [provenance_detection]
+        provenance_cutting.update_id()  # must update after changing the upstreams
+        prov_id = provenance_cutting.id
+        session.add(provenance_cutting)  # this should be added as a new object
+
+    with SmartSession() as session:
+        # when session starts there should not be any new connections until hitting "autobegin"
+        prov = session.scalars(sa.select(Provenance).where(Provenance.id == prov_id)).first()  # opens a connection
+
+        session.commit()  # this does nothing to the DB, but it does close the connection
+        session.begin()  # must re-start the transaction after commit/rollback
+        print(session.identity_map.keys())  # this doesn't open a connection, but shows prov is still on the session
+        _ = prov.upstreams[0]  # getting the related object succeeds and opens a connection
+        session.commit()  # close that connection again
+        session.begin()  # must re-start the transaction after commit/rollback
+
+        session.expire(prov)  # this used to make the prov unable to access its upstreams, if not on a session
+
+        _ = prov.upstreams[0]  # we are still on a session, it is ok
+
+        session.expire(prov)  # now we expire and leave the session
+
+    # with pytest.raises(DetachedInstanceError, match=r'Parent instance .* is not bound to a Session.*'):
+    #     _ = prov.upstreams[0]
+
+    with SmartSession() as session:
+        _ = prov.upstreams[0]  # it is the same session, so we should be fine here

@@ -137,8 +137,8 @@ def test_measurements_cannot_be_saved_twice(ptf_datastore):
         if key not in ['id', '_sa_instance_state']:
             setattr(m2, key, val)  # copy all attributes except the SQLA related ones
 
-    with SmartSession() as session:
-        try:
+    try:
+        with SmartSession() as session:
             with pytest.raises(
                     IntegrityError,
                     match='duplicate key value violates unique constraint "_measurements_cutouts_provenance_uc"'
@@ -147,6 +147,7 @@ def test_measurements_cannot_be_saved_twice(ptf_datastore):
                 session.commit()
 
             session.rollback()
+            session.begin()  # after rollback, we need to start a new transaction
 
             # now change the provenance
             prov = Provenance(
@@ -160,14 +161,11 @@ def test_measurements_cannot_be_saved_twice(ptf_datastore):
             prov.update_id()
             m2.provenance = prov
             session.add(m2)
-            session.commit()
 
-        finally:
-            if 'm' in locals() and sa.inspect(m).persistent:
+    finally:
+        if 'm' in locals() and sa.inspect(m).persistent:
+            with SmartSession() as session:
                 session.delete(m)
-                session.commit()
-            if 'm2' in locals() and sa.inspect(m2).persistent:
+        if 'm2' in locals() and sa.inspect(m2).persistent:
+            with SmartSession() as session:
                 session.delete(m2)
-                session.commit()
-
-

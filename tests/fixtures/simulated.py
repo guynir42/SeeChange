@@ -56,7 +56,6 @@ def commit_exposure(exposure, session=None):
     with SmartSession(session) as session:
         exposure = session.merge(exposure)
         exposure.nofile = True  # avoid calls to the archive to find this file
-        session.commit()
 
     return exposure
 
@@ -75,7 +74,6 @@ def generate_exposure_fixture():
             e = session.merge(e)
             if sa.inspect(e).persistent:
                 session.delete(e)
-                session.commit()
 
     return new_exposure
 
@@ -100,7 +98,6 @@ def sim_exposure_filter_array():
             e = session.merge(e)
             if sa.inspect( e ).persistent:
                 session.delete(e)
-                session.commit()
 
 
 # tools for making Image fixtures
@@ -199,24 +196,21 @@ def generate_image_fixture(commit=True):
                 merged_image.weight = im.weight
                 merged_image.header = im.header
                 im = merged_image
-                session.commit()
 
         yield im
 
         with SmartSession() as session:
             im = session.merge(im)
             exp = im.exposure
-            im.delete_from_disk_and_database(session=session, commit=True)
+            im.delete_from_disk_and_database()
             if sa.inspect( im ).persistent:
                 session.delete(im)
-                session.commit()
 
             if im in session:
                 session.expunge(im)
 
             if exp is not None and sa.inspect( exp ).persistent:
                 session.delete(exp)
-                session.commit()
 
     return new_image
 
@@ -283,15 +277,14 @@ def sim_reference(provenance_preprocessing, provenance_extra):
             upstreams=[provenance_extra],
             is_testing=True,
         )
-        ref.validity_start = Time(50000, format='mjd', scale='utc').isot
-        ref.validity_end = Time(58500, format='mjd', scale='utc').isot
+        ref.validity_start = Time(50000, format='mjd', scale='utc').datetime
+        ref.validity_end = Time(58500, format='mjd', scale='utc').datetime
         ref.section_id = 0
         ref.filter = filter
         ref.target = target
         ref.project = "coadd_test"
 
         session.add(ref)
-        session.commit()
 
     yield ref
 
@@ -299,12 +292,11 @@ def sim_reference(provenance_preprocessing, provenance_extra):
         with SmartSession() as session:
             ref = ref.merge_all(session)
             for im in ref.image.upstream_images:
-                im.exposure.delete_from_disk_and_database(session=session, commit=False)
-                im.delete_from_disk_and_database(session=session, commit=False)
-            ref.image.delete_from_disk_and_database(session=session, commit=False)
+                im.exposure.delete_from_disk_and_database(session=session)
+                im.delete_from_disk_and_database(session=session)
+            ref.image.delete_from_disk_and_database(session=session)
             if sa.inspect(ref).persistent:
                 session.delete(ref.provenance)  # should also delete the reference
-            session.commit()
 
 
 @pytest.fixture
@@ -334,13 +326,12 @@ def sim_sources(sim_image1):
         s.provenance = prov
         s.save()
         s = session.merge(s)
-        session.commit()
 
     yield s
 
     with SmartSession() as session:
         s = s.merge_all(session)
-        s.delete_from_disk_and_database(session=session, commit=True)
+        s.delete_from_disk_and_database(session=session)
 
 
 @pytest.fixture
@@ -412,18 +403,14 @@ def sim_image_list(
             im = im.merge_all(session)
             images.append(im)
 
-        session.commit()
-
     yield images
 
     with SmartSession() as session:
         for im in images:
             im = im.merge_all(session)
             exp = im.exposure
-            im.delete_from_disk_and_database(session=session, commit=False, remove_downstreams=True)
-            exp.delete_from_disk_and_database(session=session, commit=False)
-
-        session.commit()
+            im.delete_from_disk_and_database(session=session, remove_downstreams=True)
+            exp.delete_from_disk_and_database(session=session)
 
 
 @pytest.fixture
@@ -437,7 +424,6 @@ def provenance_subtraction(code_version, subtractor):
             is_testing=True,
         )
         session.add(prov)
-        session.commit()
 
     yield prov
 
@@ -445,7 +431,6 @@ def provenance_subtraction(code_version, subtractor):
         prov = session.merge(prov)
         if sa.inspect(prov).persistent:
             session.delete(prov)
-            session.commit()
 
 
 @pytest.fixture
@@ -459,7 +444,6 @@ def provenance_detection(code_version, detector):
             is_testing=True,
         )
         session.add(prov)
-        session.commit()
 
     yield prov
 
@@ -467,7 +451,6 @@ def provenance_detection(code_version, detector):
         prov = session.merge(prov)
         if sa.inspect(prov).persistent:
             session.delete(prov)
-            session.commit()
 
 
 @pytest.fixture
@@ -481,7 +464,6 @@ def provenance_cutting(code_version, cutter):
             is_testing=True,
         )
         session.add(prov)
-        session.commit()
 
     yield prov
 
@@ -489,7 +471,6 @@ def provenance_cutting(code_version, cutter):
         prov = session.merge(prov)
         if sa.inspect(prov).persistent:
             session.delete(prov)
-            session.commit()
 
 
 @pytest.fixture
@@ -503,7 +484,6 @@ def provenance_measuring(code_version, measurer):
             is_testing=True,
         )
         session.add(prov)
-        session.commit()
 
     yield prov
 
@@ -511,7 +491,6 @@ def provenance_measuring(code_version, measurer):
         prov = session.merge(prov)
         if sa.inspect(prov).persistent:
             session.delete(prov)
-            session.commit()
 
 
 @pytest.fixture
@@ -596,15 +575,12 @@ def sim_sub_image_list(
 
             sub_images.append(sub)
 
-        session.commit()
-
     yield sub_images
 
     with SmartSession() as session:
         for sub in sub_images:
             # sub = sub.merge_all(session)
-            sub.delete_from_disk_and_database(session=session, commit=False, remove_downstreams=True)
-        session.commit()
+            sub.delete_from_disk_and_database(session=session, remove_downstreams=True)
 
 
 @pytest.fixture

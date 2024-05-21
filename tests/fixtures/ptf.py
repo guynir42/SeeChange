@@ -133,7 +133,6 @@ def ptf_exposure(ptf_downloader):
             exposure = session.merge(exposure)
             exposure.save()  # make sure it is up on the archive as well
             session.add(exposure)
-            session.commit()
 
     yield exposure
 
@@ -261,9 +260,8 @@ def ptf_reference_images(ptf_images_factory):
 
         for image in images:
             image = session.merge(image)
-            image.exposure.delete_from_disk_and_database(session=session, commit=False)
-            image.delete_from_disk_and_database(session=session, commit=False, remove_downstreams=True)
-        session.commit()
+            image.exposure.delete_from_disk_and_database(session=session)
+            image.delete_from_disk_and_database(session=session, remove_downstreams=True)
 
 
 @pytest.fixture(scope='session')
@@ -273,16 +271,17 @@ def ptf_supernova_images(ptf_images_factory):
     yield images
 
     with SmartSession() as session:
+        autoflush_state = session.autoflush
         session.autoflush = False
-
-        for image in images:
-            image = session.merge(image)
-            # first delete the image and all it's products and the associated data (locally and on archive)
-            image.delete_from_disk_and_database(session=session, commit=False, remove_downstreams=True)
-            # only then delete the exposure, so it doesn't cascade delete the image and prevent deleting products
-            image.exposure.delete_from_disk_and_database(session=session, commit=False)
-
-        session.commit()
+        try:
+            for image in images:
+                image = session.merge(image)
+                # first delete the image and all it's products and the associated data (locally and on archive)
+                image.delete_from_disk_and_database(session=session, remove_downstreams=True)
+                # only then delete the exposure, so it doesn't cascade delete the image and prevent deleting products
+                image.exposure.delete_from_disk_and_database(session=session)
+        finally:
+            session.autoflush = autoflush_state
 
 
 # conditionally call the ptf_reference_images fixture if cache is not there:
@@ -350,9 +349,8 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
         with SmartSession() as session:
             for image in ptf_reference_images:
                 image = session.merge(image)
-                image.exposure.delete_from_disk_and_database(commit=False, session=session)
-                image.delete_from_disk_and_database(commit=False, session=session, remove_downstreams=True)
-            session.commit()
+                image.exposure.delete_from_disk_and_database(session=session)
+                image.delete_from_disk_and_database(session=session, remove_downstreams=True)
 
 
 @pytest.fixture
@@ -468,14 +466,12 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, ptf_cache_dir, da
         ref.provenance.update_id()
 
         ref = session.merge(ref)
-        session.commit()
 
     yield ref
 
     with SmartSession() as session:
         coadd_image = session.merge(coadd_image)
-        coadd_image.delete_from_disk_and_database(commit=False, session=session, remove_downstreams=True)
-        session.commit()
+        coadd_image.delete_from_disk_and_database(session=session, remove_downstreams=True)
         ref_in_db = session.scalars(sa.select(Reference).where(Reference.id == ref.id)).first()
         assert ref_in_db is None  # should have been deleted by cascade when image is deleted
 
@@ -508,7 +504,6 @@ def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, ptf_cache_dir):
     # save the subtraction image to DB and the upstreams (if they are not already there)
     with SmartSession() as session:
         im = session.merge(im)
-        session.commit()
 
     yield im
 

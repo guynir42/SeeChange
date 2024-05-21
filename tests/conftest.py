@@ -70,7 +70,8 @@ def pytest_sessionfinish(session, exitstatus):
             exp = dbsession.scalars(sa.select(Exposure).where(Exposure.provenance_id == prov.id)).all()
             if len(exp) == 0:
                 dbsession.delete(prov)
-        dbsession.commit()
+        dbsession.commit()  # when calling explicit commit, must also call begin to start again
+        dbsession.begin()
 
         objects = get_all_database_objects(session=dbsession)
         any_objects = False
@@ -93,7 +94,8 @@ def pytest_sessionfinish(session, exitstatus):
         # remove any Object objects from tests, as these are not automatically cleaned up:
         dbsession.execute(sa.delete(Object).where(Object.is_test.is_(True)))
 
-        dbsession.commit()
+        dbsession.commit()  # when calling explicit commit, must also call begin to start again
+        dbsession.begin()
 
         verify_archive_database_empty = False  # set to False to avoid spurious errors at end of tests (when debugging)
 
@@ -220,10 +222,8 @@ def code_version():
         cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.id == 'test_v1.0.0')).first()
         if cv is None:
             cv = CodeVersion(id="test_v1.0.0")
-            cv.update()
-            session.add( cv )
-            session.commit()
-        cv = session.scalars(sa.select(CodeVersion).where(CodeVersion.id == 'test_v1.0.0')).first()
+            cv.update(session)
+            cv = session.merge( cv )
 
     yield cv
 
@@ -241,13 +241,10 @@ def provenance_base(code_version):
         )
         p = session.merge(p)
 
-        session.commit()
-
     yield p
 
     with SmartSession() as session:
         session.delete(p)
-        session.commit()
 
 
 @pytest.fixture
@@ -262,13 +259,11 @@ def provenance_extra( provenance_base ):
             is_testing=True,
         )
         p = session.merge(p)
-        session.commit()
 
     yield p
 
     with SmartSession() as session:
-        session.delete(p)
-        session.commit()
+        session.execute(sa.delete(Provenance).where(Provenance.id == p.id))
 
 
 # use this to make all the pre-committed Image fixtures
@@ -285,13 +280,11 @@ def provenance_preprocessing(code_version):
         )
 
         p = session.merge(p)
-        session.commit()
 
     yield p
 
     with SmartSession() as session:
         session.delete(p)
-        session.commit()
 
 
 @pytest.fixture(scope="session")
@@ -307,13 +300,11 @@ def provenance_extraction(code_version):
         )
 
         p = session.merge(p)
-        session.commit()
 
     yield p
 
     with SmartSession() as session:
         session.delete(p)
-        session.commit()
 
 
 @pytest.fixture(scope="session", autouse=True)

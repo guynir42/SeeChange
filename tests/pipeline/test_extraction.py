@@ -101,7 +101,7 @@ def test_sep_save_source_list(decam_small_image, provenance_base, extractor):
             sources = session.merge( sources )
             decam_small_image.save()  # pretend to save this file
             decam_small_image.exposure.save()
-            session.commit()
+            session.flush()
             image_id = decam_small_image.id
             sources_id = sources.id
 

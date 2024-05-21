@@ -9,7 +9,7 @@ from models.provenance import CodeHash, CodeVersion, Provenance
 
 @pytest.mark.xfail
 def test_code_versions():
-    cv = CodeVersion(version="test_v0.0.1")
+    cv = CodeVersion(id="test_v0.0.1")
     cv.update()
 
     assert cv.code_hashes is not None
@@ -21,7 +21,7 @@ def test_code_versions():
     try:
         with SmartSession() as session:
             session.add(cv)
-            session.commit()
+            session.flush()
             cv_id = cv.id
             git_hash = cv.code_hashes[0].hash
             assert cv_id is not None
@@ -42,7 +42,7 @@ def test_code_versions():
 
         with SmartSession() as session:
             session.add(cv)
-            session.commit()
+            session.flush()
 
             assert len(cv.code_hashes) == 2
             assert cv.code_hashes[0].hash == git_hash
@@ -54,15 +54,15 @@ def test_code_versions():
         with SmartSession() as session:
             session.add(cv)  # add it back into the new session
             session.delete(ch2)
-            session.commit()
-            # This assertion failes with expire_on_commit=False in session creation; have to manually refresh
+            session.flush()
+            # This assertion fails with expire_on_commit=False in session creation; have to manually refresh
             session.refresh(cv)
             assert len(cv.code_hashes) == 1
             assert cv.code_hashes[0].hash == git_hash
 
             # now check the delete orphan
             cv.code_hashes = []
-            session.commit()
+            session.flush()
             assert len(cv.code_hashes) == 0
             orphan_hash = session.scalars(sa.select(CodeHash).where(CodeHash.hash == git_hash)).first()
             assert orphan_hash is None
@@ -70,7 +70,7 @@ def test_code_versions():
     finally:
         with SmartSession() as session:
             session.execute(sa.delete(CodeVersion).where(CodeVersion.version == 'test_v0.0.1'))
-            session.commit()
+            session.flush()
 
 
 def test_provenances(code_version):
@@ -105,8 +105,8 @@ def test_provenances(code_version):
             )
 
             # adding the provenance also calculates the hash
-            session.add(p)
-            session.commit()
+            p = session.merge(p)
+            session.flush()
             pid1 = p.id
             assert pid1 is not None
             assert isinstance(p.id, str)
@@ -122,8 +122,8 @@ def test_provenances(code_version):
             )
 
             # adding the provenance also calculates the hash
-            session.add(p2)
-            session.commit()
+            p2 = session.merge(p2)
+            session.flush()
             pid2 = p2.id
             assert pid2 is not None
             assert isinstance(p2.id, str)
@@ -132,7 +132,6 @@ def test_provenances(code_version):
     finally:
         with SmartSession() as session:
             session.execute(sa.delete(Provenance).where(Provenance.id.in_([pid1, pid2])))
-            session.commit()
 
 
 def test_unique_provenance_hash(code_version):
@@ -147,15 +146,14 @@ def test_unique_provenance_hash(code_version):
 
     try:  # cleanup
         with SmartSession() as session:
-            session.add(p)
-            session.commit()
+            p = session.merge(p)
+            session.flush()
             pid = p.id
             assert pid is not None
             assert len(p.id) == 20
             hash = p.id
+            session.expunge(p)
 
-        # start new session
-        with SmartSession() as session:
             p2 = Provenance(
                 process='test_process',
                 code_version=code_version,
@@ -168,13 +166,15 @@ def test_unique_provenance_hash(code_version):
             with pytest.raises(sa.exc.IntegrityError) as e:
                 session.add(p2)
                 session.commit()
+
+            session.rollback()
+            session.begin()  # after rollback, we need to start a new transaction
             assert 'duplicate key value violates unique constraint "pk_provenances"' in str(e)
 
     finally:
         if 'pid' in locals():
             with SmartSession() as session:
                 session.execute(sa.delete(Provenance).where(Provenance.id == pid))
-                session.commit()
 
 
 def test_upstream_relationship( provenance_base, provenance_extra ):
@@ -183,8 +183,8 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
 
     with SmartSession() as session:
         try:
-            provenance_base = session.merge(provenance_base)
-            provenance_extra = session.merge(provenance_extra)
+            # provenance_base = session.merge(provenance_base)
+            # provenance_extra = session.merge(provenance_extra)
             fixture_ids = [provenance_base.id, provenance_extra.id]
             p1 = Provenance(
                 process="test_downstream_process",
@@ -195,7 +195,7 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
             )
 
             session.add(p1)
-            session.commit()
+            session.flush()
             pid1 = p1.id
             new_ids.append(pid1)
             assert pid1 is not None
@@ -212,7 +212,7 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
             )
 
             session.add(p2)
-            session.commit()
+            session.flush()
             pid2 = p2.id
             assert pid2 is not None
             new_ids.append(pid2)
@@ -230,7 +230,7 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
                 is_testing=True,
             )
             p2.upstreams.append(p3)
-            session.commit()
+            session.flush()
 
             pid3 = p3.id
             assert pid3 is not None
@@ -238,6 +238,7 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
 
             p3_recovered = session.scalars(sa.select(Provenance).where(Provenance.id == pid3)).first()
             assert p3_recovered is not None
+            assert p3_recovered is p3
 
             # check that the downstreams of our fixture provenances have been updated too
             base_downstream_ids = [p.id for p in provenance_base.downstreams]
@@ -245,13 +246,21 @@ def test_upstream_relationship( provenance_base, provenance_extra ):
             assert pid2 in [p.id for p in provenance_extra.downstreams]
 
         finally:
-            session.execute(sa.delete(Provenance).where(Provenance.id.in_(new_ids)))
-            session.commit()
+            # session.execute(sa.delete(Provenance).where(Provenance.id.in_(new_ids)))
+            session.delete(p1)
+            session.delete(p2)
+            session.delete(p3)
+            session.flush()
+            # must refresh these because they do not get expired after commit (since expire_on_commit=False)
+            # and then their downstream relationships are not automatically updated to show the deletions
+            session.refresh(provenance_base)
+            session.refresh(provenance_extra)
 
             fixture_provenances = session.scalars(sa.select(Provenance).where(Provenance.id.in_(fixture_ids))).all()
             assert len(fixture_provenances) == 2
-            cv = session.scalars(sa.select(CodeVersion)
-                                 .where(CodeVersion.id == provenance_base.code_version.id)).first()
+            cv = session.scalars(
+                sa.select(CodeVersion).where(CodeVersion.id == provenance_base.code_version.id)
+            ).first()
             assert cv is not None
 
 
@@ -283,7 +292,7 @@ def test_cascade_merge( provenance_base ):
                              upstreams=[ p3 ],
                              is_testing=True )
 
-            # Now, in another session....
+            # this would not actually be a different session
             with SmartSession() as different_session:
                 merged_p4 = different_session.merge(p4)
 
@@ -303,12 +312,12 @@ def test_cascade_merge( provenance_base ):
                 check_in_session( different_session, merged_p4 )
 
     finally:
-        if 'p1' in locals():
-            session.execute(sa.delete(Provenance).where(Provenance.id == p1.id))
-        if 'p2' in locals():
-            session.execute(sa.delete(Provenance).where(Provenance.id == p2.id))
-        if 'p3' in locals():
-            session.execute(sa.delete(Provenance).where(Provenance.id == p3.id))
-        if 'p4' in locals():
-            session.execute(sa.delete(Provenance).where(Provenance.id == p4.id))
-        session.commit()
+        with SmartSession() as session:
+            if 'p1' in locals():
+                session.execute(sa.delete(Provenance).where(Provenance.id == p1.id))
+            if 'p2' in locals():
+                session.execute(sa.delete(Provenance).where(Provenance.id == p2.id))
+            if 'p3' in locals():
+                session.execute(sa.delete(Provenance).where(Provenance.id == p3.id))
+            if 'p4' in locals():
+                session.execute(sa.delete(Provenance).where(Provenance.id == p4.id))

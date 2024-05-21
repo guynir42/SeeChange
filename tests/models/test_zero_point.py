@@ -26,8 +26,8 @@ def test_zeropoint_get_aper_cor():
 
 def test_zeropoint_committing(ztf_datastore_uncommitted, provenance_base, provenance_extra):
     # save the WCS to file and DB
-    with SmartSession() as session:
-        try:
+    try:
+        with SmartSession() as session:
             provenance_base = session.merge(provenance_base)
             provenance_extra = session.merge(provenance_extra)
             image = ztf_datastore_uncommitted.image
@@ -51,8 +51,8 @@ def test_zeropoint_committing(ztf_datastore_uncommitted, provenance_base, proven
             )
 
             session.add(zp)
-            session.commit()
 
+        with SmartSession() as session:
             # add a second WCS object and make sure we cannot accidentally commit it, too
             zp2 = ZeroPoint(zp=20.1, dzp=0.1)
             zp2.sources = image.sources
@@ -65,6 +65,7 @@ def test_zeropoint_committing(ztf_datastore_uncommitted, provenance_base, proven
                 session.add(zp2)
                 session.commit()
             session.rollback()
+            session.begin()  # after rollback we need to start a new transaction
 
             # if we change any of the provenance parameters we should be able to save it
             zp2.provenance = Provenance(
@@ -75,10 +76,9 @@ def test_zeropoint_committing(ztf_datastore_uncommitted, provenance_base, proven
                 is_testing=True,
             )
             session.add(zp2)
-            session.commit()
 
-        finally:
-
+    finally:
+        with SmartSession() as session:
             if 'zp' in locals():
                 if sa.inspect(zp).persistent:
                     session.delete(zp)
@@ -91,9 +91,8 @@ def test_zeropoint_committing(ztf_datastore_uncommitted, provenance_base, proven
                     image.sources.zp = None
 
             if 'image' in locals():
-                image.delete_from_disk_and_database(session=session, commit=False, remove_downstreams=True)
+                image.delete_from_disk_and_database(session=session, remove_downstreams=True)
 
-            session.commit()
 
     
                     

@@ -195,9 +195,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
 
         ds = p.run(exposure, sec_id)
 
-        # commit to DB using this session
-        with SmartSession() as session:
-            ds.save_and_commit(session=session)
+        ds.save_and_commit()
 
         # use a new session to query for the results
         with SmartSession() as session:
@@ -220,9 +218,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
             # _logger.debug(f'removing attributes up to {attributes[i]}')
             ds = p.run(ds)  # for each iteration, we should be able to recreate the data
 
-            # commit to DB using this session
-            with SmartSession() as session:
-                ds.save_and_commit(session=session)
+            ds.save_and_commit()
 
             # use a new session to query for the results
             with SmartSession() as session:
@@ -233,15 +229,13 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
             for j in range(i):
                 obj = getattr(ds, attributes[-j-1])
                 if isinstance(obj, FileOnDiskMixin):
-                    obj.delete_from_disk_and_database(session=session, commit=True)
+                    obj.delete_from_disk_and_database()
 
                 setattr(ds, attributes[-j-1], None)
 
             ds = p.run(ds)  # for each iteration, we should be able to recreate the data
 
-            # commit to DB using this session
-            with SmartSession() as session:
-                ds.save_and_commit(session=session)
+            ds.save_and_commit()
 
             # use a new session to query for the results
             with SmartSession() as session:
@@ -317,9 +311,9 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
             # add a bitflag and check that it appears in downstreams
             ds.image._bitflag = 16  # 16=2**4 is the bitflag for 'bad subtraction'  
             session.add(ds.image)
-            session.commit()
+            session.flush()
             ds.image.exposure.update_downstream_badness(session)
-            session.commit()
+            session.flush()
 
             desired_bitflag = 2 ** 1 + 2 ** 4 + 2 ** 17  # 'banding' 'bad subtraction' 'many sources'
             assert ds.exposure.bitflag == 2 ** 1
@@ -335,9 +329,9 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
 
             # remove the bitflag and check that it disappears in downstreams
             ds.image._bitflag = 0  # remove 'bad subtraction'  
-            session.commit()
+            session.flush()
             ds.image.exposure.update_downstream_badness(session)
-            session.commit()
+            session.flush()
             desired_bitflag = 2 ** 1 + 2 ** 17  # 'banding' 'many sources'
             assert ds.exposure.bitflag == 2 ** 1
             assert ds.image.bitflag == 2 ** 1  # just 'banding' left on image

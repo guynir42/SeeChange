@@ -64,12 +64,10 @@ def test_exposure_no_null_values():
                 # without all the required columns on e, it cannot be added to DB
                 with pytest.raises(IntegrityError) as exc:
                     e = session.merge(e)
-                    # session.merge( e.provenance.code_version )
-                    # session.merge( e.provenance )
-                    # session.add(e)
-                    session.commit()
+                    session.flush()
                     exposure_id = e.id
                 session.rollback()
+                session.begin()  # after a rollback must restart the connection
 
                 if 'check constraint "exposures_filter_or_array_check"' in str(exc.value):
                     # the constraint on the filter is either filter or filter array must be not-null
@@ -91,7 +89,7 @@ def test_exposure_no_null_values():
         for k in required.keys():
             setattr(e, k, added.get(k, None))
         session.add(e)
-        session.commit()
+        session.flush()
         exposure_id = e.id
         assert exposure_id is not None
         assert e.provenance.process == 'load_exposure'
@@ -105,7 +103,6 @@ def test_exposure_no_null_values():
                 exposure = session.scalars(sa.select(Exposure).where(Exposure.id == exposure_id)).first()
             if exposure is not None:
                 session.delete(exposure)
-                session.commit()
 
 
 def test_exposure_guess_demo_instrument():
