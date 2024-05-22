@@ -105,6 +105,14 @@ class Report(Base, AutoIDMixin):
         )
     )
 
+    cluster_id = sa.Column(
+        sa.Text,
+        nullable=True,
+        doc=(
+            "ID of the cluster where the worker/process ran this section. "
+        )
+    )
+
     error_step = sa.Column(
         sa.Text,
         nullable=True,

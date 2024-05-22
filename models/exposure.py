@@ -776,7 +776,7 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
                     # this could happen if in between the query and the merge(exposure)
                     # another process added the same exposure to the database
                     if 'duplicate key value violates unique constraint "ix_exposures_filepath"' in str(e):
-                        print(str(e))
+                        _logger.debug(str(e))
                         session.rollback()
                         time.sleep(0.1 * 2 ** i)  # exponential backoff
                     else:

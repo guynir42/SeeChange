@@ -27,6 +27,7 @@ def upgrade() -> None:
     sa.Column('num_prev_reports', sa.Integer(), nullable=False),
     sa.Column('worker_id', sa.Text(), nullable=True),
     sa.Column('node_id', sa.Text(), nullable=True),
+    sa.Column('cluster_id', sa.Text(), nullable=True),
     sa.Column('error_step', sa.Text(), nullable=True),
     sa.Column('error_type', sa.Text(), nullable=True),
     sa.Column('error_message', sa.Text(), nullable=True),

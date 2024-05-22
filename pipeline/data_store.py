@@ -53,6 +53,7 @@ class DataStore:
     to be fetched from the database, and keep a cached version of the products for
     use downstream in the pipeline.
     """
+    # the products_to_save are also getting cleared along with products_to_clear
     products_to_save = [
         'exposure',
         'image',
@@ -66,6 +67,7 @@ class DataStore:
         'measurements'
     ]
 
+    # these get cleared but not saved
     products_to_clear = [
         'ref_image',
         'sub_image',
@@ -320,7 +322,7 @@ class DataStore:
             self.reference = Reference()
         self.reference.image = value
 
-    def __getattr__(self, key):
+    def __getattribute__(self, key):
         # if this datastore has a pending error, will raise it as soon as any other data is used
         if key != 'exception' and self.exception is not None:
             raise self.exception
