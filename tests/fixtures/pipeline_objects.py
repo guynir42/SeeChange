@@ -560,7 +560,7 @@ def datastore_factory(data_dir, pipeline_factory):
             try:  # if no reference is found, simply return the datastore without the rest of the products
                 ref = ds.get_reference()  # first make sure this actually manages to find the reference image
             except ValueError as e:
-                if 'No reference found' in str(e):
+                if 'No reference image found' in str(e):
                     return ds
                 raise e  # if any other error comes up, raise it
 

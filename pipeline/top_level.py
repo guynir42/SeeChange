@@ -363,8 +363,26 @@ class Pipeline:
         with SmartSession(session) as session:
             # start by getting the exposure and reference
             exposure = session.merge(exposure)  # also merges the provenance and code_version
-            reference = self.get_reference(exposure.filter, exposure.target, exposure.observation_time, session=session)
+            # TODO: need a better way to find the relevant reference PROVENANCE for this exposure
+            #  i.e., we do not look for a valid reference and get its provenance, instead,
+            #  we look for a provenance based on our policy (that can be defined in the subtraction parameters)
+            #  and find a specific provenance id that matches our policy.
+            #  If we later find that no reference with that provenance exists that overlaps our images,
+            #  that will be recorded as an error in the report.
+            #  One way to do this would be to add a RefSet table that has a name (e.g., "standard") and
+            #  a validity time range (which will be removed from Reference), maybe also the instrument.
+            #  That would allow us to use a combination of name+obs_time to find a specific RefSet,
+            #  which has a single reference provenance ID. If you want a custom reference,
+            #  add a new RefSet with a new name.
+            #  This also means that the reference making pipeline MUST use a single set of policies
+            #  to create all the references for a given RefSet... we need to make sure we can actually
+            #  make that happen consistently (e.g., if you change parameters or start mixing instruments
+            #  when you make the references it will create multiple provenances for the same RefSet).
 
+            # for now, use the latest provenance that has to do with references
+            ref_prov = session.scalars(
+                sa.select(Provenance).where(Provenance.process == 'reference').order_by(Provenance.created_at.desc())
+            ).first()
             provs = {'exposure': exposure.provenance}  # TODO: does this always work on any exposure?
             code_version = exposure.provenance.code_version
             is_testing = exposure.provenance.is_testing
@@ -391,7 +409,7 @@ class Pipeline:
                 upstreams = []
                 for upstream in up_steps:
                     if upstream == 'reference':
-                        upstreams += reference.provenance.upstreams
+                        upstreams += ref_prov.upstreams
                     else:
                         upstreams.append(provs[upstream])
 

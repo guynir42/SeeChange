@@ -1,5 +1,5 @@
 import sqlalchemy as sa
-from sqlalchemy import orm
+from sqlalchemy import orm, func
 
 from models.base import Base, AutoIDMixin, SmartSession
 from models.image import Image
@@ -50,6 +50,13 @@ class Reference(Base, AutoIDMixin):
             'This string is used to match the reference to new images, '
             'e.g., by matching the field ID on a pre-defined grid of fields. '
         )
+    )
+
+    instrument = sa.Column(
+        sa.Text,
+        nullable=False,
+        index=True,
+        doc="Name of the instrument used to make the images for this reference image. "
     )
 
     filter = sa.Column(
@@ -138,6 +145,7 @@ class Reference(Base, AutoIDMixin):
     def __setattr__(self, key, value):
         if key == 'image' and value is not None:
             self.target = value.target
+            self.instrument = value.instrument
             self.filter = value.filter
             self.section_id = value.section_id
             self.sources = value.sources
@@ -275,22 +283,81 @@ class Reference(Base, AutoIDMixin):
         return new_ref
 
     @staticmethod
-    def check_reference(ref, filter, target, obs_time):
-        """Check if the given reference is valid for the given filter, target, and observation time.
+    def check_reference(
+            ref,
+            instrument,
+            filter,
+            ra,
+            dec,
+            target,
+            section_id,
+            obs_time,
+            minovfrac=0.85,
+            must_match_instrument=True,
+            must_match_filter=True,
+            must_match_target=False,
+            must_match_section=False,
+    ):
+        """Check if the given reference is valid for the given instrument, filter, coordinates,
+        and observation time.  You may also require, instead of coordinates,
+        that the target and section_id match.
+
         If the reference has is_bad==True, it will also not be considered valid.
+
         Parameters
         ----------
+        ref: Reference object
+            The reference object to check against the given inputs of a new image/exposure.
+        instrument: str
+            The name of the instrument used to produce the image/exposure.
         filter: str
             The filter of the image/exposure.
+        ra: float
+            The right ascension of the center of the image/exposure. Given in degrees.
+            If minovfrac is not given (or is zero) will not require overlap of reference
+            and image coordinates. Instead, use target and section_id to check the reference.
+            By default, the check IS done using coordinates and ignores target and section_id.
+        dec: float
+            The declination of the center of the image/exposure. Given in degrees.
+            If minovfrac is not given (or is zero) will not require overlap of reference
+            and image coordinates. Instead, use target and section_id to check the reference.
+            By default, the check IS done using coordinates and ignores target and section_id.
         target: str
-            The target of the image/exposure, or the name of the field.  # TODO: can we replace this with coordinates?
+            The target of the image/exposure, or the name of the field.
+            This is only used when must_match_target is True.
+            By default, this isn't used, and the coordinate overlap is used.
+        section_id: str
+            The section ID of the image/exposure.
+            This is only used when must_match_section is True.
+            By default, this isn't used, and the coordinate overlap is used.
         obs_time: datetime
-            The observation time of the image.
+            The observation time of the image. This is used to check that the reference
+            has the correct validity start and end times.
+        minovfrac: float, default 0.85
+            Area of overlap region must be at least this fraction of the
+            area of the search image/exposure for the reference to match.
+            (Warning: calculation implicitly assumes that images are
+            aligned N/S and E/W.)  Make this None or <= 0 to not consider
+            overlap fraction when finding a reference.
+            In such cases, it is recommended to use the target and section_id
+            to check references instead.
+        must_match_instrument: bool, default True
+            If True, only approve a reference from the same instrument
+            as that of the image/exposure.
+        must_match_filter: bool, default True
+            If True, only approve a reference whose filter matches the
+            filter of the image/exposure.
+        must_match_target: bool, default False
+            If True, only approve a reference if the "target" field of the
+            reference image matches the "target" field of the image/exposure.
+        must_match_section: bool, default False
+            If True, only approve a reference if the "section_id" field of
+            the reference image matches that of the image/exposure.
 
         Returns
         -------
         bool:
-            True if the reference is valid for the given filter, target, and observation time.
+            True if the reference is valid for the given inputs.
         """
         return (
                 (ref.validity_start is None or ref.validity_start <= obs_time) and
@@ -300,23 +367,89 @@ class Reference(Base, AutoIDMixin):
         )
 
     @staticmethod
-    def get_reference(filter, target, obs_time, session=None):
+    def get_reference(
+            instrument,
+            filter,
+            ra,
+            dec,
+            target,
+            section_id,
+            obs_time,
+            maxoffset=0.1,
+            minovfrac=None,
+            must_match_instrument=True,
+            must_match_filter=True,
+            must_match_target=False,
+            must_match_section=False,
+            session=None
+    ):
         """
-        Get a reference for a given filter, target, and observation time.
+        Get a reference for a given instrument, filter, coordinates, and observation time.
+        (or, if you prefer, the given target, and section_id instead of coordinates).
+
+        Will only consider references whose validity date range
+        includes the given obs_time.
+
+        If minovfrac is given, it will return the reference that has the
+        highest ovfrac.
+
+        If minovfrac is not given, it will return the first reference found
+        that matches the other criteria.  Be careful with this.
+
         References with is_bad==True will not be considered.
 
         Parameters
         ----------
+        instrument: str
+            The name of the instrument used to produce the image/exposure.
         filter: str
             The filter of the image/exposure.
+        ra: float
+            The right ascension of the center of the image/exposure. Given in degrees.
+            If minovfrac is not given (or is zero) will not require overlap of reference
+            and image coordinates. Instead, use target and section_id to match the reference.
+            By default, the match IS done using coordinates and ignores target and section_id.
+        dec: float
+            The declination of the center of the image/exposure. Given in degrees.
+            If minovfrac is not given (or is zero) will not require overlap of reference
+            and image coordinates. Instead, use target and section_id to match the reference.
+            By default, the match IS done using coordinates and ignores target and section_id.
         target: str
-            The target of the image/exposure, or the name of the field.  # TODO: can we replace this with coordinates?
+            The target of the image/exposure, or the name of the field.
+            This is only used when must_match_target is True.
+            By default, this isn't used, and the coordinate overlap is used.
+        section_id: str
+            The section ID of the image/exposure.
+            This is only used when must_match_section is True.
+            By default, this isn't used, and the coordinate overlap is used.
         obs_time: datetime
-            The observation time of the image.
+            The observation time of the image. This is used to find a reference
+            with the correct validity start and end times.
+        maxoffset: float, default 0.1
+            Maximum offset in degrees between the given ra/dec and the reference's center coordinates.
+        minovfrac: float, default None
+            Area of overlap region must be at least this fraction of the
+            area of the search image/exposure for the reference to be good.
+            (Warning: calculation implicitly assumes that images are
+            aligned N/S and E/W.)  Make this None or <= 0 to not consider
+            overlap fraction when finding a reference.
+            In such cases, it is recommended to use the target and section_id
+            to identify references instead.
+        must_match_instrument: bool, default True
+            If True, only find a reference from the same instrument
+            as that of the image/exposure.
+        must_match_filter: bool, default True
+            If True, only find a reference whose filter matches the
+            filter of the image/exposure.
+        must_match_target: bool, default False
+            If True, only find a reference if the "target" field of the
+            reference image matches the "target" field of the image/exposure.
+        must_match_section: bool, default False
+            If True, only find a reference if the "section_id" field of
+            the reference image matches that of the image/exposure.
         session: sqlalchemy.orm.session.Session
             An optional session to use for the database query.
-            If not given, will use the session stored inside the
-            DataStore object; if there is none, will open a new session
+            If not given, will open a new session
             and close it at the end of the function.
 
         Returns
@@ -324,25 +457,49 @@ class Reference(Base, AutoIDMixin):
         ref: Image object
             The reference image for this image, or None if no reference is found.
 
+
+        NOTE: If, by unlikely chance, multiple references have
+        identical overlap fractions, an undeterministically chosen
+        reference will be returned.  Ideally, by construction, you will
+        never have this situation in your database; you will only have a
+        single valid reference image for a given instrument/filter/date
+        that has an appreciable overlap with any possible image from
+        that instrument.  The software does not enforce this, however.
         """
         with SmartSession(session) as session:
-            ref = session.scalars(
-                sa.select(Reference).where(
-                    sa.or_(
-                        Reference.validity_start.is_(None),
-                        Reference.validity_start <= obs_time
-                    ),
-                    sa.or_(
-                        Reference.validity_end.is_(None),
-                        Reference.validity_end >= obs_time
-                    ),
-                    Reference.filter == filter,
-                    Reference.target == target,
-                    Reference.is_bad.is_(False),
-                )
-            ).first()
+            stmt = sa.select(Reference, Image).where(
+                Image.id == Reference.image_id,
+                sa.or_(
+                    Reference.validity_start.is_(None),
+                    Reference.validity_start <= obs_time
+                ),
+                sa.or_(
+                    Reference.validity_end.is_(None),
+                    Reference.validity_end >= obs_time
+                ),
+                Reference.is_bad.is_(False),
+            )
+            if must_match_instrument:
+                stmt = stmt.where(Reference.instrument == instrument)
+            if must_match_filter:
+                stmt = stmt.where(Reference.filter == filter)
+            if must_match_target:
+                stmt = stmt.where(Reference.target == target)
+            if must_match_section:
+                stmt = stmt.where(Reference.section_id == section_id)
 
-            if ref is None:
-                raise ValueError(f'No reference found with filter={filter}, target={target}, obs_time={obs_time}')
+            # get the latest references first.
+            stmt = stmt.order_by(Reference.created_at.desc())
+
+            if maxoffset is not None and maxoffset > 0:
+                stmt = stmt.where(func.q3c_radial_query(ra, dec, Reference.ra, Reference.dec, maxoffset))
+            elif minovfrac is not None and minovfrac > 0:
+                # stmt = stmt.where(Image.containing(ra, dec))  # use FourCorner's filter method
+
+                maxov = minovfrac
+                for try_ref, try_refim in session.execute(stmt).all():
+                    ovfrac = try_refim._overlap_frac(ra, dec)
+            else:
+                ref, refim = session.execute(stmt).first()
 
         return ref

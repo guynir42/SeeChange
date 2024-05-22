@@ -1,3 +1,4 @@
+import math
 import datetime
 import sqlalchemy as sa
 
@@ -324,7 +325,7 @@ class DataStore:
 
     def __getattribute__(self, key):
         # if this datastore has a pending error, will raise it as soon as any other data is used
-        if key != 'exception' and self.exception is not None:
+        if key != 'exception' and hasattr(self, 'exception') and self.exception is not None:
             raise self.exception
 
         value = super().__getattribute__(key)
@@ -967,13 +968,93 @@ class DataStore:
 
         return self.zp
 
-    def get_reference(self, session=None):
-        """
-        Get the reference for this image.
+    @classmethod
+    def _overlap_frac(cls, image, refim):
+        """Calculate the overlap fraction between image and refim.
 
         Parameters
         ----------
-        session: sqlalchemy.orm.session.Session
+        image: Image
+            The search image; we want to find a reference image that has
+            maximum overlap with this image.
+
+        refim: Image
+            The reference image to check.
+
+        Returns
+        -------
+        overlap_frac: float
+            The fraction of image's area that is covered by the
+            intersection of image and refim.
+
+        WARNING: Right now this assumes that the images are aligned N/S and
+        E/W. TODO: areas of general quadrilaterals and interssections of
+        general quadrilaterals.
+
+        For the "image area", it uses
+            max(image E ra) - min(image W ra) ) * ( max(image N dec) - min( imageS dec)
+        (where "image E ra" refers to the corners of the image that are
+        on the eastern side, i.e. ra_corner_10 and ra_corner_11).  This
+        will in general overestimate the image area, though the
+        overestimate will be small if the image is very close to
+        oriented square to the sky.
+
+        For the "overlap area", it uses
+          ( min( image E ra, ref E ra ) - max( image W ra, ref W ra ) *
+            min( image N dec, ref N dec ) - max( image S dec, ref S dec ) )
+        This will in general underestimate the overlap area, though the
+        underestimate will be small if both the image and reference
+        are oriented close to square to the sky.
+
+        (RA ranges in all cases are scaled by cos(dec).)
+
+        """
+
+        dimra = (((image.ra_corner_10 + image.ra_corner_11) / 2. -
+                  (image.ra_corner_00 + image.ra_corner_01) / 2.
+                  ) / math.cos(image.dec * math.pi / 180.))
+        dimdec = ((image.dec_corner_01 + image.dec_corner_11) / 2. -
+                  (image.dec_corner_00 + image.dec_corner_10) / 2.)
+        r0 = max(refim.ra_corner_00, refim.ra_corner_01,
+                 image.ra_corner_00, image.ra_corner_01)
+        r1 = min(refim.ra_corner_10, refim.ra_corner_10,
+                 image.ra_corner_10, image.ra_corner_10)
+        d0 = max(refim.dec_corner_00, refim.dec_corner_10,
+                 image.dec_corner_00, image.dec_corner_10)
+        d1 = min(refim.dec_corner_01, refim.dec_corner_11,
+                 image.dec_corner_01, image.dec_corner_11)
+        dra = (r1 - r0) / math.cos((d1 + d0) / 2. * math.pi / 180.)
+        ddec = d1 - d0
+
+        return (dra * ddec) / (dimra * dimdec)
+
+    def get_reference(self, minovfrac=0.85, must_match_instrument=True, must_match_filter=True,
+                      must_match_target=False, must_match_section=False, session=None ):
+        """Get the reference for this image.
+
+        Parameters
+        ----------
+        minovfrac: float, default 0.85
+            Area of overlap region must be at least this fraction of the
+            area of the search image for the reference to be good.
+            (Warning: calculation implicitly assumes that images are
+            aligned N/S and E/W.)  Make this <= 0 to not consider
+            overlap fraction when finding a reference.
+        must_match_instrument: bool, default True
+            If True, only find a reference from the same instrument
+            as that of the DataStore's image.
+        must_match_filter: bool, default True
+            If True, only find a reference whose filter matches the
+            DataStore's images' filter.
+        must_match_target: bool, default False
+            If True, only find a reference if the "target" field of the
+            reference image matches the "target" field of the image in
+            the DataStore.
+        must_match_section: bool, default False
+            If True, only find a reference if the "section_id" field of
+            the reference image matches that of the image in the
+            Datastore.
+        session: sqlalchemy.orm.session.Session or SmartSession
             An optional session to use for the database query.
             If not given, will use the session stored inside the
             DataStore object; if there is none, will open a new session
@@ -984,26 +1065,76 @@ class DataStore:
         ref: Image object
             The reference image for this image, or None if no reference is found.
 
+        If minovfrac is given, it will return the reference that has the
+        highest ovfrac.  (If, by unlikely chance, more than one have
+        identical overlap fractions, an undeterministically chosen
+        reference will be returned.  Ideally, by construction, you will
+        never have this situation in your database; you will only have a
+        single valid reference image for a given instrument/filter/date
+        that has an appreciable overlap with any possible image from
+        that instrument.  The software does not enforce this, however.)
+
+        If minovfrac is not given, it will return the first reference found
+        that matches the other criteria.  Be careful with this.
+
         """
+
         with SmartSession(session, self.session) as session:
             image = self.get_image(session=session)
 
             if self.reference is not None:
-                if not Reference.check_reference(
-                        self.reference,
-                        image.filter,
-                        image.target,
-                        image.observation_time,
+                ovfrac = self._overlap_frac( image, self.reference.image ) if minovfrac > 0. else 0.
+                if not (
+                        ( self.reference.validity_start is None or
+                          self.reference.validity_start <= image.observation_time ) and
+                        ( self.reference.validity_end is None or
+                          self.reference.validity_end >= image.observation_time ) and
+                        ( ( not must_match_instrument ) or ( self.reference.image.instrument
+                                                             == image.instrument ) ) and
+                        ( ( not must_match_filter) or ( self.reference.filter == image.filter ) ) and
+                        ( ( not must_match_target ) or ( self.image.target == self.reference.target ) ) and
+                        ( ( not must_match_section ) or ( self.image.section_id == self.reference.section_id ) ) and
+                        ( self.reference.is_bad is False ) and
+                        ( ( minovfrac <= 0. ) or ( ovfrac > minovfrac ) )
                 ):
                     self.reference = None
 
             if self.reference is None:
-                self.reference = Reference.get_reference(
-                    image.filter,
-                    image.target,
-                    image.observation_time,
-                    session=session,
-                )
+                q = ( session.query( Reference, Image )
+                      .filter( Reference.image_id == Image.id )
+                      .filter( sa.or_( Reference.validity_start.is_(None),
+                                       Reference.validity_start <= image.observation_time ) )
+                      .filter( sa.or_( Reference.validity_end.is_(None),
+                                       Reference.validity_end >= image.observation_time ) )
+                      .filter( Reference.is_bad.is_(False ) )
+                     )
+                if minovfrac > 0.:
+                    q = ( q
+                          .filter( Image.ra >= min( image.ra_corner_00, image.ra_corner_01 ) )
+                          .filter( Image.ra <= max( image.ra_corner_10, image.ra_corner_11 ) )
+                          .filter( Image.dec >= min( image.dec_corner_00, image.dec_corner_10 ) )
+                          .filter( Image.dec <= max( image.dec_corner_01, image.dec_corner_11 ) )
+                         )
+                if must_match_instrument: q = q.filter( Image.instrument == image.instrument )
+                if must_match_filter: q = q.filter( Reference.filter == image.filter )
+                if must_match_target: q = q.filter( Reference.target == image.target )
+                if must_match_section: q = q.filter( Reference.section_id == image.section_id )
+
+                ref = None
+                if minovfrac <= 0.:
+                    ref, refim = q.first()
+                else:
+                    maxov = minovfrac
+                    for curref, currefim in q.all():
+                        ovfrac = self._overlap_frac( image, currefim )
+                        if ovfrac > maxov:
+                            maxov = ovfrac
+                            ref = curref
+
+                if ref is None:
+                    raise ValueError(f'No reference image found for image {image.id}')
+
+                self.reference = curref
 
         return self.reference
 
