@@ -8,7 +8,6 @@ from scipy import signal
 from improc.photometry import iterative_cutouts_photometry
 from improc.tools import make_gaussian
 
-from models.base import _logger
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 from models.enums_and_bitflags import BitFlagConverter

@@ -3,8 +3,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-from models.base import Base, SeeChangeBase, AutoIDMixin, SmartSession, _logger
+from models.base import Base, SeeChangeBase, AutoIDMixin, SmartSession
 from models.enums_and_bitflags import (
     bitflag_to_string,
     string_to_bitflag,
@@ -14,6 +13,7 @@ from models.enums_and_bitflags import (
     pipeline_products_inverse,
 )
 
+from util.logger import SCLogger
 
 class Report(Base, AutoIDMixin):
     """A report on the status of analysis of one section from an Exposure.
@@ -347,7 +347,7 @@ class Report(Base, AutoIDMixin):
         for w in warnings_list:
             text = f'{process_step}: {w.category} {w.message} ({w.filename}:{w.lineno})'
             formatted_warnings.append(text)
-            _logger.warning(text)  # make sure warnings also get printed to the log/on screen.
+            SCLogger.warning(text)  # make sure warnings also get printed to the log/on screen.
 
         warnings_list.clear()  # remove all the warnings but keep the list object
 

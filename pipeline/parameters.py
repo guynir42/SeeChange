@@ -5,8 +5,9 @@ import warnings
 import sqlalchemy as sa
 
 from util.util import get_git_hash, get_latest_provenance
+from util.logger import SCLogger
 
-from models.base import SmartSession, _logger
+from models.base import SmartSession
 from models.provenance import CodeHash, CodeVersion, Provenance
 
 # parameters that are propagated from one Parameters object
@@ -560,11 +561,11 @@ class Parameters:
             names.append(name)
 
         if len(defaults) > 0:
-            _logger.debug(f" Propagated pars: {', '.join(defaults)}")
+            SCLogger.debug(f" Propagated pars: {', '.join(defaults)}")
         if len(names) > 0:
             max_length = max(len(n) for n in names)
             for n, d in zip(names, desc):
-                _logger.debug(f" {n:>{max_length}}{d}")
+                SCLogger.debug(f" {n:>{max_length}}{d}")
 
     def vprint(self, text, threshold=1):
         """
@@ -582,7 +583,7 @@ class Parameters:
 
         """
         if self.verbose > threshold:
-            _logger.debug(text)
+            SCLogger.debug(text)
 
     def compare(self, other, hidden=False, critical=False, ignore=None, verbose=False):
         """
@@ -625,7 +626,7 @@ class Parameters:
                     same = False
                     if not verbose:
                         break
-                    _logger.debug(f'Par "{k}" is different: {self[k]} vs {other[k]}')
+                    SCLogger.debug(f'Par "{k}" is different: {self[k]} vs {other[k]}')
 
         return same
 

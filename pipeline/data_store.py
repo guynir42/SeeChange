@@ -3,7 +3,7 @@ import sqlalchemy as sa
 
 from util.util import get_latest_provenance, parse_session
 
-from models.base import SmartSession, FileOnDiskMixin, _logger
+from models.base import SmartSession, FileOnDiskMixin
 from models.provenance import CodeVersion, Provenance
 from models.exposure import Exposure
 from models.image import Image, image_upstreams_association_table
@@ -14,8 +14,8 @@ from models.zero_point import ZeroPoint
 from models.reference import Reference
 from models.cutouts import Cutouts
 from models.measurements import Measurements
-from models.objects import Object
 
+from util.logger import SCLogger
 
 # for each process step, list the steps that go into its upstream
 UPSTREAM_STEPS = {
@@ -327,7 +327,11 @@ class DataStore:
         if key != 'exception' and self.exception is not None:
             raise self.exception
 
-        return super().__getattribute__(key)
+        value = super().__getattribute__(key)
+        if key == 'image' and value is not None:
+            self.append_image_products(value)
+
+        return value
 
     def __setattr__(self, key, value):
         """
@@ -387,13 +391,6 @@ class DataStore:
                 raise ValueError(f'Session must be a SQLAlchemy session or SmartSession, got {type(value)}')
 
         super().__setattr__(key, value)
-
-    def __getattribute__(self, key):
-        value = super().__getattribute__(key)
-        if key == 'image' and value is not None:
-            self.append_image_products(value)
-
-        return value
 
     def update_report(self, process_step, session=None):
         """Update the report object with the latest results from a processing step that just finished. """
@@ -970,19 +967,12 @@ class DataStore:
 
         return self.zp
 
-    def get_reference(self, provenance=None, session=None):
+    def get_reference(self, session=None):
         """
         Get the reference for this image.
-        TODO: get rid of provenance for this function??
 
         Parameters
         ----------
-        provenance: Provenance object
-            The provenance to use for the coaddition.
-            This provenance should be consistent with
-            the current code version and critical parameters.
-            If none is given, will use the latest provenance
-            for the "coaddition" process.
         session: sqlalchemy.orm.session.Session
             An optional session to use for the database query.
             If not given, will use the session stored inside the
@@ -999,12 +989,20 @@ class DataStore:
             image = self.get_image(session=session)
 
             if self.reference is not None:
-                if not Reference.check_reference(self.reference, image.filter, image.target, image.observation_time):
+                if not Reference.check_reference(
+                        self.reference,
+                        image.filter,
+                        image.target,
+                        image.observation_time,
+                ):
                     self.reference = None
 
             if self.reference is None:
                 self.reference = Reference.get_reference(
-                    image.filter, image.target, image.observation_time, session=session
+                    image.filter,
+                    image.target,
+                    image.observation_time,
+                    session=session,
                 )
 
         return self.reference
@@ -1409,7 +1407,7 @@ class DataStore:
                     obj[0].save_list(obj, overwrite=overwrite, exists_ok=exists_ok, no_archive=no_archive)
                 continue
 
-            _logger.debug( f'save_and_commit considering a {obj.__class__.__name__} with filepath '
+            SCLogger.debug( f'save_and_commit considering a {obj.__class__.__name__} with filepath '
                            f'{obj.filepath if isinstance(obj,FileOnDiskMixin) else "<none>"}' )
 
             if isinstance(obj, FileOnDiskMixin):
@@ -1431,22 +1429,22 @@ class DataStore:
                 # Special case handling for update_image_header for existing images.
                 # (Not needed if the image doesn't already exist, hence the not mustsave.)
                 if isinstance( obj, Image ) and ( not mustsave ) and update_image_header:
-                    _logger.debug( 'Just updating image header.' )
+                    SCLogger.debug( 'Just updating image header.' )
                     try:
                         obj.save( only_image=True, just_update_header=True )
                     except Exception as ex:
-                        _logger.error( f"Failed to update image header: {ex}" )
+                        SCLogger.error( f"Failed to update image header: {ex}" )
                         raise ex
 
                 elif mustsave:
                     try:
                         obj.save( overwrite=overwrite, exists_ok=exists_ok, no_archive=no_archive )
                     except Exception as ex:
-                        _logger.error( f"Failed to save a {obj.__class__.__name__}: {ex}" )
+                        SCLogger.error( f"Failed to save a {obj.__class__.__name__}: {ex}" )
                         raise ex
 
                 else:
-                    _logger.debug( f'Not saving the {obj.__class__.__name__} because it already has '
+                    SCLogger.debug( f'Not saving the {obj.__class__.__name__} because it already has '
                                    f'a md5sum in the database' )
 
         # carefully merge all the objects including the products

@@ -16,6 +16,7 @@ from astropy.io import fits
 from util.config import Config
 from util.util import read_fits_image 
 from util.radec import parse_ra_hms_to_deg, parse_dec_dms_to_deg
+from util.logger import SCLogger
 
 from models.base import (
     Base,
@@ -25,7 +26,6 @@ from models.base import (
     SpatiallyIndexed,
     SmartSession,
     HasBitFlagBadness,
-    _logger
 )
 from models.instrument import guess_instrument, get_instrument_instance
 from models.provenance import Provenance
@@ -776,7 +776,7 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
                     # this could happen if in between the query and the merge(exposure)
                     # another process added the same exposure to the database
                     if 'duplicate key value violates unique constraint "ix_exposures_filepath"' in str(e):
-                        _logger.debug(str(e))
+                        SCLogger.debug(str(e))
                         session.rollback()
                         time.sleep(0.1 * 2 ** i)  # exponential backoff
                     else:
@@ -792,4 +792,4 @@ if __name__ == '__main__':
     ROOT_FOLDER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     filepath = os.path.join(ROOT_FOLDER, 'data/DECam_examples/c4d_221104_074232_ori.fits.fz')
     e = Exposure(filepath)
-    _logger.debug(e)
+    SCLogger.debug(e)

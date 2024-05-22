@@ -15,6 +15,7 @@ from pipeline.cutting import Cutter
 from pipeline.measuring import Measurer
 
 from util.config import Config
+from util.logger import SCLogger
 
 from models.base import SmartSession
 from models.provenance import Provenance
@@ -235,6 +236,12 @@ class Pipeline:
             The DataStore object that includes all the data products.
         """
         ds, session = self.setup_datastore(*args, **kwargs)
+        if ds.image is not None:
+            SCLogger.info(f"Pipeline starting for image {ds.image.id} ({ds.image.filepath})")
+        elif ds.exposure is not None:
+            SCLogger.info(f"Pipeline starting for exposure {ds.exposure.id} ({ds.exposure}) section {ds.section_id}")
+        else:
+            SCLogger.info(f"Pipeline starting with args {args}, kwargs {kwargs}")
 
         if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
             # ref: https://docs.python.org/3/library/tracemalloc.html#record-the-current-and-peak-size-of-all-traced-memory-blocks
@@ -245,34 +252,43 @@ class Pipeline:
             ds.warnings_list = w  # appends warning to this list as it goes along
             # run dark/flat preprocessing, cut out a specific section of the sensor
             # TODO: save the results as Image objects to DB and disk? Or save at the end?
+            SCLogger.info(f"preprocessor")
             ds = self.preprocessor.run(ds, session)
             ds.update_report('preprocessing', session)
+            SCLogger.info(f"preprocessing complete: image id = {ds.image.id}, filepath={ds.image.filepath}")
 
             # extract sources and make a SourceList and PSF from the image
+            SCLogger.info(f"extractor for image id {ds.image.id}")
             ds = self.extractor.run(ds, session)
             ds.update_report('extraction', session)
 
             # find astrometric solution, save WCS into Image object and FITS headers
+            SCLogger.info(f"astro_cal for image id {ds.image.id}")
             ds = self.astro_cal.run(ds, session)
             ds.update_report('astro_cal', session)
 
             # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
+            SCLogger.info(f"photo_cal for image id {ds.image.id}")
             ds = self.photo_cal.run(ds, session)
             ds.update_report('photo_cal', session)
 
             # fetch reference images and subtract them, save SubtractedImage objects to DB and disk
+            SCLogger.info(f"subtractor for image id {ds.image.id}")
             ds = self.subtractor.run(ds, session)
             ds.update_report('subtraction', session)
 
             # find sources, generate a source list for detections
+            SCLogger.info(f"detector for image id {ds.image.id}")
             ds = self.detector.run(ds, session)
             ds.update_report('detection', session)
 
             # make cutouts of all the sources in the "detections" source list
+            SCLogger.info(f"cutter for image id {ds.image.id}")
             ds = self.cutter.run(ds, session)
             ds.update_report('cutting', session)
 
             # extract photometry, analytical cuts, and deep learning models on the Cutouts:
+            SCLogger.info(f"measurer for image id {ds.image.id}")
             ds = self.measurer.run(ds, session)
             ds.update_report('measuring', session)
 
