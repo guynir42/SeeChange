@@ -8,11 +8,11 @@ from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.ext.associationproxy import association_proxy
 
-from models.base import Base, SeeChangeBase, SmartSession, AutoIDMixin, SpatiallyIndexed
+from models.base import Base, SeeChangeBase, SmartSession, AutoIDMixin, SpatiallyIndexed, HasBitFlagBadness
 from models.cutouts import Cutouts
 
 
-class Measurements(Base, AutoIDMixin, SpatiallyIndexed):
+class Measurements(Base, AutoIDMixin, SpatiallyIndexed, HasBitFlagBadness):
 
     __tablename__ = 'measurements'
 

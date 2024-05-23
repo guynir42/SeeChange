@@ -9,8 +9,8 @@ import numpy as np
 from improc.tools import make_gaussian
 
 
-@pytest.mark.flaky(max_runs=3)
-def test_measuring(measurer, decam_cutouts):
+# @pytest.mark.flaky(max_runs=3)
+def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     measurer.pars.test_parameter = uuid.uuid4().hex
     measurer.pars.bad_pixel_exclude = ['saturated']
     sz = decam_cutouts[0].sub_data.shape
