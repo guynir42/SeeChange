@@ -325,7 +325,12 @@ class DataStore:
 
     def __getattribute__(self, key):
         # if this datastore has a pending error, will raise it as soon as any other data is used
-        if key != 'exception' and hasattr(self, 'exception') and self.exception is not None:
+        if (
+                key not in ['exception', 'read_exception', 'update_report', 'reraise', 'report'] and
+                not key.startswith('__') and hasattr(self, 'exception') and self.exception is not None
+        ):
+            SCLogger.warning('DataStore has a pending exception. Call read_exception() to get it, or reraise() to raise it.')
+            SCLogger.warning(f'Exception was triggered by trying to access attribute {key}.')
             raise self.exception
 
         value = super().__getattribute__(key)

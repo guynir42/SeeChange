@@ -196,3 +196,4 @@ def test_warnings_and_exceptions(decam_datastore, astrometor):
         ds = astrometor.run(decam_datastore)
         ds.reraise()
     assert "Exception injected by pipeline parameters in process 'astro_cal'." in str(excinfo.value)
+    ds.read_exception()

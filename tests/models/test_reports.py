@@ -12,7 +12,7 @@ from models.base import SmartSession
 from models.report import Report
 
 
-def test_report_bitflags(decam_exposure, decam_reference):
+def test_report_bitflags(decam_exposure, decam_reference, decam_default_calibrators):
     report = Report(exposure=decam_exposure, section_id='N1')
 
     # test that the progress steps flag is working
@@ -88,7 +88,7 @@ def test_report_bitflags(decam_exposure, decam_reference):
     assert report.products_committed == 'sources, zp, sub_image, detections'
 
 
-def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_tests):
+def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_tests, decam_default_calibrators):
     # make sure we get a random new provenance, not reuse any of the existing data
     p = pipeline_for_tests
     p.preprocessor.pars.test_parameter = uuid.uuid4().hex
@@ -139,7 +139,7 @@ def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_te
         assert rep.num_prev_reports == 0
 
 
-def test_inject_warnings(decam_datastore, decam_reference, pipeline_for_tests):
+def test_inject_warnings(decam_datastore, decam_reference, pipeline_for_tests, decam_default_calibrators):
     pass
 
 

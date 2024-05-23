@@ -319,7 +319,7 @@ class Report(Base, AutoIDMixin):
             if self.warnings is None or self.warnings == '':
                 self.warnings = new_string
             else:
-                self.warnings += ', ' + new_string
+                self.warnings += '\n***|***|***\n' + new_string
         
         if exception is not None:
             self.error_type = exception.__class__.__name__

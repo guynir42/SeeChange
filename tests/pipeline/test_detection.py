@@ -165,3 +165,4 @@ def test_warnings_and_exceptions(decam_datastore, detector):
         ds = detector.run(decam_datastore)
         ds.reraise()
     assert "Exception injected by pipeline parameters in process 'detection'." in str(excinfo.value)
+    ds.read_exception()

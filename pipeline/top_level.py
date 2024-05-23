@@ -169,14 +169,6 @@ class Pipeline:
         except Exception as e:
             raise RuntimeError('Failed to merge the exposure into the session!') from e
 
-        try:  # make sure we have a reference for this exposure
-            with SmartSession(session) as dbsession:
-                reference = Reference.get_reference(ds.exposure.filter, ds.exposure.target, ds.exposure.observation_time, dbsession)
-                if reference is None:
-                    raise RuntimeError('No reference found!')
-        except Exception as e:
-            raise RuntimeError(f'Cannot get reference exposure {ds.exposure.filepath}!') from e
-
         try:  # create (and commit, if not existing) all provenances for the products
             with SmartSession(session) as dbsession:
                 provs = self.make_provenance_tree(ds.exposure, session=dbsession, commit=True)
@@ -304,33 +296,6 @@ class Pipeline:
         """
         with SmartSession() as session:
             self.run(session=session)
-
-    @staticmethod
-    def get_reference(filter, target, obs_time, session=None):
-        """
-        Get a reference for a given filter, target, and observation time.
-
-        Parameters
-        ----------
-        filter: str
-            The filter of the image/exposure.
-        target: str
-            The target of the image/exposure, or the name of the field.  # TODO: can we replace this with coordinates?
-        obs_time: datetime
-            The observation time of the image.
-        session: sqlalchemy.orm.session.Session
-            An optional session to use for the database query.
-            If not given, will use the session stored inside the
-            DataStore object; if there is none, will open a new session
-            and close it at the end of the function.
-
-        Returns
-        -------
-        ref: Image object
-            The reference image for this image, or None if no reference is found.
-
-        """
-        return Reference.get_reference(filter, target, obs_time, session=session)
 
     def make_provenance_tree(self, exposure, session=None, commit=True):
         """Use the current configuration of the pipeline and all the objects it has

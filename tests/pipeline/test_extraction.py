@@ -392,3 +392,4 @@ def test_warnings_and_exceptions(decam_datastore, extractor):
         ds = extractor.run(decam_datastore)
         ds.reraise()
     assert "Exception injected by pipeline parameters in process 'extraction'." in str(excinfo.value)
+    ds.read_exception()

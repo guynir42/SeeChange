@@ -78,7 +78,7 @@ def test_subtraction_ptf_zogy(ptf_ref, ptf_supernova_images, subtractor):
     assert abs(sigma - 1) < 1  # the standard deviation may be also affected by background...
 
 
-def test_warnings_and_exceptions(decam_datastore, decam_reference, subtractor):
+def test_warnings_and_exceptions(decam_datastore, decam_reference, subtractor, decam_default_calibrators):
     subtractor.pars.inject_warnings = 1
 
     with pytest.warns(UserWarning) as record:
@@ -92,3 +92,4 @@ def test_warnings_and_exceptions(decam_datastore, decam_reference, subtractor):
         ds = subtractor.run(decam_datastore)
         ds.reraise()
     assert "Exception injected by pipeline parameters in process 'subtraction'." in str(excinfo.value)
+    ds.read_exception()
