@@ -14,14 +14,14 @@ from pipeline.detection import Detector
 from pipeline.cutting import Cutter
 from pipeline.measuring import Measurer
 
-from util.config import Config
-from util.logger import SCLogger
-
 from models.base import SmartSession
 from models.provenance import Provenance
 from models.exposure import Exposure
-from models.reference import Reference
 from models.report import Report
+
+from util.config import Config
+from util.logger import SCLogger
+from util.util import parse_bool
 
 # describes the pipeline objects that are used to produce each step of the pipeline
 # if multiple objects are used in one step, replace the string with a sub-dictionary,
@@ -235,7 +235,7 @@ class Pipeline:
         else:
             SCLogger.info(f"Pipeline starting with args {args}, kwargs {kwargs}")
 
-        if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+        if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
             # ref: https://docs.python.org/3/library/tracemalloc.html#record-the-current-and-peak-size-of-all-traced-memory-blocks
             import tracemalloc
             tracemalloc.start()  # trace the size of memory that is being used

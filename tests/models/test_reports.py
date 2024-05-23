@@ -11,6 +11,8 @@ from pipeline.top_level import PROCESS_OBJECTS
 from models.base import SmartSession
 from models.report import Report
 
+from util.util import parse_bool
+
 
 def test_report_bitflags(decam_exposure, decam_reference, decam_default_calibrators):
     report = Report(exposure=decam_exposure, section_id='N1')
@@ -110,7 +112,7 @@ def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_te
     peak_memory = 0
     for step in PROCESS_OBJECTS.keys():  # also make sure all the keys are present in both dictionaries
         measured_time += ds.runtimes[step]
-        if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+        if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
             peak_memory = max(peak_memory, ds.memory_usages[step])
 
     total_time = time.perf_counter() - t0
@@ -120,7 +122,7 @@ def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_te
     pprint(ds.runtimes, sort_dicts=False)
     assert measured_time > 0.99 * total_time  # at least 99% of the time is accounted for
 
-    if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+    if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
         print(f'peak_memory: {peak_memory:.1f}MB')
         pprint(ds.memory_usages, sort_dicts=False)
         assert 1000.0 < peak_memory < 10000.0  # memory usage is in MB, takes between 1 and 10 GB

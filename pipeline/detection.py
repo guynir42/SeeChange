@@ -16,6 +16,7 @@ from astropy.io import fits, votable
 
 from util.config import Config
 from util.logger import SCLogger
+from util.util import parse_bool
 
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
@@ -215,7 +216,7 @@ class Detector:
         if self.pars.subtraction:
             try:
                 t_start = time.perf_counter()
-                if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
                     import tracemalloc
                     tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
@@ -261,7 +262,7 @@ class Detector:
                 ds.detections = detections
 
                 ds.runtimes['detection'] = time.perf_counter() - t_start
-                if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
                     import tracemalloc
                     ds.memory_usages['detection'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
 
@@ -274,7 +275,7 @@ class Detector:
             prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
             try:
                 t_start = time.perf_counter()
-                if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
                     import tracemalloc
                     tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
@@ -322,7 +323,7 @@ class Detector:
                     ds.image.bkg_rms_estimate = float( bkgsig )
 
                 ds.runtimes['extraction'] = time.perf_counter() - t_start
-                if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
                     import tracemalloc
                     ds.memory_usages['extraction'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
 

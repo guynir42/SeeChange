@@ -16,6 +16,8 @@ from pipeline.data_store import DataStore
 
 from util.config import Config
 from util.logger import SCLogger
+from util.util import parse_bool
+
 
 class ParsPreprocessor(Parameters):
     def __init__(self, **kwargs):
@@ -108,7 +110,7 @@ class Preprocessor:
 
         try:  # catch any exceptions and save them in the datastore
             t_start = time.perf_counter()
-            if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
                 import tracemalloc
                 tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
@@ -329,7 +331,7 @@ class Preprocessor:
             ds.image = image
 
             ds.runtimes['preprocessing'] = time.perf_counter() - t_start
-            if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
                 import tracemalloc
                 ds.memory_usages['preprocessing'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
 

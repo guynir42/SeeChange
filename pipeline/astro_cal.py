@@ -7,6 +7,8 @@ import improc.scamp
 from util.exceptions import CatalogNotFoundError, SubprocessFailure, BadMatchException
 
 from util.logger import SCLogger
+from util.util import parse_bool
+
 from models.catalog_excerpt import CatalogExcerpt
 from models.world_coordinates import WorldCoordinates
 
@@ -277,7 +279,7 @@ class AstroCalibrator:
 
         try:
             t_start = time.perf_counter()
-            if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
                 import tracemalloc
                 tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
@@ -318,7 +320,7 @@ class AstroCalibrator:
                     image.astro_cal_done = True
 
                 ds.runtimes['astro_cal'] = time.perf_counter() - t_start
-                if os.getenv('SEECHANGE_TRACEMALLOC') == '1':
+                if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
                     import tracemalloc
                     ds.memory_usages['astro_cal'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
 
