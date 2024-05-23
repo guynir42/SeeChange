@@ -10,7 +10,7 @@ from util.util import parse_session
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 from models.objects import Object
-from models.enums_and_bitflags import BitFlagConverter
+from models.enums_and_bitflags import BitFlagConverter, BadnessConverter
 
 from improc.photometry import iterative_cutouts_photometry
 from improc.tools import make_gaussian
@@ -50,7 +50,7 @@ class ParsMeasurer(Parameters):
 
         self.analytical_cuts = self.add_par(
             'analytical_cuts',
-            ['negatives', 'bad pixels', 'offsets', 'filter bank'],
+            ['negatives', 'bad pixels', 'offsets', 'filter bank', 'bad_flag'],
             [list],
             'Which kinds of analytic cuts are used to give scores to this measurement. '
         )
@@ -78,6 +78,14 @@ class ParsMeasurer(Parameters):
             'The same types are ignored when running photometry. '
         )
 
+        self.bad_flag_exclude = self.add_par(
+            'bad_flag_exclude',
+            [],
+            list,
+            'List of strings of the bad flag types (i.e., bitflag) to exclude from the bad flag cut. '
+            'This includes things like image saturation, too many sources, etc. '
+        )
+
         self.streak_filter_angle_step = self.add_par(
             'streak_filter_angle_step',
             5.0,
@@ -100,6 +108,7 @@ class ParsMeasurer(Parameters):
                 'bad pixels': 1,
                 'offsets': 5.0,
                 'filter bank': 1,
+                'bad_flag': 1,
             },
             dict,
             'Thresholds for the disqualifier scores. '
@@ -280,6 +289,12 @@ class Measurer:
                 # propagate the bad flags from each cutouts object to each measurements object
                 m._upstream_bitflag = 0
                 m._upstream_bitflag |= c.bitflag
+
+                ignore_bits = 0
+                for badness in self.pars.bad_flag_exclude:
+                    ignore_bits |= 2 ** BadnessConverter.convert(badness)
+
+                m.disqualifier_scores['bad_flag'] = m.bitflag & ~np.array(ignore_bits).astype('uint64')
 
                 # make sure disqualifier scores don't have any numpy types
                 for k, v in m.disqualifier_scores.items():
