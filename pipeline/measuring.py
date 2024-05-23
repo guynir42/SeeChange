@@ -294,7 +294,10 @@ class Measurer:
                 for badness in self.pars.bad_flag_exclude:
                     ignore_bits |= 2 ** BadnessConverter.convert(badness)
 
-                m.disqualifier_scores['bad_flag'] = m.bitflag & ~np.array(ignore_bits).astype('uint64')
+                m.disqualifier_scores['bad_flag'] = np.bitwise_and(
+                    np.array(m.bitflag).astype('uint64'),
+                    ~np.array(ignore_bits).astype('uint64'),
+                )
 
                 # make sure disqualifier scores don't have any numpy types
                 for k, v in m.disqualifier_scores.items():

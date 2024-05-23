@@ -659,9 +659,9 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             return session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).all()
         
     def get_downstreams(self, session=None):
-        """Get the downstream Measurements that were made from this Cutouts. """
+        """Get the downstream Measurements that were made from this Cutouts object. """
         from models.measurements import Measurements
-        from models.objects import Object
+
         with SmartSession(session) as session:
             return session.scalars(sa.select(Measurements).where(Measurements.cutouts_id == self.id)).all()
 

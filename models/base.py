@@ -1932,17 +1932,17 @@ class HasBitFlagBadness:
         """
         # make sure this object is current:
         with SmartSession(session) as session:
+            merged_self = session.merge(self)
             new_bitflag = 0  # start from scratch, in case some upstreams have lost badness
-            for upstream in self.get_upstreams(session):
+            for upstream in merged_self.get_upstreams(session):
                 if hasattr(upstream, '_bitflag'):
                     new_bitflag |= upstream.bitflag
 
-            if hasattr(self, '_upstream_bitflag'):
-                self._upstream_bitflag = new_bitflag
-                session.add(self)
+            if hasattr(merged_self, '_upstream_bitflag'):
+                merged_self._upstream_bitflag = new_bitflag
 
             # recursively do this for all the other objects
-            for downstream in self.get_downstreams(session):
+            for downstream in merged_self.get_downstreams(session):
                 if hasattr(downstream, 'update_downstream_badness') and callable(downstream.update_downstream_badness):
                     downstream.update_downstream_badness(session=session, commit=False)
 
