@@ -59,4 +59,4 @@ jobs:
 
       - name: run test
         run: |
-          TEST_SUBFOLDER=models docker compose run runtests
+          TEST_SUBFOLDER=models/test_{m..z}*.py docker compose run runtests
