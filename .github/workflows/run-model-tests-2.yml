@@ -1,4 +1,4 @@
-name: Run Model Tests
+name: Run Model Tests 2
 
 on:
   push:
@@ -59,4 +59,5 @@ jobs:
 
       - name: run test
         run: |
-          TEST_SUBFOLDER=models/test_{m..z}*.py docker compose run runtests
+          shopt -s nullglob
+          TEST_SUBFOLDER=$(ls models/test_{m..z}*.py) docker compose run runtests
