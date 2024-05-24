@@ -243,3 +243,21 @@ def test_propagate_badness(decam_datastore):
         m = session.merge(ds.measurements[0])
 
         assert m.badness == 'cosmic ray'  # note that this does not change disqualifier_scores!
+
+
+def test_warnings_and_exceptions(decam_datastore, measurer):
+    measurer.pars.inject_warnings = 1
+
+    with pytest.warns(UserWarning) as record:
+        measurer.run(decam_datastore)
+    assert len(record) > 0
+    assert any("Warning injected by pipeline parameters in process 'measuring'." in str(w.message) for w in record)
+
+    measurer.pars.inject_exceptions = 1
+    measurer.pars.inject_warnings = 0
+    with pytest.raises(Exception) as excinfo:
+        ds = measurer.run(decam_datastore)
+        ds.reraise()
+    assert "Exception injected by pipeline parameters in process 'measuring'." in str(excinfo.value)
+    ds.read_exception()
+
