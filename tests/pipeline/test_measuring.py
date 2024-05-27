@@ -231,13 +231,20 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     m = ds.all_measurements[13]  # regular cutout with a bad flag that we are ignoring
     assert m.disqualifier_scores['bad_flag'] == 0  # we've included the satellite flag in the ignore list
 
+    # check that coordinates have been modified:
+    for i in range(13):
+        m = ds.all_measurements[i]
+        if m.offset_x != 0 and m.offset_y != 0:
+            assert m.ra != m.cutouts.ra
+            assert m.dec != m.cutouts.dec
+
 
 def test_propagate_badness(decam_datastore):
     ds = decam_datastore
     with SmartSession() as session:
         ds.measurements[0].badness = 'cosmic ray'
-        idx = ds.measurements[0]._cutouts_list_index
-        assert ds.cutouts[idx].id == ds.measurements[0].cutout_id
+        # find the index of the cutout that corresponds to the measurement
+        idx = [i for i, c in enumerate(ds.cutouts) if c.id == ds.measurements[0].cutouts_id][0]
         ds.cutouts[idx].badness = 'cosmic ray'
         ds.cutouts[idx].update_downstream_badness(session)
         m = session.merge(ds.measurements[0])

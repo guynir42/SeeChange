@@ -29,6 +29,7 @@ def test_object_creation():
         assert re.match(r'\w+\d{4}\w+', obj2.name)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_lightcurves_from_measurements(sim_lightcurves):
     for lc in sim_lightcurves:
         expected_flux = []

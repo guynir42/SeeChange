@@ -305,7 +305,6 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         with open( psfxmlpath ) as ifp:
             self._info = ifp.read()
 
-
     def free( self ):
         """Free loaded world coordinates memory.
 
@@ -317,7 +316,6 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         self._data = None
         self._info = None
         self._header = None
-
 
     def get_resampled_psf( self, x, y, dtype=np.float64 ):
         """Return an image fragment with the PSF at the underlying sampling of the PSF model.

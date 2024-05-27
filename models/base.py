@@ -431,8 +431,15 @@ class SeeChangeBase:
             if isinstance(value, np.ndarray) and key in [
                 'aper_rads', 'aper_radii', 'aper_cors', 'aper_cor_radii',
                 'flux_apertures', 'flux_apertures_err', 'area_apertures',
+                'ra', 'dec',
             ]:
-                value = list(value)
+                if len(value.shape) > 0:
+                    value = list(value)
+                else:
+                    value = float(value)
+
+            if isinstance(value, np.number):
+                value = value.item()
 
             if key in ['modified', 'created_at'] and isinstance(value, datetime.datetime):
                 value = value.isoformat()

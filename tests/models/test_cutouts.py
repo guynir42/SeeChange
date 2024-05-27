@@ -38,7 +38,7 @@ def test_make_save_load_cutouts(decam_detection_list, cutter):
         assert c.bitflag is not None
 
         # set the bitflag just to see if it is loaded or not
-        c.bitflag = 41  # should be Cosmic Ray
+        c.bitflag = 2 ** 41  # should be Cosmic Ray
 
         # save an individual cutout
         Cutouts.save_list([c])
@@ -110,3 +110,9 @@ def test_make_save_load_cutouts(decam_detection_list, cutter):
         if 'ds' in locals() and ds.cutouts is not None:
             Cutouts.delete_list(ds.cutouts)
 
+
+def test_cutouts_xy_grid(ptf_datastore):
+    for i in range(5):
+        c = ptf_datastore.cutouts[i]
+        ix, iy = c.get_xy_grids()
+        assert c.new_data == ptf_datastore.image.data[iy, ix]

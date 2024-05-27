@@ -20,7 +20,7 @@ from models.base import (
     SpatiallyIndexed,
     HasBitFlagBadness,
 )
-from models.enums_and_bitflags import CutoutsFormatConverter
+from models.enums_and_bitflags import CutoutsFormatConverter, cutouts_badness_inverse
 from models.source_list import SourceList
 
 
@@ -136,12 +136,17 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         self.format = 'hdf5'  # the default should match the column-defined default above!
 
         self._source_row = None
+
         self._sub_data = None
         self._sub_weight = None
         self._sub_flags = None
+        self._sub_psfflux = None
+        self._sub_psffluxerr = None
+
         self._ref_data = None
         self._ref_weight = None
         self._ref_flags = None
+
         self._new_data = None
         self._new_weight = None
         self._new_flags = None
@@ -157,13 +162,19 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
     def init_on_load(self):
         Base.init_on_load(self)
         FileOnDiskMixin.init_on_load(self)
+
         self._source_row = None
+
         self._sub_data = None
         self._sub_weight = None
         self._sub_flags = None
+        self._sub_psfflux = None
+        self._sub_psffluxerr = None
+
         self._ref_data = None
         self._ref_weight = None
         self._ref_flags = None
+
         self._new_data = None
         self._new_weight = None
         self._new_flags = None
@@ -184,16 +195,20 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         super().__setattr__(key, value)
 
     @staticmethod
-    def get_data_attributes():
+    def get_data_attributes(include_optional=True):
         names = ['source_row']
         for im in ['sub', 'ref', 'new']:
             for att in ['data', 'weight', 'flags']:
                 names.append(f'{im}_{att}')
+
+        if include_optional:
+            names += ['sub_psfflux', 'sub_psffluxerr']
+
         return names
 
     @property
     def has_data(self):
-        for att in self.get_data_attributes():
+        for att in self.get_data_attributes(include_optional=False):
             if getattr(self, att) is None:
                 return False
         return True
@@ -215,6 +230,15 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         if self.new_data is None or self.new_flags is None:
             return None
         return np.where(self.new_flags > 0, np.nan, self.new_data)
+
+    def get_xy_grids(self):
+        """Get two images, ix and iy, the same size as the cutout, with the x and y coordinates in the larger Image. """
+        ix, iy = np.meshgrid(self.sub_data.shape)
+
+        ix = int(np.round(ix - self.x))
+        iy = int(np.round(iy - self.y))
+
+        return ix, iy
 
     @staticmethod
     def from_detections(detections, source_index, provenance=None, **kwargs):
@@ -311,13 +335,14 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
                 continue
 
             data = getattr(self, att)
-            file.create_dataset(
-                f'{groupname}/{att}',
-                data=data,
-                shape=data.shape,
-                dtype=data.dtype,
-                compression='gzip'
-            )
+            if data is not None:
+                file.create_dataset(
+                    f'{groupname}/{att}',
+                    data=data,
+                    shape=data.shape,
+                    dtype=data.dtype,
+                    compression='gzip'
+                )
 
         # handle the source_row dictionary
         target = file[groupname].attrs
@@ -433,7 +458,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         for att in self.get_data_attributes():
             if att == 'source_row':
                 self.source_row = dict(file[f'{groupname}'].attrs)
-            else:
+            elif att in file[f'{groupname}']:
                 setattr(self, att, np.array(file[f'{groupname}/{att}']))
 
         self.format = 'hdf5'
@@ -747,6 +772,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
 
         return True
 
+    def _get_inverse_badness(self):
+        return cutouts_badness_inverse
 
 # use these two functions to quickly add the "property" accessor methods
 def load_attribute(object, att):
