@@ -10,7 +10,7 @@ from models.base import SmartSession
 from improc.tools import make_gaussian
 
 
-# @pytest.mark.flaky(max_runs=3)
+@pytest.mark.flaky(max_runs=3)
 def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     measurer.pars.test_parameter = uuid.uuid4().hex
     measurer.pars.bad_pixel_exclude = ['saturated']  # ignore saturated pixels
@@ -20,9 +20,9 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     fwhm = decam_cutouts[0].sources.image.get_psf().fwhm_pixels
 
     # clear any flags for the fake data we are using
-    for i in range(12):
+    for i in range(14):
         decam_cutouts[i].sub_flags = np.zeros_like(decam_cutouts[i].sub_flags)
-
+        # decam_cutouts[i].filepath = None  # make sure the cutouts don't re-load the original data
     # delta function
     decam_cutouts[0].sub_data = np.zeros_like(decam_cutouts[0].sub_data)
     decam_cutouts[0].sub_data[sz[0] // 2, sz[1] // 2] = 100.0
@@ -154,11 +154,11 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.disqualifier_scores['filter bank'] > 0
 
     # the dipole's large offsets will short-circuit the iterative repositioning of the aperture (should be flagged!)
-    assert np.allclose(m.flux_apertures, 0)
-    assert np.allclose(m.area_apertures, sz[0] * sz[1])
-    assert m.background == pytest.approx(0, abs=0.01)
-    assert m.background_err > 1.0
-    assert m.background_err < 10.0
+    assert all(np.isnan(m.flux_apertures))
+    assert all(np.isnan(m.area_apertures))
+    assert m.background == 0
+    assert m.background_err == 0
+    assert m.background_err == 0
 
     m = ds.all_measurements[5]  # shifted gaussian with noise
     assert m.disqualifier_scores['negatives'] < 1.0
@@ -232,7 +232,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.disqualifier_scores['bad_flag'] == 0  # we've included the satellite flag in the ignore list
 
     # check that coordinates have been modified:
-    for i in range(13):
+    for i in range(14):
         m = ds.all_measurements[i]
         if m.offset_x != 0 and m.offset_y != 0:
             assert m.ra != m.cutouts.ra

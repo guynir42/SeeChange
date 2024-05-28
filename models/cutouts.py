@@ -231,15 +231,6 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             return None
         return np.where(self.new_flags > 0, np.nan, self.new_data)
 
-    def get_xy_grids(self):
-        """Get two images, ix and iy, the same size as the cutout, with the x and y coordinates in the larger Image. """
-        ix, iy = np.meshgrid(range(self.sub_data.shape[1]), range(self.sub_data.shape[0]))
-
-        ix = np.round(ix - self.x).astype(int)
-        iy = np.round(iy - self.y).astype(int)
-
-        return ix, iy
-
     @staticmethod
     def from_detections(detections, source_index, provenance=None, **kwargs):
         """Create a Cutout object from a row in the SourceList.

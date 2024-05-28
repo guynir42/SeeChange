@@ -167,7 +167,7 @@ def iterative_cutouts_photometry(
         The number of iterations to perform.
         For each aperture, will measure and reposition the centroid
         this many times before moving on to the next measurement.
-        Default is 3.
+        Default is 2.
     local_bg: bool
         Toggle the use of a local background estimate.
         When True, will use the measured background in the annulus

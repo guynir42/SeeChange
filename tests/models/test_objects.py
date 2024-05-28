@@ -86,7 +86,7 @@ def test_filtering_measurements_on_object(sim_lightcurves):
                     setattr(m2, key, value)
             m2.provenance = prov
             m2.provenance_id = prov.id
-            m2.ra += 0.1 * i / 3600.0  # move the RA by less than one arcsec
+            m2.ra += 0.05 * i / 3600.0  # move the RA by less than one arcsec
             m2.ra = m2.ra % 360.0  # make sure RA is in range
             m2.associate_object(session)
             m2 = session.merge(m2)

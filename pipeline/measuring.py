@@ -254,26 +254,26 @@ class Measurer:
 
                     # PSF photometry:
                     # Two options: use the PSF flux from ZOGY, or use the new image PSF to measure the flux.
-                    # TODO: this is currently commented out in cutting.py, I don't know how to normalize this flux
-                    if c.sub_psfflux is not None and c.sub_psffluxerr is not None:
-                        ix = int(np.round(m.offset_x + c.sub_data.shape[1] // 2))
-                        iy = int(np.round(m.offset_y + c.sub_data.shape[0] // 2))
-
-                        # when offsets are so big it really doesn't matter what we put here, it will fail the cuts
-                        if ix < 0 or ix >= c.sub_psfflux.shape[1] or iy < 0 or iy >= c.sub_psfflux.shape[0]:
-                            m.flux_psf = np.nan
-                            m.flux_psf_err = np.nan
-                            m.area_psf = np.nan
-                        else:
-                            m.flux_psf = c.sub_psfflux[iy, ix]
-                            m.flux_psf_err = c.sub_psffluxerr[iy, ix]
-                            psf = c.sources.image.get_psf()
-                            m.area_psf = np.nansum(psf.get_clip(c.x, c.y))
-                    else:
-                        flux, fluxerr, area = m.get_flux_at_point(ra, dec, aperture='psf')
-                        m.flux_psf = flux
-                        m.flux_psf_err = fluxerr
-                        m.area_psf = area
+                    # TODO: this is currently commented out since I don't know how to normalize this flux
+                    # if c.sub_psfflux is not None and c.sub_psffluxerr is not None:
+                    #     ix = int(np.round(m.offset_x + c.sub_data.shape[1] // 2))
+                    #     iy = int(np.round(m.offset_y + c.sub_data.shape[0] // 2))
+                    #
+                    #     # when offsets are so big it really doesn't matter what we put here, it will fail the cuts
+                    #     if ix < 0 or ix >= c.sub_psfflux.shape[1] or iy < 0 or iy >= c.sub_psfflux.shape[0]:
+                    #         m.flux_psf = np.nan
+                    #         m.flux_psf_err = np.nan
+                    #         m.area_psf = np.nan
+                    #     else:
+                    #         m.flux_psf = c.sub_psfflux[iy, ix]
+                    #         m.flux_psf_err = c.sub_psffluxerr[iy, ix]
+                    #         psf = c.sources.image.get_psf()
+                    #         m.area_psf = np.nansum(psf.get_clip(c.x, c.y))
+                    # else:
+                    flux, fluxerr, area = m.get_flux_at_point(ra, dec, aperture='psf')
+                    m.flux_psf = flux
+                    m.flux_psf_err = fluxerr
+                    m.area_psf = area
 
                     # decide on the "best" aperture
                     if self.pars.chosen_aperture == 'auto':
