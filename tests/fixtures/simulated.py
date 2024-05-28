@@ -16,6 +16,7 @@ from models.exposure import Exposure
 from models.image import Image
 from models.source_list import SourceList
 from models.psf import PSF
+from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
 from models.reference import Reference
 from models.cutouts import Cutouts
@@ -24,6 +25,7 @@ from models.instrument import DemoInstrument
 from improc.tools import make_gaussian
 
 from tests.conftest import rnd_str
+
 
 def make_sim_exposure():
     e = Exposure(
@@ -407,7 +409,9 @@ def sim_image_list(
             im.zp.aper_cor_radii = im.instrument_object.standard_apertures()
             im.zp.aper_cors = np.random.normal(0, 0.1, len(im.zp.aper_cor_radii))
             im.zp.provenance = provenance_extra
+            im.wcs = WorldCoordinates()
             im.sources.zp = im.zp
+            im.sources.wcs = im.wcs
             im = im.merge_all(session)
             images.append(im)
 

@@ -434,6 +434,9 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed, HasBitFlagBadness):
         offset_x = image_pixel_x - self.cutouts.x
         offset_y = image_pixel_y - self.cutouts.y
 
+        if abs(offset_x) > im.shape[1] / 2 or abs(offset_y) > im.shape[0] / 2:
+            return np.nan, np.nan, np.nan  # quietly return NaNs for large offsets, they will fail the cuts anyway...
+
         if aperture == -1:
             # get the subtraction PSF or (if unavailable) the new image PSF
             psf = self.cutouts.sources.image.get_psf()

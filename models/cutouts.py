@@ -233,10 +233,10 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
 
     def get_xy_grids(self):
         """Get two images, ix and iy, the same size as the cutout, with the x and y coordinates in the larger Image. """
-        ix, iy = np.meshgrid(self.sub_data.shape)
+        ix, iy = np.meshgrid(range(self.sub_data.shape[1]), range(self.sub_data.shape[0]))
 
-        ix = int(np.round(ix - self.x))
-        iy = int(np.round(iy - self.y))
+        ix = np.round(ix - self.x).astype(int)
+        iy = np.round(iy - self.y).astype(int)
 
         return ix, iy
 
@@ -334,7 +334,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             if att == 'source_row':
                 continue
 
-            data = getattr(self, att)
+            data = getattr(self, f'_{att}')  # get the private attribute so as not to trigger a load upon hitting None
             if data is not None:
                 file.create_dataset(
                     f'{groupname}/{att}',
@@ -774,6 +774,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
 
     def _get_inverse_badness(self):
         return cutouts_badness_inverse
+
 
 # use these two functions to quickly add the "property" accessor methods
 def load_attribute(object, att):

@@ -115,4 +115,4 @@ def test_cutouts_xy_grid(ptf_datastore):
     for i in range(5):
         c = ptf_datastore.cutouts[i]
         ix, iy = c.get_xy_grids()
-        assert c.new_data == ptf_datastore.image.data[iy, ix]
+        assert np.array_equal(c.new_data, ptf_datastore.image.data[iy, ix])

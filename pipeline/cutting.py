@@ -94,12 +94,13 @@ class Cutter:
                 sub_stamps_weight = make_cutouts(ds.sub_image.weight, x, y, sz, fillvalue=0)
                 sub_stamps_flags = make_cutouts(ds.sub_image.flags, x, y, sz, fillvalue=0)
 
-                if ds.sub_image.psfflux is not None and ds.sub_image.psffluxerr is not None:
-                    sub_stamps_psfflux = make_cutouts(ds.sub_image.psfflux, x, y, sz, fillvalue=0)
-                    sub_stamps_psffluxerr = make_cutouts(ds.sub_image.psffluxerr, x, y, sz, fillvalue=0)
-                else:
-                    sub_stamps_psfflux = None
-                    sub_stamps_psffluxerr = None
+                # TODO: figure out if we can actually use this flux (maybe renormalize it)
+                # if ds.sub_image.psfflux is not None and ds.sub_image.psffluxerr is not None:
+                #     sub_stamps_psfflux = make_cutouts(ds.sub_image.psfflux, x, y, sz, fillvalue=0)
+                #     sub_stamps_psffluxerr = make_cutouts(ds.sub_image.psffluxerr, x, y, sz, fillvalue=0)
+                # else:
+                #     sub_stamps_psfflux = None
+                #     sub_stamps_psffluxerr = None
 
                 ref_stamps_data = make_cutouts(ds.sub_image.ref_aligned_image.data, x, y, sz)
                 ref_stamps_weight = make_cutouts(ds.sub_image.ref_aligned_image.weight, x, y, sz, fillvalue=0)
