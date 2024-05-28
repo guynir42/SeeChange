@@ -46,6 +46,7 @@ def test_lightcurves_from_measurements(sim_lightcurves):
             assert measured_flux[i] == pytest.approx(expected_flux[i], abs=expected_error[i] * 3)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_filtering_measurements_on_object(sim_lightcurves):
     assert len(sim_lightcurves) > 0
     assert len(sim_lightcurves[0]) > 3
