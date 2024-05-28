@@ -29,15 +29,13 @@ from util.util import parse_bool
 # that come from all the different objects.
 PROCESS_OBJECTS = {
     'preprocessing': 'preprocessor',
-    'extraction': 'extractor',  # the same object also makes the PSF (and background?)
-    # TODO: when joining the astro/photo cal into extraction, use this format:
-    # 'extraction': {
-    #     'sources': 'extractor',
-    #     'astro_cal': 'astro_cal',
-    #     'photo_cal': 'photo_cal',
-    # }
-    'astro_cal': 'astro_cal',
-    'photo_cal': 'photo_cal',
+    'extraction': {
+        'sources': 'extractor',
+        'psf': 'extractor',
+        'background': 'extractor',
+        'wcs': 'astrometor',
+        'zp': 'photometor',
+    },
     'subtraction': 'subtractor',
     'detection': 'detector',
     'cutting': 'cutter',
@@ -76,22 +74,23 @@ class Pipeline:
         self.preprocessor = Preprocessor(**preprocessing_config)
 
         # source detection ("extraction" for the regular image!)
-        extraction_config = self.config.value('extraction', {})
-        extraction_config.update(kwargs.get('extraction', {'measure_psf': True}))
+        extraction_config = self.config.value('extraction.sources', {})
+        extraction_config.update(kwargs.get('extraction', {}).get('sources', {}))
+        extraction_config.update({'measure_psf': True})
         self.pars.add_defaults_to_dict(extraction_config)
         self.extractor = Detector(**extraction_config)
 
         # astrometric fit using a first pass of sextractor and then astrometric fit to Gaia
-        astro_cal_config = self.config.value('astro_cal', {})
-        astro_cal_config.update(kwargs.get('astro_cal', {}))
-        self.pars.add_defaults_to_dict(astro_cal_config)
-        self.astro_cal = AstroCalibrator(**astro_cal_config)
+        astrometor_config = self.config.value('extraction.wcs', {})
+        astrometor_config.update(kwargs.get('extraction', {}).get('wcs', {}))
+        self.pars.add_defaults_to_dict(astrometor_config)
+        self.astrometor = AstroCalibrator(**astrometor_config)
 
         # photometric calibration:
-        photo_cal_config = self.config.value('photo_cal', {})
-        photo_cal_config.update(kwargs.get('photo_cal', {}))
-        self.pars.add_defaults_to_dict(photo_cal_config)
-        self.photo_cal = PhotCalibrator(**photo_cal_config)
+        photometor_config = self.config.value('extraction.zp', {})
+        photometor_config.update(kwargs.get('extraction', {}).get('zp', {}))
+        self.pars.add_defaults_to_dict(photometor_config)
+        self.photometor = PhotCalibrator(**photometor_config)
 
         # reference fetching and image subtraction
         subtraction_config = self.config.value('subtraction', {})
@@ -252,19 +251,15 @@ class Pipeline:
             # extract sources and make a SourceList and PSF from the image
             SCLogger.info(f"extractor for image id {ds.image.id}")
             ds = self.extractor.run(ds, session)
+            # find astrometric solution, save WCS into Image object and FITS headers
+            SCLogger.info(f"astrometor for image id {ds.image.id}")
+            ds = self.astrometor.run(ds, session)
+            # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
+            SCLogger.info(f"photometor for image id {ds.image.id}")
+            ds = self.photometor.run(ds, session)
             ds.update_report('extraction', session)
 
-            # find astrometric solution, save WCS into Image object and FITS headers
-            SCLogger.info(f"astro_cal for image id {ds.image.id}")
-            ds = self.astro_cal.run(ds, session)
-            ds.update_report('astro_cal', session)
-
-            # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
-            SCLogger.info(f"photo_cal for image id {ds.image.id}")
-            ds = self.photo_cal.run(ds, session)
-            ds.update_report('photo_cal', session)
-
-            # fetch reference images and subtract them, save SubtractedImage objects to DB and disk
+            # fetch reference images and subtract them, save subtracted Image objects to DB and disk
             SCLogger.info(f"subtractor for image id {ds.image.id}")
             ds = self.subtractor.run(ds, session)
             ds.update_report('subtraction', session)
@@ -279,10 +274,13 @@ class Pipeline:
             ds = self.cutter.run(ds, session)
             ds.update_report('cutting', session)
 
-            # extract photometry, analytical cuts, and deep learning models on the Cutouts:
+            # extract photometry and analytical cuts
             SCLogger.info(f"measurer for image id {ds.image.id}")
             ds = self.measurer.run(ds, session)
             ds.update_report('measuring', session)
+
+            # measure deep learning models on the cutouts/measurements
+            # TODO: add this...
 
             ds.finalize_report(session)
 

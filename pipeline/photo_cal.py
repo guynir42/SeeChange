@@ -71,7 +71,7 @@ class ParsPhotCalibrator(Parameters):
         self.override(kwargs)
 
     def get_process_name(self):
-        return 'photo_cal'
+        return 'extraction'
 
 
 class PhotCalibrator:

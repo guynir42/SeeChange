@@ -61,7 +61,7 @@ def preprocessor(preprocessor_factory):
 def extractor_factory(test_config):
 
     def make_extractor():
-        extr = Detector(**test_config.value('extraction'))
+        extr = Detector(**test_config.value('extraction.sources'))
         extr.pars._enforce_no_new_attrs = False
         extr.pars.test_parameter = extr.pars.add_par(
             'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
@@ -82,7 +82,7 @@ def extractor(extractor_factory):
 def astrometor_factory(test_config):
 
     def make_astrometor():
-        astrom = AstroCalibrator(**test_config.value('astro_cal'))
+        astrom = AstroCalibrator(**test_config.value('extraction.wcs'))
         astrom.pars._enforce_no_new_attrs = False
         astrom.pars.test_parameter = astrom.pars.add_par(
             'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
@@ -103,7 +103,7 @@ def astrometor(astrometor_factory):
 def photometor_factory(test_config):
 
     def make_photometor():
-        photom = PhotCalibrator(**test_config.value('photo_cal'))
+        photom = PhotCalibrator(**test_config.value('extraction.zp'))
         photom.pars._enforce_no_new_attrs = False
         photom.pars.test_parameter = photom.pars.add_par(
             'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
@@ -388,7 +388,7 @@ def datastore_factory(data_dir, pipeline_factory):
                 ds.image.bkg_mean_estimate = backgrounder.globalback
                 ds.image.bkg_rms_estimate = backgrounder.globalrms
 
-            ############# extraction to create sources / PSF #############
+            ############# extraction to create sources / PSF / WCS / ZP #############
             if cache_dir is not None and cache_base_name is not None:
                 # try to get the SourceList from cache
                 prov = Provenance(
@@ -454,25 +454,7 @@ def datastore_factory(data_dir, pipeline_factory):
                     # make sure this is saved to the archive as well
                     ds.psf.save(verify_md5=False, overwrite=True)
 
-            if ds.sources is None or ds.psf is None:  # make the source list from the regular image
-                SCLogger.debug('extracting sources. ')
-                ds = p.extractor.run(ds)
-                ds.sources.save()
-                ds.sources.copy_to_cache(cache_dir)
-                ds.psf.save(overwrite=True)
-                output_path = ds.psf.copy_to_cache(cache_dir)
-                if cache_dir is not None and cache_base_name is not None and output_path != cache_path:
-                    warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
-
-            ############## astro_cal to create wcs ################
-            if cache_dir is not None and cache_base_name is not None:
-                prov = Provenance(
-                        code_version=code_version,
-                        process='astro_cal',
-                        upstreams=[ds.sources.provenance],
-                        parameters=p.astro_cal.pars.get_critical_pars(),
-                        is_testing=True,
-                    )
+                ############## astro_cal to create wcs ################
                 cache_name = f'{cache_base_name}.wcs_{prov.id[:6]}.txt.json'
                 cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(cache_path):
@@ -503,30 +485,12 @@ def datastore_factory(data_dir, pipeline_factory):
                     # make sure this is saved to the archive as well
                     ds.wcs.save(verify_md5=False, overwrite=True)
 
-            if ds.wcs is None:  # make the WCS
-                SCLogger.debug('Running astrometric calibration')
-                ds = p.astro_cal.run(ds)
-                ds.wcs.save()
-                if cache_dir is not None and cache_base_name is not None:
-                    output_path = ds.wcs.copy_to_cache(cache_dir)
-                    if output_path != cache_path:
-                        warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
-
-            ########### photo_cal to create zero point ############
-            if cache_dir is not None and cache_base_name is not None:
+                ########### photo_cal to create zero point ############
                 cache_name = cache_base_name + '.zp.json'
                 cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(cache_path):
                     SCLogger.debug('loading zero point from cache. ')
                     ds.zp = ZeroPoint.copy_from_cache(cache_dir, cache_name)
-                    prov = Provenance(
-                        code_version=code_version,
-                        process='photo_cal',
-                        upstreams=[ds.sources.provenance, ds.wcs.provenance],
-                        parameters=p.photo_cal.pars.get_critical_pars(),
-                        is_testing=True,
-                    )
-                    prov = session.merge(prov)
 
                     # check if ZP already exists on the database
                     existing = session.scalars(
@@ -549,7 +513,24 @@ def datastore_factory(data_dir, pipeline_factory):
                     ds.zp.provenance = prov
                     ds.zp.sources = ds.sources
 
-            if ds.zp is None:  # make the zero point
+            if ds.sources is None or ds.psf is None or ds.wcs is None or ds.zp is None:  # redo extraction
+                SCLogger.debug('extracting sources. ')
+                ds = p.extractor.run(ds)
+                ds.sources.save()
+                ds.sources.copy_to_cache(cache_dir)
+                ds.psf.save(overwrite=True)
+                output_path = ds.psf.copy_to_cache(cache_dir)
+                if cache_dir is not None and cache_base_name is not None and output_path != cache_path:
+                    warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
+
+                SCLogger.debug('Running astrometric calibration')
+                ds = p.astro_cal.run(ds)
+                ds.wcs.save()
+                if cache_dir is not None and cache_base_name is not None:
+                    output_path = ds.wcs.copy_to_cache(cache_dir)
+                    if output_path != cache_path:
+                        warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
+
                 SCLogger.debug('Running photometric calibration')
                 ds = p.photo_cal.run(ds)
                 if cache_dir is not None and cache_base_name is not None:

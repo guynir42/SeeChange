@@ -23,9 +23,7 @@ UPSTREAM_STEPS = {
     'exposure': [],  # no upstreams
     'preprocessing': ['exposure'],
     'extraction': ['preprocessing'],
-    'astro_cal': ['extraction'],
-    'photo_cal': ['extraction', 'astro_cal'],
-    'subtraction': ['reference', 'preprocessing', 'extraction', 'astro_cal', 'photo_cal'],
+    'subtraction': ['reference', 'preprocessing', 'extraction'],
     'detection': ['subtraction'],
     'cutting': ['detection'],
     'measuring': ['cutting'],
@@ -37,9 +35,7 @@ PROCESS_PRODUCTS = {
     'exposure': 'exposure',
     'preprocessing': 'image',
     'coaddition': 'image',
-    'extraction': ['sources', 'psf'],  # TODO: add background, maybe move wcs and zp in here too? 
-    'astro_cal': 'wcs',
-    'photo_cal': 'zp',
+    'extraction': ['sources', 'psf', 'background', 'wcs', 'zp'],
     'reference': 'reference',
     'subtraction': 'sub_image',
     'detection': 'detections',
@@ -434,7 +430,7 @@ class DataStore:
         Parameters
         ----------
         process: str
-            The name of the process, e.g., "preprocess", "calibration", "subtraction".
+            The name of the process, e.g., "preprocess", "extraction", "subtraction".
             Use a Parameter object's get_process_name().
         pars_dict: dict
             A dictionary of parameters used for the process.
@@ -526,12 +522,12 @@ class DataStore:
         (for that process) from the database.
         This is used to get the provenance of upstream objects,
         only when those objects are not found in the store.
-        Example: when looking for the upstream provenance of a
-        photo_cal process, the upstream process is preprocess,
+        Example: when looking for the upstream provenance of an
+        extraction process, the upstream process is preprocess,
         so this function will look for the preprocess provenance.
-        If the ZP object is from the DB then there must be provenance
+        If the SourceList object is from the DB then there must be provenance
         objects for the Image that was used to create it.
-        If the ZP was just created, the Image should also be
+        If the SourceList was just created, the Image should also be
         in memory even if the provenance is not on DB yet,
         in which case this function should not be called.
 
@@ -859,7 +855,7 @@ class DataStore:
             This provenance should be consistent with
             the current code version and critical parameters.
             If none is given, will use the latest provenance
-            for the "astro_cal" process.
+            for the "extraction" process.
         session: sqlalchemy.orm.session.Session or SmartSession
             An optional session to use for the database query.
             If not given, will use the session stored inside the
@@ -872,7 +868,7 @@ class DataStore:
             The WCS object, or None if no matching WCS is found.
 
         """
-        process_name = 'astro_cal'
+        process_name = 'extraction'
         # make sure the wcs has the correct provenance
         if self.wcs is not None:
             if self.wcs.provenance is None:
@@ -922,7 +918,7 @@ class DataStore:
             This provenance should be consistent with
             the current code version and critical parameters.
             If none is given, will use the latest provenance
-            for the "photo_cal" process.
+            for the "extraction" process.
         session: sqlalchemy.orm.session.Session or SmartSession
             An optional session to use for the database query.
             If not given, will use the session stored inside the
@@ -934,7 +930,7 @@ class DataStore:
         wcs: ZeroPoint object
             The photometric calibration object, or None if no matching ZP is found.
         """
-        process_name = 'photo_cal'
+        process_name = 'extraction'
         # make sure the zp has the correct provenance
         if self.zp is not None:
             if self.zp.provenance is None:

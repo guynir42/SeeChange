@@ -132,7 +132,7 @@ class ParsAstroCalibrator(Parameters):
         self.override(kwargs)
 
     def get_process_name(self):
-        return 'astro_cal'
+        return 'extraction'
 
 
 class AstroCalibrator:

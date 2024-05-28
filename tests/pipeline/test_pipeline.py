@@ -152,39 +152,54 @@ def test_parameters( test_config ):
     # Verify that we can override from the yaml config file
     pipeline = Pipeline()
     assert not pipeline.preprocessor.pars['use_sky_subtraction']
-    assert pipeline.astro_cal.pars['cross_match_catalog'] == 'gaia_dr3'
-    assert pipeline.astro_cal.pars['catalog'] == 'gaia_dr3'
+    assert pipeline.astrometor.pars['cross_match_catalog'] == 'gaia_dr3'
+    assert pipeline.astrometor.pars['catalog'] == 'gaia_dr3'
     assert pipeline.subtractor.pars['method'] == 'zogy'
-
-    # Verify that manual override works for all parts of pipeline
-    overrides = { 'preprocessing': { 'steps': [ 'overscan', 'linearity'] },
-                  # 'extraction': # Currently has no parameters defined
-                  'astro_cal': { 'cross_match_catalog': 'override' },
-                  'photo_cal': { 'cross_match_catalog': 'override' },
-                  'subtraction': { 'method': 'override' },
-                  'detection': { 'threshold': 3.14 },
-                  'cutting': { 'cutout_size': 666 },
-                  'measuring': { 'chosen_aperture': 1 }
-                 }
-    pipelinemodule = { 'preprocessing': 'preprocessor',
-                       'subtraction': 'subtractor',
-                       'detection': 'detector',
-                       'cutting': 'cutter',
-                       'measuring': 'measurer'
-                      }
 
     # TODO: this is based on a temporary "example_pipeline_parameter" that will be removed later
     pipeline = Pipeline( pipeline={ 'example_pipeline_parameter': -999 } )
     assert pipeline.pars['example_pipeline_parameter'] == -999
 
+    # Verify that manual override works for all parts of pipeline
+    overrides = {
+        'preprocessing': { 'steps': [ 'overscan', 'linearity'] },
+        'extraction': {
+            'sources': {'threshold': 3.14 },
+            'wcs': {'cross_match_catalog': 'override'},
+            'zp': {'cross_match_catalog': 'override'},
+        },
+        'subtraction': { 'method': 'override' },
+        'detection': { 'threshold': 3.14 },
+        'cutting': { 'cutout_size': 666 },
+        'measuring': { 'chosen_aperture': 1 }
+    }
+    pipelinemodule = {
+        'preprocessing': 'preprocessor',
+        'extraction': 'extractor',
+        'astro_cal': 'astrometor',
+        'photo_cal': 'photometor',
+        'subtraction': 'subtractor',
+        'detection': 'detector',
+        'cutting': 'cutter',
+        'measuring': 'measurer'
+    }
+
+    def check_override( new_values_dict, pars ):
+        for key, value in new_values_dict.items():
+            if pars[key] != value:
+                return False
+        return True
+
     pipeline = Pipeline( **overrides )
-    for module, subst in overrides.items():
-        if module in pipelinemodule:
-            pipelinemod = getattr( pipeline, pipelinemodule[module] )
-        else:
-            pipelinemod = getattr( pipeline, module )
-        for key, val in subst.items():
-            assert pipelinemod.pars[key] == val
+
+    assert check_override(overrides['preprocessing'], pipeline.preprocessor.pars)
+    assert check_override(overrides['extraction']['sources'], pipeline.extractor.pars)
+    assert check_override(overrides['extraction']['wcs'], pipeline.astrometor.pars)
+    assert check_override(overrides['extraction']['zp'], pipeline.photometor.pars)
+    assert check_override(overrides['subtraction'], pipeline.subtractor.pars)
+    assert check_override(overrides['detection'], pipeline.detector.pars)
+    assert check_override(overrides['cutting'], pipeline.cutter.pars)
+    assert check_override(overrides['measuring'], pipeline.measurer.pars)
 
 
 def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, archive):
