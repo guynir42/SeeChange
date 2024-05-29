@@ -395,7 +395,13 @@ def datastore_factory(data_dir, pipeline_factory):
                     code_version=code_version,
                     process='extraction',
                     upstreams=[ds.image.provenance],
-                    parameters=p.extractor.pars.get_critical_pars(),
+                    parameters={
+                        'sources': p.extractor.pars.get_critical_pars(),
+                        'wcs': p.astro_cal.pars.get_critical_pars(),
+                        'zp': p.photo_cal.pars.get_critical_pars(),
+                    },
+                    # TODO: does background calculation need its own pipeline object + parameters?
+                    #  or is it good enough to just have the parameters included in the extractor pars?
                     is_testing=True,
                 )
                 prov = session.merge(prov)

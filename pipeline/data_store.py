@@ -130,6 +130,12 @@ class DataStore:
             attributes. These are parsed after the args
             list and can override it!
 
+        Additional things that can get automatically parsed,
+        either by keyword or by the content of one of the args:
+            - provenances / prov_tree: a dictionary of provenances for each process.
+            - session: a sqlalchemy session object to use.
+            -
+
         Returns
         -------
         output_session: sqlalchemy.orm.session.Session or SmartSession
@@ -144,13 +150,31 @@ class DataStore:
             return
 
         args, kwargs, output_session = parse_session(*args, **kwargs)
+
         self.session = output_session
 
-        # remove any provenances from the args list
-        for arg in args:
-            if isinstance(arg, Provenance):
-                self.upstream_provs.append(arg)
-        args = [arg for arg in args if not isinstance(arg, Provenance)]
+        # look for a user-given provenance tree
+        provs = [
+            arg for arg in args
+            if isinstance(arg, dict) and all([isinstance(value, Provenance) for value in arg.values()])
+        ]
+        if len(provs) > 0:
+            self.prov_tree = provs[0]
+            # also remove the provenances from the args list
+            args = [
+                arg for arg in args
+                if not isinstance(arg, dict) or not all([isinstance(value, Provenance) for value in arg.values()])
+            ]
+        found_keys = []
+        for key, value in kwargs.items():
+            if key in ['prov', 'provs', 'provenances', 'prov_tree', 'provs_tree', 'provenance_tree']:
+                if not isinstance(value, dict) or not all([isinstance(v, Provenance) for v in value.values()]):
+                    raise ValueError('Provenance tree must be a dictionary of Provenance objects.')
+                self.prov_tree = value
+                found_keys.append(key)
+
+        for key in found_keys:
+            del kwargs[key]
 
         # parse the args list
         arg_types = [type(arg) for arg in args]
@@ -191,17 +215,6 @@ class DataStore:
                 if not isinstance(val, Image):
                     raise ValueError(f'image must be an Image object, got {type(val)}')
                 self.image = val
-
-            # check for provenances
-            if key in ['prov', 'provenances', 'upstream_provs', 'upstream_provenances']:
-                new_provs = val
-                if not isinstance(new_provs, list):
-                    new_provs = [new_provs]
-
-                for prov in new_provs:
-                    if not isinstance(prov, Provenance):
-                        raise ValueError(f'Provenance must be a Provenance object, got {type(prov)}')
-                    self.upstream_provs.append(prov)
 
         if self.image is not None:
             for att in ['sources', 'psf', 'wcs', 'zp', 'detections', 'cutouts', 'measurements']:
@@ -252,7 +265,7 @@ class DataStore:
         self._exposure = None  # single image, entire focal plane
         self._section = None  # SensorSection
 
-        self.upstream_provs = None  # provenances to override the upstreams if no upstream objects exist
+        self.prov_tree = None  # provenance dictionary keyed on the process name
 
         # these all need to be added to the products_to_save list
         self.image = None  # single image from one sensor section
@@ -381,15 +394,13 @@ class DataStore:
                     f'measurements must be a list of Measurement objects, got list with {[type(m) for m in value]}'
                 )
 
-            if key == 'upstream_provs' and not isinstance(value, list):
-                raise ValueError(f'upstream_provs must be a list of Provenance objects, got {type(value)}')
+            if (
+                key == 'prov_tree' and not isinstance(value, dict) and
+                not all([isinstance(v, Provenance) for v in value.values()])
+            ):
+                raise ValueError(f'prov_tree must be a list of Provenance objects, got {value}')
 
-            if key == 'upstream_provs' and not all([isinstance(p, Provenance) for p in value]):
-                raise ValueError(
-                    f'upstream_provs must be a list of Provenance objects, got list with {[type(p) for p in value]}'
-                )
-
-            if key == 'session' and not isinstance(value, (sa.orm.session.Session, SmartSession)):
+            if key == 'session' and not isinstance(value, sa.orm.session.Session):
                 raise ValueError(f'Session must be a SQLAlchemy session or SmartSession, got {type(value)}')
 
         super().__setattr__(key, value)
@@ -417,7 +428,7 @@ class DataStore:
         else:
             raise ValueError('Could not get inputs for DataStore.')
 
-    def get_provenance(self, process, pars_dict, upstream_provs=None, session=None):
+    def get_provenance(self, process, pars_dict, session=None):
         """Get the provenance for a given process.
         Will try to find a provenance that matches the current code version
         and the parameter dictionary, and if it doesn't find it,
@@ -426,6 +437,24 @@ class DataStore:
         This function should be called externally by applications
         using the DataStore, to get the provenance for a given process,
         or to make it if it doesn't exist.
+
+        Getting upstreams:
+        Will use the prov_tree attribute of the datastore (if it exists)
+        and if not, will try to get the upstream provenances from objects
+        it has in memory already.
+        If it doesn't find an upstream in either places it would use the
+        most recently created provenance as an upstream, but this should
+        rarely happen.
+
+        Note that the output provenance can be different for the given process,
+        if there are new parameters that differ from those used to make this provenance.
+        For example: a prov_tree contains a preprocessing provenance "A",
+        and an extraction provenance "B". This function is called for
+        the "extraction" step, but with some new parameters (different than in "B").
+        The "A" provenance will be used as the upstream, but the output provenance
+        will not be "B" because of the new parameters.
+        This will not change the prov_tree or affect later calls to this function
+        for downstream provenances.
 
         Parameters
         ----------
@@ -436,16 +465,6 @@ class DataStore:
             A dictionary of parameters used for the process.
             These include the critical parameters for this process.
             Use a Parameter object's get_critical_pars().
-        upstream_provs: list of Provenance objects
-            A list of provenances to use as upstreams for the current
-            provenance that is requested. Any upstreams that are not
-            given will be filled using objects that already exist
-            in the data store, or by getting the most up-to-date
-            provenance from the database.
-            The upstream provenances can be given directly as
-            a function parameter, or using the DataStore constructor.
-            If given as a parameter, it will override the DataStore's
-            self.upstream_provs attribute for that call.
         session: sqlalchemy.orm.session.Session
             An optional session to use for the database query.
             If not given, will use the session stored inside the
@@ -458,9 +477,6 @@ class DataStore:
             The provenance for the given process.
 
         """
-        if upstream_provs is None:
-            upstream_provs = self.upstream_provs
-
         with SmartSession(session, self.session) as session:
             code_version = Provenance.get_code_version(session=session)
             if code_version is None:
@@ -471,30 +487,27 @@ class DataStore:
             # check if we can find the upstream provenances
             upstreams = []
             for name in UPSTREAM_STEPS[process]:
+                prov = None
                 # first try to load an upstream that was given explicitly:
-                obj_names = PROCESS_PRODUCTS[name]
-                if isinstance(obj_names, str):
-                    obj_names = [obj_names]
-                obj = getattr(self, obj_names[0], None)  # only need one object to get the provenance
-                if isinstance(obj, list):
-                    obj = obj[0]  # for cutouts or measurements just use the first one
-                if upstream_provs is not None and name in [p.process for p in upstream_provs]:
-                    prov = [p for p in upstream_provs if p.process == name][0]
+                if self.prov_tree is not None and name in self.prov_tree:
+                    prov = self.prov_tree[name]
 
-                # second, try to get a provenance from objects saved to the store:
-                elif obj is not None and hasattr(obj, 'provenance') and obj.provenance is not None:
-                    prov = obj.provenance
+                if prov is None:  # if that fails, see if the correct object exists in memory
+                    obj_names = PROCESS_PRODUCTS[name]
+                    if isinstance(obj_names, str):
+                        obj_names = [obj_names]
+                    obj = getattr(self, obj_names[0], None)  # only need one object to get the provenance
+                    if isinstance(obj, list):
+                        obj = obj[0]  # for cutouts or measurements just use the first one
 
-                # last, try to get the latest provenance from the database:
-                else:
+                    if obj is not None and hasattr(obj, 'provenance') and obj.provenance is not None:
+                        prov = obj.provenance
+
+                if prov is None:  # last, try to get the latest provenance from the database:
                     prov = get_latest_provenance(name, session=session)
 
-                # can't find any provenance upstream, therefore
-                # there can't be any provenance for this process
-                if prov is None:
-                    return None
-
-                upstreams.append(prov)
+                if prov is not None:  # if we don't find one of them, it will raise an exception
+                    upstreams.append(prov)
 
             if len(upstreams) != len(UPSTREAM_STEPS[process]):
                 raise ValueError(f'Could not find all upstream provenances for process {process}.')
@@ -507,44 +520,39 @@ class DataStore:
                 upstreams=upstreams,
                 is_testing="test_parameter" in pars_dict,  # this is a flag for testing purposes
             )
-            db_prov = session.scalars(sa.select(Provenance).where(Provenance.id == prov.id)).first()
-            if db_prov is not None:  # only merge if this provenance already exists
-                prov = session.merge(prov)
+            prov = prov.merge_concurrent(session=session, commit=True)
 
         return prov
 
     def _get_provenance_for_an_upstream(self, process, session=None):
-        """
-        Get the provenance for a given process, without knowing
-        the parameters or code version.
-        This simply looks for a matching provenance in the upstream_provs
-        attribute, and if it is not there, it will call the latest provenance
-        (for that process) from the database.
-        This is used to get the provenance of upstream objects,
-        only when those objects are not found in the store.
-        Example: when looking for the upstream provenance of an
-        extraction process, the upstream process is preprocess,
-        so this function will look for the preprocess provenance.
-        If the SourceList object is from the DB then there must be provenance
-        objects for the Image that was used to create it.
-        If the SourceList was just created, the Image should also be
-        in memory even if the provenance is not on DB yet,
-        in which case this function should not be called.
+        """Get the provenance for a given process, without parameters or code version.
+        This is used to get the provenance of upstream objects.
+        This simply looks for a matching provenance in the prov_tree attribute,
+        or, if it is None, will call the latest provenance (for that process) from the database.
 
-        This will raise if no provenance can be found.
+        Example:
+        When making a SourceList in the extraction phase, we will want to know the provenance
+        of the Image object (from the preprocessing phase).
+        To get it, we'll call this function with process="preprocessing".
+        If prov_tree is not None, it will provide the provenance for the preprocessing phase.
+        If it is None, it will call get_latest_provenance("preprocessing") to get the latest one.
+
+        Will raise if no provenance can be found.
         """
         session = self.session if session is None else session
 
         # see if it is in the upstream_provs
-        if self.upstream_provs is not None:
-            prov_list = [p for p in self.upstream_provs if p.process == process]
-            provenance = prov_list[0] if len(prov_list) > 0 else None
-        else:
-            provenance = None
+        if self.prov_tree is not None:
+            if process in self.prov_tree:
+                return self.prov_tree[process]
+            else:
+                raise ValueError(f'No provenance found for process "{process}" in prov_tree!')
 
         # try getting the latest from the database
-        if provenance is None:  # check latest provenance
-            provenance = get_latest_provenance(process, session=session)
+        provenance = get_latest_provenance(process, session=session)
+
+        if provenance is None:
+            raise ValueError(f'No provenance found for process "{process}" in the database!')
 
         return provenance
 
@@ -570,16 +578,16 @@ class DataStore:
         provenances or the local parameters.
         This is the only way to ask for a coadd image.
         If an image with such an id is not found,
-        in memory or in the database, will raise
-        an ValueError.
+        in memory or in the database, will raise a ValueError.
         If exposure_id and section_id are given, will
         load an image that is consistent with
         that exposure and section ids, and also with
         the code version and critical parameters
         (using a matching of provenances).
-        In this case we will only load a regular
-        image, not a coadded image.
+        In this case we will only load a regular image, not a coadd.
         If no matching image is found, will return None.
+
+        Note that this also updates self.image with the found image (or None).
 
         Parameters
         ----------
@@ -587,9 +595,9 @@ class DataStore:
             The provenance to use for the image.
             This provenance should be consistent with
             the current code version and critical parameters.
-            If none is given, will use the latest provenance
-            for the "preprocessing" process.
-        session: sqlalchemy.orm.session.Session or SmartSession
+            If none is given, will use the prov_tree and if that is None,
+            will use the latest provenance for the "preprocessing" process.
+        session: sqlalchemy.orm.session.Session
             An optional session to use for the database query.
             If not given, will use the session stored inside the
             DataStore object; if there is none, will open a new session
@@ -603,9 +611,15 @@ class DataStore:
         """
         session = self.session if session is None else session
 
-        process_name = 'preprocessing'
-        if self.image_id is not None:
-            # we were explicitly asked for a specific image id:
+        if (
+                (self.exposure is None or self.section is None) and
+                (self.exposure_id is None or self.section_id is None) and
+                self.image is None and self.image_id is None
+        ):
+            raise ValueError('Cannot get image without one of (exposure_id, section_id), '
+                             '(exposure, section), image, or image_id!')
+
+        if self.image_id is not None:  # we were explicitly asked for a specific image id:
             if isinstance(self.image, Image) and self.image.id == self.image_id:
                 pass  # return self.image at the end of function...
             else:  # not found in local memory, get from DB
@@ -616,83 +630,40 @@ class DataStore:
             if self.image is None:
                 raise ValueError(f'Cannot find image with id {self.image_id}!')
 
-        elif self.image is not None:
-            # If an image already exists and image_id is none, we may be
-            # working with a datastore that hasn't been committed to the
-            # database; do a quick check for mismatches.
-            # (If all the ids are None, it'll match even if the actual
-            # objects are wrong, but, oh well.)
-            if (self.exposure_id is not None) and (self.section_id is not None):
-                if ( (self.image.exposure_id is not None and self.image.exposure_id != self.exposure_id) or
-                     (self.image.section_id != self.section_id) ):
-                    raise ValueError( "Image exposure/section id doesn't match what's expected!" )
-            elif self.exposure is not None and self.section is not None:
-                if ( (self.image.exposure_id is not None and self.image.exposure_id != self.exposure.id) or
-                     (self.image.section_id != self.section.identifier) ):
-                    raise ValueError( "Image exposure/section id doesn't match what's expected!" )
-            # If we get here, self.image is presumed to be good
+        else:  # try to get the image based on exposure_id and section_id
+            if provenance is None:
+                provenance = self._get_provenance_for_an_upstream('preprocessing', session=session)
 
-        elif self.exposure_id is not None and self.section_id is not None:
-            # If we don't know the image yet
-            # check if self.image is the correct image:
-            if (
-                isinstance(self.image, Image) and self.image.exposure_id == self.exposure_id
-                    and self.image.section_id == str(self.section_id)
-            ):
-                # make sure the image has the correct provenance
-                if self.image is not None:
-                    if self.image.provenance is None:
-                        raise ValueError('Image has no provenance!')
-                    if provenance is not None and provenance.id != self.image.provenance.id:
-                        self.image = None
-                        self.sources = None
-                        self.psf = None
-                        self.wcs = None
-                        self.zp = None
+            if self.image is not None:
+                # If an image already exists and image_id is none, we may be
+                # working with a datastore that hasn't been committed to the
+                # database; do a quick check for mismatches.
+                # (If all the ids are None, it'll match even if the actual
+                # objects are wrong, but, oh well.)
+                if self.exposure_id != self.image.exposure_id or self.section_id != self.image.section_id:
+                    self.image = None
+                if self.exposure is not None and self.image.exposure_id != self.exposure.id:
+                    self.image = None
+                if self.section is not None and self.image.section_id != self.section.identifier:
+                    self.image = None
 
-                if provenance is None and self.image is not None:
-                    if self.upstream_provs is not None:
-                        provenances = [p for p in self.upstream_provs if p.process == process_name]
-                    else:
-                        provenances = []
+                if self.image.provenance.id != provenance.id:
+                    self.image = None
 
-                    if len(provenances) > 1:
-                        raise ValueError(f'More than one "{process_name}" provenance found!')
-                    if len(provenances) == 1:
-                        # a mismatch of provenance and cached image:
-                        if self.image.provenance.id != provenances[0].id:
-                            self.image = None  # this must be an old image, get a new one
-                            self.sources = None
-                            self.psf = None
-                            self.wcs = None
-                            self.zp = None
+                # If we get here, self.image is presumed to be good
 
             if self.image is None:  # load from DB
                 # this happens when the image is required as an upstream for another process (but isn't in memory)
-                if provenance is None:  # check if in upstream_provs/database
-                    provenance = self._get_provenance_for_an_upstream(process_name, session=session)
+                with SmartSession(session) as session:
+                    self.image = session.scalars(
+                        sa.select(Image).where(
+                            Image.exposure_id == self.exposure_id,
+                            Image.section_id == str(self.section_id),
+                            Image.provenance.has(id=provenance.id)
+                        )
+                    ).first()
 
-                if provenance is not None:  # if we can't find a provenance, then we don't need to load from DB
-                    with SmartSession(session) as session:
-                        self.image = session.scalars(
-                            sa.select(Image).where(
-                                Image.exposure_id == self.exposure_id,
-                                Image.section_id == str(self.section_id),
-                                Image.provenance.has(id=provenance.id)
-                            )
-                        ).first()
-
-        elif self.exposure is not None and self.section is not None:
-            # If we don't have exposure and section ids, but we do have an exposure
-            # and a section, we're probably working with a non-committed datastore.
-            # So, extract the image from the exposure.
-            self.image = Image.from_exposure( self.exposure, self.section.identifier )
-
-        else:
-            raise ValueError('Cannot get image without one of (exposure_id, section_id), '
-                             '(exposure, section), image, or image_id!')
-
-        return self.image  # could return none if no image was found
+        return self.image  # can return none if no image was found
 
     def append_image_products(self, image):
         """Append the image products to the image and sources objects.
@@ -787,15 +758,14 @@ class DataStore:
         ----------
         provenance: Provenance object
           The provenance to use for the PSF.  This provenance should be
-          consistent with the current code version and critical
-          parameters.  If None, will use the latest provenance for the
-          "extraction" process.
-        session: sqlalchemy.orm.session.Sesssion
+          consistent with the current code version and critical parameters.
+          If None, will use the latest provenance for the "extraction" process.
+        session: sqlalchemy.orm.session.Session
           An optional database session.  If not given, will use the
           session stored in the DataStore object, or open and close a
           new session if there isn't one.
 
-        Retruns
+        Returns
         -------
         psf: PSF Object
 
