@@ -164,9 +164,11 @@ def iterative_cutouts_photometry(
     annulus: list or 1D array
         The inner and outer radii of the annulus in pixels.
     iterations: int
-        The number of iterations to perform.
+        The number of repositioning iterations to perform.
         For each aperture, will measure and reposition the centroid
-        this many times before moving on to the next measurement.
+        this many times before moving on to the next aperture.
+        After the final centroid is found, will measure the flux
+        and second moments using the best centroid, over all apertures.
         Default is 2.
     local_bg: bool
         Toggle the use of a local background estimate.
@@ -222,10 +224,11 @@ def iterative_cutouts_photometry(
             bkg_estimate = 0.0
 
         denominator = np.nansum(nandata - bkg_estimate)
+        epsilon = 0.01
         if denominator == 0:
-            denominator = 1.0
-        elif abs(denominator) < 1.0:
-            denominator = 1.0 * np.sign(denominator)  # prevent division by zero and other rare cases
+            denominator = epsilon
+        elif abs(denominator) < epsilon:
+            denominator = epsilon * np.sign(denominator)  # prevent division by zero and other rare cases
 
         cx = np.nansum(xgrid * (nandata - bkg_estimate)) / denominator
         cy = np.nansum(ygrid * (nandata - bkg_estimate)) / denominator

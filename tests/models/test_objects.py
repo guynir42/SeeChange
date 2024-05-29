@@ -9,7 +9,7 @@ from astropy.time import Time
 from models.base import SmartSession
 from models.provenance import Provenance
 from models.measurements import Measurements
-from models.objects import Object
+from models.object import Object
 
 
 def test_object_creation():

@@ -102,6 +102,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.get_filter_description() == f'PSF mismatch (FWHM= 0.25 x {fwhm:.2f})'
 
     assert np.allclose(m.flux_apertures, 100)  # aperture is irrelevant for delta function
+    assert m.flux_psf > 150  # flux is more focused than the PSF, so it will bias the flux to be higher than 100
     assert m.background == 0
     assert m.background_err == 0
     for i in range(3):  # check only the last apertures, that are smaller than cutout square
@@ -115,6 +116,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.get_filter_description() == f'PSF mismatch (FWHM= 0.25 x {fwhm:.2f})'
 
     assert np.allclose(m.flux_apertures, 200)
+    assert m.flux_psf > 300  # flux is more focused than the PSF, so it will bias the flux to be higher than 100
     assert m.background == 0
     assert m.background_err == 0
 
@@ -129,6 +131,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.flux_apertures[1] < 1000
     for i in range(2, len(m.flux_apertures)):
         assert m.flux_apertures[i] == pytest.approx(1000, rel=0.1)
+    assert m.flux_psf < 900  # flux is more spread out than the PSF, so it will bias the flux to be lower than 1000
     assert m.background == pytest.approx(0, abs=0.01)
     assert m.background_err == pytest.approx(0, abs=0.01)
 
@@ -144,6 +147,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.flux_apertures[1] < 500
     for i in range(2, len(m.flux_apertures)):
         assert m.flux_apertures[i] == pytest.approx(500, rel=0.1)
+    assert m.flux_psf < 450  # flux is more spread out than the PSF, so it will bias the flux to be lower than 500
     assert m.background == pytest.approx(0, abs=0.01)
     assert m.background_err == pytest.approx(0, abs=0.01)
 
@@ -209,21 +213,19 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.flux_apertures[1] < 600
     for i in range(2, len(m.flux_apertures)):
         assert m.flux_apertures[i] == pytest.approx(1000, rel=1)
+    assert m.flux_psf < 400  # flux is more spread out than the PSF, so it will bias the flux to be lower
 
     assert m.background == pytest.approx(0, abs=0.2)
     assert m.background_err == pytest.approx(1.0, abs=0.2)
 
     m = ds.all_measurements[11]  # streak
-    # TODO: this fails because background is too high, need to fix this by using a better background estimation
-    #  one way this could work is by doing a hard-edge annulus and taking sigma_clipping (or median) of the pixel
-    #  values, instead of the weighted mean we are using now.
     assert m.disqualifier_scores['negatives'] < 0.5
     assert m.disqualifier_scores['bad pixels'] == 0
     assert m.disqualifier_scores['offsets'] < 0.7
     assert m.disqualifier_scores['filter bank'] == 28
     assert m.get_filter_description() == 'Streaked (angle= 25.0 deg)'
-    assert m.background < 1.0  # see TODO above
-    assert m.background_err < 3.0  # TODO: above
+    assert m.background < 0.5
+    assert m.background_err < 3.0
 
     m = ds.all_measurements[12]  # regular cutout with a bad flag
     assert m.disqualifier_scores['bad_flag'] == 2 ** 41  # this is the bit for 'cosmic ray'

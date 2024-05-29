@@ -122,6 +122,16 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed, HasBitFlagBadness):
             return self.flux_apertures[self.best_aperture] - self.background * self.area_apertures[self.best_aperture]
 
     @property
+    def flux_err(self):
+        """The error on the background subtracted aperture flux in the "best" aperture. """
+        if self.best_aperture == -1:
+            return np.sqrt(self.flux_psf_err ** 2 + self.background_err ** 2 * self.area_psf)
+        else:
+            err = self.flux_apertures_err[self.best_aperture]
+            err += self.background_err ** 2 * self.area_apertures[self.best_aperture]
+            return np.sqrt(err)
+
+    @property
     def mag_psf(self):
         if self.flux_psf <= 0:
             return np.nan
@@ -371,7 +381,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed, HasBitFlagBadness):
         This should only be done for measurements that have passed all preliminary cuts,
         which mostly rules out obvious artefacts.
         """
-        from models.objects import Object  # avoid circular import
+        from models.object import Object  # avoid circular import
 
         with SmartSession(session) as session:
             obj = session.scalars(sa.select(Object).where(

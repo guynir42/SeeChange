@@ -212,13 +212,22 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
         ra = np.array([m.ra for m in measurements])
         dec = np.array([m.dec for m in measurements])
         flux = np.array([m.flux for m in measurements])
+        fluxerr = np.array([m.flux_err for m in measurements])
+
+        good = np.isfinite(ra) & np.isfinite(dec) & np.isfinite(flux) & np.isfinite(fluxerr)
+        good &= flux > fluxerr * 3.0  # require a 3-sigma detection
+        # make sure that if one of these is bad, all are bad
+        ra[~good] = np.nan
+        dec[~good] = np.nan
+        flux[~good] = np.nan
+
         points = SkyCoord(ra, dec, unit='deg')
 
-        ra_mean = np.nansum(ra * flux) / np.nansum(flux)
-        dec_mean = np.nansum(dec * flux) / np.nansum(flux)
+        ra_mean = np.nansum(ra * flux) / np.nansum(flux[good])
+        dec_mean = np.nansum(dec * flux) / np.nansum(flux[good])
         center = SkyCoord(ra_mean, dec_mean, unit='deg')
 
-        num_good = np.sum(np.isfinite(ra) & np.isfinite(dec))
+        num_good = np.sum(good)
         if num_good < 3:
             iterations = 0  # skip iterative step if too few points
 
@@ -236,7 +245,7 @@ class Object(Base, AutoIDMixin, SpatiallyIndexed):
             dec[bad_idx] = np.nan
             flux[bad_idx] = np.nan
 
-            num_good = np.sum(np.isfinite(ra) & np.isfinite(dec))
+            num_good = np.sum(np.isfinite(flux))
             if num_good < 3:
                 break
 

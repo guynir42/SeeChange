@@ -10,7 +10,6 @@ from improc.tools import make_gaussian
 
 from models.cutouts import Cutouts
 from models.measurements import Measurements
-from models.objects import Object
 from models.enums_and_bitflags import BitFlagConverter, BadnessConverter
 
 from pipeline.parameters import Parameters

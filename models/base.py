@@ -181,7 +181,7 @@ def get_all_database_objects(display=False, session=None):
     from models.zero_point import ZeroPoint
     from models.cutouts import Cutouts
     from models.measurements import Measurements
-    from models.objects import Object
+    from models.object import Object
     from models.calibratorfile import CalibratorFile
     from models.catalog_excerpt import CatalogExcerpt
     from models.reference import Reference

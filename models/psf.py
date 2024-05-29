@@ -426,8 +426,8 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
         psfwid, psfsamp, stampwid, psfdex1d = self._get_clip_info()
 
-        xc = int( np.floor(x + 0.5) )
-        yc = int( np.floor(y + 0.5) )
+        xc = int( np.floor(x) )
+        yc = int( np.floor(y) )
 
         # See Chapter 5, "How PSFEx Works", of the PSFEx manual
         #   https://psfex.readthedocs.io/en/latest/Working.html

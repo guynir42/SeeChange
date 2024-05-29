@@ -448,8 +448,8 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
         """
         for att in self.get_data_attributes():
             if att == 'source_row':
-                self.source_row = dict(file[f'{groupname}'].attrs)
-            elif att in file[f'{groupname}']:
+                self.source_row = dict(file[groupname].attrs)
+            elif att in file[groupname]:
                 setattr(self, att, np.array(file[f'{groupname}/{att}']))
 
         self.format = 'hdf5'
