@@ -13,8 +13,8 @@ def dilate_bitflag(array, iterations=1, structure=None):
         The number of iterations to dilate. Default is 1.
     structure : ndarray of booleans
         The kernel to use for dilation.
-        If None (default), will use a structure with circular
-        connectivity equal to one (i.e., non-diagonal).
+        If None (default), will use a structure with non-diagonal
+        connectivity (one pixel in each direction horizontally and vertically).
 
     Returns
     -------
@@ -52,8 +52,8 @@ def make_saturated_flag(imdata, saturation=50000, iterations=2, structure=None):
         The number of iterations to dilate. Default is 1.
     structure : ndarray of booleans
         The kernel to use for dilation.
-        If None (default), will use a structure with circular
-        connectivity equal to one (e.g., non-diagonal).
+        If None (default), will use a structure with non-diagonal
+        connectivity (one pixel in each direction horizontally and vertically).
 
     Returns
     -------

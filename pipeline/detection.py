@@ -863,8 +863,6 @@ class Detector:
         det_map = abs(score) > self.pars.threshold  # catch negative peaks too (can get rid of them later)
 
         # dilate the map to merge nearby peaks
-        # struct = np.ones((1 + 2 * fwhm_pixels, 1 + 2 * fwhm_pixels))
-        # det_map = ndimage.binary_dilation(det_map, structure=struct).astype(det_map.dtype)
         struc = np.zeros((3, 3), dtype=bool)
         struc[1, :] = True
         struc[:, 1] = True
