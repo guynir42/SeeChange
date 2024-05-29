@@ -269,7 +269,12 @@ class Measurer:
                     #         psf = c.sources.image.get_psf()
                     #         m.area_psf = np.nansum(psf.get_clip(c.x, c.y))
                     # else:
-                    flux, fluxerr, area = m.get_flux_at_point(ra, dec, aperture='psf')
+                    if np.isnan(ra) or np.isnan(dec):
+                        flux = np.nan
+                        fluxerr = np.nan
+                        area = np.nan
+                    else:
+                        flux, fluxerr, area = m.get_flux_at_point(ra, dec, aperture='psf')
                     m.flux_psf = flux
                     m.flux_psf_err = fluxerr
                     m.area_psf = area
