@@ -127,7 +127,12 @@ class Pipeline:
         """Override some of the parameters for this object and its sub-objects, using Parameters.override(). """
         for key, value in kwargs.items():
             if key in PROCESS_OBJECTS:
-                getattr(self, PROCESS_OBJECTS[key]).pars.override(value)
+                if isinstance(PROCESS_OBJECTS[key], dict):
+                    for sub_key, sub_value in PROCESS_OBJECTS[key].items():
+                        if sub_key in value:
+                            getattr(self, PROCESS_OBJECTS[key][sub_value]).pars.override(value[sub_key])
+                elif isinstance(PROCESS_OBJECTS[key], str):
+                    getattr(self, PROCESS_OBJECTS[key]).pars.override(value)
             else:
                 self.pars.override({key: value})
 

@@ -427,6 +427,8 @@ class DataStore:
             return f'image={self.image}'
         elif self.exposure_id is not None and self.section_id is not None:
             return f'exposure_id={self.exposure_id}, section_id={self.section_id}'
+        elif self.exposure is not None and self.section_id is not None:
+            return f'exposure={self.exposure}, section_id={self.section_id}'
         else:
             raise ValueError('Could not get inputs for DataStore.')
 
@@ -655,7 +657,7 @@ class DataStore:
                     self.image = None
                 if self.exposure is not None and self.image.exposure_id != self.exposure.id:
                     self.image = None
-                if self.section is not None and self.image.section_id != self.section.identifier:
+                if self.section is not None and str(self.image.section_id) != self.section.identifier:
                     self.image = None
 
                 if self.image is not None and self.image.provenance.id != provenance.id:
@@ -736,13 +738,14 @@ class DataStore:
         if self.sources is None:
             with SmartSession(session, self.session) as session:
                 image = self.get_image(session=session)
-                self.sources = session.scalars(
-                    sa.select(SourceList).where(
-                        SourceList.image_id == image.id,
-                        SourceList.is_sub.is_(False),
-                        SourceList.provenance.has(id=provenance.id),
-                    )
-                ).first()
+                if image is not None:
+                    self.sources = session.scalars(
+                        sa.select(SourceList).where(
+                            SourceList.image_id == image.id,
+                            SourceList.is_sub.is_(False),
+                            SourceList.provenance.has(id=provenance.id),
+                        )
+                    ).first()
 
         return self.sources
 
@@ -792,9 +795,10 @@ class DataStore:
         if self.psf is None:
             with SmartSession(session, self.session) as session:
                 image = self.get_image(session=session)
-                self.psf = session.scalars(
-                    sa.select(PSF).where(PSF.image_id == image.id, PSF.provenance.has(id=provenance.id))
-                ).first()
+                if image is not None:
+                    self.psf = session.scalars(
+                        sa.select(PSF).where(PSF.image_id == image.id, PSF.provenance.has(id=provenance.id))
+                    ).first()
 
         return self.psf
 
