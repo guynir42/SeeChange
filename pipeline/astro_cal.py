@@ -269,8 +269,6 @@ class AstroCalibrator:
 
         ds.wcs = WorldCoordinates( sources=sources, provenance=prov )
         ds.wcs.wcs = wcs
-        if session is not None:
-            ds.wcs = session.merge( ds.wcs )
 
     # ----------------------------------------------------------------------
 

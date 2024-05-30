@@ -343,10 +343,10 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
     assert pipe.coadder.pars.method == 'zogy'
     assert isinstance(pipe.extractor, Detector)
     assert pipe.extractor.pars.threshold == 3.0
-    assert isinstance(pipe.astro_cal, AstroCalibrator)
-    assert pipe.astro_cal.pars.max_catalog_mag == [22.0]
-    assert isinstance(pipe.photo_cal, PhotCalibrator)
-    assert pipe.photo_cal.pars.max_catalog_mag == [22.0]
+    assert isinstance(pipe.astrometor, AstroCalibrator)
+    assert pipe.astrometor.pars.max_catalog_mag == [22.0]
+    assert isinstance(pipe.photometor, PhotCalibrator)
+    assert pipe.photometor.pars.max_catalog_mag == [22.0]
 
     # make a new pipeline with modified parameters
     pipe = CoaddPipeline(pipeline={'date_range': 5}, coaddition={'method': 'naive'})

@@ -251,8 +251,6 @@ class Subtractor:
 
             # get the provenance for this step:
             with SmartSession(session) as session:
-                prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
-
                 # look for a reference that has to do with the current image
                 ref = ds.get_reference(session=session)
                 if ref is None:
@@ -261,16 +259,18 @@ class Subtractor:
                     )
 
                 # manually replace the "reference" provenances with the reference image and its products
-                upstreams = prov.upstreams
-                upstreams = [x for x in upstreams if x.process != 'reference']  # remove reference provenance
-                upstreams.append(ref.image.provenance)
-                upstreams.append(ref.sources.provenance)
-                upstreams.append(ref.psf.provenance)
-                upstreams.append(ref.wcs.provenance)
-                upstreams.append(ref.zp.provenance)
-                prov.upstreams = upstreams  # must re-assign to make sure list items are unique
-                prov.update_id()
-                prov = session.merge(prov)
+                prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
+                # upstreams = prov.upstreams
+                # upstreams = [x for x in upstreams if x.process != 'reference']  # remove reference provenance
+                # upstreams.append(ref.image.provenance)
+                # upstreams.append(ref.sources.provenance)
+                # upstreams.append(ref.psf.provenance)
+                # upstreams.append(ref.wcs.provenance)
+                # upstreams.append(ref.zp.provenance)
+                # prov.upstreams = upstreams  # must re-assign to make sure list items are unique
+                # prov.update_id()
+                #
+                # prov = session.merge(prov)
                 sub_image = ds.get_subtraction(prov, session=session)
 
                 if sub_image is None:

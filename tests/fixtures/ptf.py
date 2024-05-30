@@ -376,40 +376,20 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, ptf_cache_dir, da
 
         cache_base_name = f'187/PTF_20090405_073932_11_R_ComSci_{im_prov.id[:6]}_u-ywhkxr'
 
-        psf_prov = Provenance(
-            process='extraction',
-            parameters=pipe.extractor.pars.get_critical_pars(),
-            upstreams=[im_prov],
-            code_version=code_version,
-            is_testing=True,
-        )
-
-        # this is the same provenance as psf_prov (see Issue #176)
+        # this provenance is used for sources, psf, wcs, zp
         sources_prov = Provenance(
             process='extraction',
-            parameters=pipe.extractor.pars.get_critical_pars(),
+            parameters={
+                'sources': pipe.extractor.pars.get_critical_pars(),
+                'wcs': pipe.astrometor.pars.get_critical_pars(),
+                'zp': pipe.photometor.pars.get_critical_pars(),
+            },
             upstreams=[im_prov],
             code_version=code_version,
             is_testing=True,
         )
 
-        wcs_prov = Provenance(
-            process='astro_cal',
-            parameters=pipe.astro_cal.pars.get_critical_pars(),
-            upstreams=[sources_prov],
-            code_version=code_version,
-            is_testing=True,
-        )
-
-        zp_prov = Provenance(
-            process='photo_cal',
-            parameters=pipe.photo_cal.pars.get_critical_pars(),
-            upstreams=[sources_prov, wcs_prov],
-            code_version=code_version,
-            is_testing=True,
-        )
-
-    extensions = ['image.fits', f'psf_{psf_prov.id[:6]}.fits', f'sources_{sources_prov.id[:6]}.fits', 'wcs', 'zp']
+    extensions = ['image.fits', f'psf_{sources_prov.id[:6]}.fits', f'sources_{sources_prov.id[:6]}.fits', 'wcs', 'zp']
     filenames = [os.path.join(ptf_cache_dir, cache_base_name) + f'.{ext}.json' for ext in extensions]
     if all([os.path.isfile(filename) for filename in filenames]):  # can load from cache
         # get the image:
@@ -421,8 +401,8 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, ptf_cache_dir, da
         assert coadd_image.provenance_id == coadd_image.provenance.id
 
         # get the PSF:
-        coadd_image.psf = PSF.copy_from_cache(ptf_cache_dir, cache_base_name + f'.psf_{psf_prov.id[:6]}.fits')
-        coadd_image.psf.provenance = psf_prov
+        coadd_image.psf = PSF.copy_from_cache(ptf_cache_dir, cache_base_name + f'.psf_{sources_prov.id[:6]}.fits')
+        coadd_image.psf.provenance = sources_prov
         assert coadd_image.psf.provenance_id == coadd_image.psf.provenance.id
 
         # get the source list:
@@ -434,13 +414,13 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, ptf_cache_dir, da
 
         # get the WCS:
         coadd_image.wcs = WorldCoordinates.copy_from_cache(ptf_cache_dir, cache_base_name + '.wcs')
-        coadd_image.wcs.provenance = wcs_prov
+        coadd_image.wcs.provenance = sources_prov
         coadd_image.sources.wcs = coadd_image.wcs
         assert coadd_image.wcs.provenance_id == coadd_image.wcs.provenance.id
 
         # get the zero point:
         coadd_image.zp = ZeroPoint.copy_from_cache(ptf_cache_dir, cache_base_name + '.zp')
-        coadd_image.zp.provenance = zp_prov
+        coadd_image.zp.provenance = sources_prov
         coadd_image.sources.zp = coadd_image.zp
         assert coadd_image.zp.provenance_id == coadd_image.zp.provenance.id
 

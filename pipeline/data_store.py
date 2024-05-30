@@ -423,6 +423,8 @@ class DataStore:
 
         if self.image_id is not None:
             return f'image_id={self.image_id}'
+        if self.image is not None:
+            return f'image={self.image}'
         elif self.exposure_id is not None and self.section_id is not None:
             return f'exposure_id={self.exposure_id}, section_id={self.section_id}'
         else:
@@ -506,11 +508,17 @@ class DataStore:
                 if prov is None:  # last, try to get the latest provenance from the database:
                     prov = get_latest_provenance(name, session=session)
 
-                if prov is not None:  # if we don't find one of them, it will raise an exception
+                if prov is not None:  # if we don't find one of the upstreams, it will raise an exception
                     upstreams.append(prov)
 
             if len(upstreams) != len(UPSTREAM_STEPS[process]):
                 raise ValueError(f'Could not find all upstream provenances for process {process}.')
+
+            for u in upstreams:  # check if "reference" is in the list, if so, replace it with its upstreams
+                if u.process == 'reference':
+                    upstreams.remove(u)
+                    for up in u.upstreams:
+                        upstreams.append(up)
 
             # we have a code version object and upstreams, we can make a provenance
             prov = Provenance(
@@ -640,14 +648,17 @@ class DataStore:
                 # database; do a quick check for mismatches.
                 # (If all the ids are None, it'll match even if the actual
                 # objects are wrong, but, oh well.)
-                if self.exposure_id != self.image.exposure_id or self.section_id != self.image.section_id:
+                if (
+                    self.exposure_id is not None and self.section_id is not None and
+                    (self.exposure_id != self.image.exposure_id or self.section_id != self.image.section_id)
+                ):
                     self.image = None
                 if self.exposure is not None and self.image.exposure_id != self.exposure.id:
                     self.image = None
                 if self.section is not None and self.image.section_id != self.section.identifier:
                     self.image = None
 
-                if self.image.provenance.id != provenance.id:
+                if self.image is not None and self.image.provenance.id != provenance.id:
                     self.image = None
 
                 # If we get here, self.image is presumed to be good
@@ -833,11 +844,12 @@ class DataStore:
         if self.wcs is None:
             with SmartSession(session, self.session) as session:
                 sources = self.get_sources(session=session)
-                self.wcs = session.scalars(
-                    sa.select(WorldCoordinates).where(
-                        WorldCoordinates.sources_id == sources.id, WorldCoordinates.provenance.has(id=provenance.id)
-                    )
-                ).first()
+                if sources is not None and sources.id is not None:
+                    self.wcs = session.scalars(
+                        sa.select(WorldCoordinates).where(
+                            WorldCoordinates.sources_id == sources.id, WorldCoordinates.provenance.has(id=provenance.id)
+                        )
+                    ).first()
 
         return self.wcs
 
@@ -887,11 +899,12 @@ class DataStore:
         if self.zp is None:
             with SmartSession(session, self.session) as session:
                 sources = self.get_sources(session=session)
-                self.zp = session.scalars(
-                    sa.select(ZeroPoint).where(
-                        ZeroPoint.sources_id == sources.id, ZeroPoint.provenance.has(id=provenance.id)
-                    )
-                ).first()
+                if sources is not None and sources.id is not None:
+                    self.zp = session.scalars(
+                        sa.select(ZeroPoint).where(
+                            ZeroPoint.sources_id == sources.id, ZeroPoint.provenance.has(id=provenance.id)
+                        )
+                    ).first()
 
         return self.zp
 

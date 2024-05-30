@@ -92,6 +92,12 @@ class Pipeline:
         self.pars.add_defaults_to_dict(photometor_config)
         self.photometor = PhotCalibrator(**photometor_config)
 
+        # make sure when calling get_critical_pars() these objects will produce the full, nested dictionary
+        siblings = {'sources': self.extractor.pars, 'wcs': self.astrometor.pars, 'zp': self.photometor.pars}
+        self.extractor.pars.add_siblings(siblings)
+        self.astrometor.pars.add_siblings(siblings)
+        self.photometor.pars.add_siblings(siblings)
+
         # reference fetching and image subtraction
         subtraction_config = self.config.value('subtraction', {})
         subtraction_config.update(kwargs.get('subtraction', {}))

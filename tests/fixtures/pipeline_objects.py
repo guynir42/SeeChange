@@ -242,8 +242,15 @@ def pipeline_factory(
         p = Pipeline(**test_config.value('pipeline'))
         p.preprocessor = preprocessor_factory()
         p.extractor = extractor_factory()
-        p.astro_cal = astrometor_factory()
-        p.photo_cal = photometor_factory()
+        p.astrometor = astrometor_factory()
+        p.photometor = photometor_factory()
+
+        # make sure when calling get_critical_pars() these objects will produce the full, nested dictionary
+        siblings = {'sources': p.extractor.pars, 'wcs': p.astrometor.pars, 'zp': p.photometor.pars}
+        p.extractor.pars.add_siblings(siblings)
+        p.astrometor.pars.add_siblings(siblings)
+        p.photometor.pars.add_siblings(siblings)
+
         p.subtractor = subtractor_factory()
         p.detector = detector_factory()
         p.cutter = cutter_factory()
@@ -346,7 +353,7 @@ def datastore_factory(data_dir, pipeline_factory):
 
             if ds.image is None:  # make the preprocessed image
                 SCLogger.debug('making preprocessed image. ')
-                ds = p.preprocessor.run(ds)
+                ds = p.preprocessor.run(ds, session)
                 ds.image.provenance.is_testing = True
                 if bad_pixel_map is not None:
                     ds.image.flags |= bad_pixel_map
@@ -390,16 +397,12 @@ def datastore_factory(data_dir, pipeline_factory):
 
             ############# extraction to create sources / PSF / WCS / ZP #############
             if cache_dir is not None and cache_base_name is not None:
-                # try to get the SourceList from cache
+                # try to get the SourceList, PSF, WCS and ZP from cache
                 prov = Provenance(
                     code_version=code_version,
                     process='extraction',
                     upstreams=[ds.image.provenance],
-                    parameters={
-                        'sources': p.extractor.pars.get_critical_pars(),
-                        'wcs': p.astro_cal.pars.get_critical_pars(),
-                        'zp': p.photo_cal.pars.get_critical_pars(),
-                    },
+                    parameters=p.extractor.pars.get_critical_pars(),  # the siblings will be loaded automatically
                     # TODO: does background calculation need its own pipeline object + parameters?
                     #  or is it good enough to just have the parameters included in the extractor pars?
                     is_testing=True,
@@ -469,12 +472,16 @@ def datastore_factory(data_dir, pipeline_factory):
                     prov = session.merge(prov)
 
                     # check if WCS already exists on the database
-                    existing = session.scalars(
-                        sa.select(WorldCoordinates).where(
-                            WorldCoordinates.sources_id == ds.sources.id,
-                            WorldCoordinates.provenance_id == prov.id
-                        )
-                    ).first()
+                    if ds.sources is not None:
+                        existing = session.scalars(
+                            sa.select(WorldCoordinates).where(
+                                WorldCoordinates.sources_id == ds.sources.id,
+                                WorldCoordinates.provenance_id == prov.id
+                            )
+                        ).first()
+                    else:
+                        existing = None
+
                     if existing is not None:
                         # overwrite the existing row data using the JSON cache file
                         for key in sa.inspect(ds.wcs).mapper.columns.keys():
@@ -499,12 +506,16 @@ def datastore_factory(data_dir, pipeline_factory):
                     ds.zp = ZeroPoint.copy_from_cache(cache_dir, cache_name)
 
                     # check if ZP already exists on the database
-                    existing = session.scalars(
-                        sa.select(ZeroPoint).where(
-                            ZeroPoint.sources_id == ds.sources.id,
-                            ZeroPoint.provenance_id == prov.id
-                        )
-                    ).first()
+                    if ds.sources is not None:
+                        existing = session.scalars(
+                            sa.select(ZeroPoint).where(
+                                ZeroPoint.sources_id == ds.sources.id,
+                                ZeroPoint.provenance_id == prov.id
+                            )
+                        ).first()
+                    else:
+                        existing = None
+
                     if existing is not None:
                         # overwrite the existing row data using the JSON cache file
                         for key in sa.inspect(ds.zp).mapper.columns.keys():
@@ -521,7 +532,7 @@ def datastore_factory(data_dir, pipeline_factory):
 
             if ds.sources is None or ds.psf is None or ds.wcs is None or ds.zp is None:  # redo extraction
                 SCLogger.debug('extracting sources. ')
-                ds = p.extractor.run(ds)
+                ds = p.extractor.run(ds, session)
                 ds.sources.save()
                 ds.sources.copy_to_cache(cache_dir)
                 ds.psf.save(overwrite=True)
@@ -530,7 +541,7 @@ def datastore_factory(data_dir, pipeline_factory):
                     warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
 
                 SCLogger.debug('Running astrometric calibration')
-                ds = p.astro_cal.run(ds)
+                ds = p.astrometor.run(ds, session)
                 ds.wcs.save()
                 if cache_dir is not None and cache_base_name is not None:
                     output_path = ds.wcs.copy_to_cache(cache_dir)
@@ -538,7 +549,7 @@ def datastore_factory(data_dir, pipeline_factory):
                         warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
 
                 SCLogger.debug('Running photometric calibration')
-                ds = p.photo_cal.run(ds)
+                ds = p.photometor.run(ds, session)
                 if cache_dir is not None and cache_base_name is not None:
                     output_path = ds.zp.copy_to_cache(cache_dir, cache_name)
                     if output_path != cache_path:
@@ -662,7 +673,7 @@ def datastore_factory(data_dir, pipeline_factory):
                             ds.sub_image._aligned_images = [image_aligned_new, image_aligned_ref]
 
             if ds.sub_image is None:  # no hit in the cache
-                ds = p.subtractor.run(ds)
+                ds = p.subtractor.run(ds, session)
                 ds.sub_image.save(verify_md5=False)  # make sure it is also saved to archive
                 ds.sub_image.copy_to_cache(cache_dir)
 
@@ -693,7 +704,7 @@ def datastore_factory(data_dir, pipeline_factory):
                 ds.sub_image.sources = ds.detections
                 ds.detections.save(verify_md5=False)
             else:  # cannot find detections on cache
-                ds = p.detector.run(ds)
+                ds = p.detector.run(ds, session)
                 ds.detections.save(verify_md5=False)
                 ds.detections.copy_to_cache(cache_dir, cache_name)
 
@@ -714,7 +725,7 @@ def datastore_factory(data_dir, pipeline_factory):
                 [setattr(c, 'sources', ds.detections) for c in ds.cutouts]
                 Cutouts.save_list(ds.cutouts)  # make sure to save to archive as well
             else:  # cannot find cutouts on cache
-                ds = p.cutter.run(ds)
+                ds = p.cutter.run(ds, session)
                 Cutouts.save_list(ds.cutouts)
                 Cutouts.copy_list_to_cache(ds.cutouts, cache_dir)
 
@@ -738,7 +749,7 @@ def datastore_factory(data_dir, pipeline_factory):
                 [m.associate_object(session) for m in ds.measurements]  # create or find an object for each measurement
                 # no need to save list because Measurements is not a FileOnDiskMixin!
             else:  # cannot find measurements on cache
-                ds = p.measurer.run(ds)
+                ds = p.measurer.run(ds, session)
                 Measurements.copy_list_to_cache(ds.all_measurements, cache_dir, cache_name)  # must provide filepath!
 
             ds.save_and_commit(session=session)

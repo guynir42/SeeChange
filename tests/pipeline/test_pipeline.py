@@ -517,8 +517,8 @@ def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, de
     assert ds.image.provenance_id == provs['preprocessing'].id
     assert ds.sources.provenance_id == provs['extraction'].id
     assert ds.psf.provenance_id == provs['extraction'].id
-    assert ds.wcs.provenance_id == provs['astro_cal'].id
-    assert ds.zp.provenance_id == provs['photo_cal'].id
+    assert ds.wcs.provenance_id == provs['extraction'].id
+    assert ds.zp.provenance_id == provs['extraction'].id
     assert ds.sub_image.provenance_id == provs['subtraction'].id
     assert ds.detections.provenance_id == provs['detection'].id
     assert ds.cutouts[0].provenance_id == provs['cutting'].id

@@ -488,25 +488,26 @@ class CoaddPipeline:
         self.coadder = Coadder(**coadd_config)
 
         # source detection ("extraction" for the regular image!)
-        extraction_config = self.config.value('extraction', {})
-        extraction_config.update(self.config.value('coaddition.extraction', {}))  # override coadd specific pars
-        extraction_config.update(kwargs.get('extraction', {'measure_psf': True}))
+        extraction_config = self.config.value('extraction.sources', {})
+        extraction_config.update(self.config.value('coaddition.extraction.sources', {}))  # override coadd specific pars
+        extraction_config.update(kwargs.get('extraction', {}).get('sources', {}))
+        extraction_config.update({'measure_psf': True})
         self.pars.add_defaults_to_dict(extraction_config)
         self.extractor = Detector(**extraction_config)
 
         # astrometric fit using a first pass of sextractor and then astrometric fit to Gaia
-        astro_cal_config = self.config.value('astro_cal', {})
-        astro_cal_config.update(self.config.value('coaddition.astro_cal', {}))  # override coadd specific pars
-        astro_cal_config.update(kwargs.get('astro_cal', {}))
-        self.pars.add_defaults_to_dict(astro_cal_config)
-        self.astro_cal = AstroCalibrator(**astro_cal_config)
+        astrometor_config = self.config.value('extraction.wcs', {})
+        astrometor_config.update(self.config.value('coaddition.extraction.wcs', {}))  # override coadd specific pars
+        astrometor_config.update(kwargs.get('extraction', {}).get('wcs', {}))
+        self.pars.add_defaults_to_dict(astrometor_config)
+        self.astrometor = AstroCalibrator(**astrometor_config)
 
         # photometric calibration:
-        photo_cal_config = self.config.value('photo_cal', {})
-        photo_cal_config.update(self.config.value('coaddition.photo_cal', {}))  # override coadd specific pars
-        photo_cal_config.update(kwargs.get('photo_cal', {}))
-        self.pars.add_defaults_to_dict(photo_cal_config)
-        self.photo_cal = PhotCalibrator(**photo_cal_config)
+        photometor_config = self.config.value('extraction.zp', {})
+        photometor_config.update(self.config.value('coaddition.extraction.zp', {}))  # override coadd specific pars
+        photometor_config.update(kwargs.get('extraction', {}).get('zp', {}))
+        self.pars.add_defaults_to_dict(photometor_config)
+        self.photometor = PhotCalibrator(**photometor_config)
 
         self.datastore = None  # use this datastore to save the coadd image and all the products
 
@@ -625,9 +626,10 @@ class CoaddPipeline:
         # the self.aligned_images is None unless you explicitly pass in the pre-aligned images to save time
         coadd = self.coadder.run(self.images, self.aligned_images)
 
+        # TODO: add the warnings/exception capturing, runtime/memory tracking (and Report making) as in top_level.py
         self.datastore = self.extractor.run(coadd)
-        self.datastore = self.astro_cal.run(self.datastore)
-        self.datastore = self.photo_cal.run(self.datastore)
+        self.datastore = self.astrometor.run(self.datastore)
+        self.datastore = self.photometor.run(self.datastore)
 
         return self.datastore.image
 
