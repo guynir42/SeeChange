@@ -17,6 +17,7 @@ from models.cutouts import Cutouts
 from models.measurements import Measurements
 
 from util.logger import SCLogger
+import pdb
 
 # for each process step, list the steps that go into its upstream
 UPSTREAM_STEPS = {
@@ -641,8 +642,11 @@ class DataStore:
                 raise ValueError(f'Cannot find image with id {self.image_id}!')
 
         else:  # try to get the image based on exposure_id and section_id
+            process = 'preprocessing'
+            if self.image is not None and self.image.provenance is not None:
+                process = self.image.provenance.process  # this will be "coaddition" sometimes!
             if provenance is None:
-                provenance = self._get_provenance_for_an_upstream('preprocessing', session=session)
+                provenance = self._get_provenance_for_an_upstream(process, session=session)
 
             if self.image is not None:
                 # If an image already exists and image_id is none, we may be
@@ -654,13 +658,16 @@ class DataStore:
                     self.exposure_id is not None and self.section_id is not None and
                     (self.exposure_id != self.image.exposure_id or self.section_id != self.image.section_id)
                 ):
+                    pdb.set_trace()
                     self.image = None
                 if self.exposure is not None and self.image.exposure_id != self.exposure.id:
+                    pdb.set_trace()
                     self.image = None
                 if self.section is not None and str(self.image.section_id) != self.section.identifier:
+                    pdb.set_trace()
                     self.image = None
-
                 if self.image is not None and self.image.provenance.id != provenance.id:
+                    pdb.set_trace()
                     self.image = None
 
                 # If we get here, self.image is presumed to be good
@@ -730,6 +737,7 @@ class DataStore:
             if self.sources.provenance is None:
                 raise ValueError('SourceList has no provenance!')
             if provenance.id != self.sources.provenance.id:
+                provenance = self._get_provenance_for_an_upstream(process_name, session)
                 self.sources = None
 
         # TODO: do we need to test the SourceList Provenance has upstreams consistent with self.image.provenance?

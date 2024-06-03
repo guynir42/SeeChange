@@ -327,8 +327,13 @@ class SeeChangeBase:
         """Get all data products that were directly used to create this object (non-recursive)."""
         raise NotImplementedError('get_upstreams not implemented for this class')
 
-    def get_downstreams(self, session=None):
-        """Get all data products that were created directly from this object (non-recursive)."""
+    def get_downstreams(self, siblings=True, session=None):
+        """Get all data products that were created directly from this object (non-recursive).
+
+        This optionally includes siblings: data products that are co-created in the same pipeline step
+        and depend on one another. E.g., a source list and psf have an image upstream and a (subtraction?) image
+        as a downstream, but they are each other's siblings.
+        """
         raise NotImplementedError('get_downstreams not implemented for this class')
 
     def delete_from_database(self, session=None, commit=True, remove_downstreams=False):
@@ -1915,14 +1920,14 @@ class HasBitFlagBadness:
         doc='Free text comment about this data product, e.g., why it is bad. '
     )
 
-    def update_downstream_badness(self, session=None, commit=True):
+    def update_downstream_badness(self, siblings=True, session=None, commit=True):
         """Send a recursive command to update all downstream objects that have bitflags.
 
         Since this function is called recursively, it always updates the current
         object's _upstream_bitflag to reflect the state of this object's upstreams,
         before calling the same function on all downstream objects.
 
-        Note that this function will session.add() this object and all its
+        Note that this function will session.merge() this object and all its
         recursive downstreams (to update the changes in bitflag) and will
         commit the new changes on its own (unless given commit=False)
         but only at the end of the recursion.
@@ -1931,6 +1936,11 @@ class HasBitFlagBadness:
 
         Parameters
         ----------
+        siblings: bool (default True)
+            Whether to also update the siblings of this object.
+            Default is True. This is usually what you want, unless
+            this function is called from a sibling, in which case you
+            don't want endless recursion, so set it to False.
         session: sqlalchemy session
             The session to use for the update. If None, will open a new session,
             which will also close at the end of the call. In that case, must
@@ -1949,8 +1959,8 @@ class HasBitFlagBadness:
             if hasattr(merged_self, '_upstream_bitflag'):
                 merged_self._upstream_bitflag = new_bitflag
 
-            # recursively do this for all the other objects
-            for downstream in merged_self.get_downstreams(session):
+            # recursively do this for all downstream objects
+            for downstream in merged_self.get_downstreams(siblings=siblings, session=session):
                 if hasattr(downstream, 'update_downstream_badness') and callable(downstream.update_downstream_badness):
                     downstream.update_downstream_badness(session=session, commit=False)
 

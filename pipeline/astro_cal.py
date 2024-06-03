@@ -315,7 +315,9 @@ class AstroCalibrator:
                 # update the upstream bitflag
                 sources = ds.get_sources( session=session )
                 if sources is None:
-                    raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
+                    raise ValueError(
+                        f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}'
+                    )
                 if ds.wcs._upstream_bitflag is None:
                     ds.wcs._upstream_bitflag = 0
                 ds.wcs._upstream_bitflag |= sources.bitflag

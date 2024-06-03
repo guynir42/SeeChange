@@ -16,6 +16,7 @@ from pipeline.measuring import Measurer
 
 from models.base import SmartSession
 from models.provenance import Provenance
+from models.reference import Reference
 from models.exposure import Exposure
 from models.report import Report
 
@@ -306,7 +307,7 @@ class Pipeline:
         with SmartSession() as session:
             self.run(session=session)
 
-    def make_provenance_tree(self, exposure, session=None, commit=True):
+    def make_provenance_tree(self, exposure, reference=None, session=None, commit=True):
         """Use the current configuration of the pipeline and all the objects it has
         to generate the provenances for all the processing steps.
         This will conclude with the reporting step, which simply has an upstreams
@@ -318,6 +319,15 @@ class Pipeline:
         exposure : Exposure
             The exposure to use to get the initial provenance.
             This provenance should be automatically created by the exposure.
+        reference: str, Provenance object or None
+            Can be a string matching a valid reference set. This tells the pipeline which
+            provenance to load for the reference.
+            Instead, can provide either a Reference object with a Provenance
+            or the Provenance object of a reference directly.
+            If not given, will simply load the most recently created reference provenance.
+            # TODO: when we implement reference sets, we will probably not allow this input directly to
+            #  this function anymore. Instead, you will need to define the reference set in the config,
+            #  under the subtraction parameters.
         session : SmartSession, optional
             The function needs to work with the database to merge existing provenances.
             If a session is given, it will use that, otherwise it will open a new session,
@@ -336,7 +346,6 @@ class Pipeline:
         """
         with SmartSession(session) as session:
             # start by getting the exposure and reference
-            exposure = session.merge(exposure)  # also merges the provenance and code_version
             # TODO: need a better way to find the relevant reference PROVENANCE for this exposure
             #  i.e., we do not look for a valid reference and get its provenance, instead,
             #  we look for a provenance based on our policy (that can be defined in the subtraction parameters)
@@ -352,29 +361,36 @@ class Pipeline:
             #  to create all the references for a given RefSet... we need to make sure we can actually
             #  make that happen consistently (e.g., if you change parameters or start mixing instruments
             #  when you make the references it will create multiple provenances for the same RefSet).
+            if isinstance(reference, str):
+                raise NotImplementedError('See issue #287')
+            elif isinstance(reference, Reference):
+                ref_prov = reference.provenance
+            elif isinstance(reference, Provenance):
+                ref_prov = reference
+            elif reference is None:  # use the latest provenance that has to do with references
+                ref_prov = session.scalars(
+                    sa.select(Provenance).where(
+                        Provenance.process == 'reference'
+                    ).order_by(Provenance.created_at.desc())
+                ).first()
 
-            # for now, use the latest provenance that has to do with references
-            ref_prov = session.scalars(
-                sa.select(Provenance).where(Provenance.process == 'reference').order_by(Provenance.created_at.desc())
-            ).first()
-            provs = {'exposure': exposure.provenance}  # TODO: does this always work on any exposure?
-            code_version = exposure.provenance.code_version
-            is_testing = exposure.provenance.is_testing
+            exp_prov = session.merge(exposure.provenance)  # also merges the code_version
+            provs = {'exposure': exp_prov}
+            code_version = exp_prov.code_version
+            is_testing = exp_prov.is_testing
 
             for step in PROCESS_OBJECTS:
-                if isinstance(PROCESS_OBJECTS[step], dict):
-                    parameters = {}
-                    for key, value in PROCESS_OBJECTS[step].items():
-                        parameters[key] = getattr(self, value).pars.get_critical_pars()
-                else:
-                    parameters = getattr(self, PROCESS_OBJECTS[step]).pars.get_critical_pars()
+                obj_name = PROCESS_OBJECTS[step]
+                if isinstance(obj_name, dict):
+                    # get the first item of the dictionary and hope its pars object has siblings defined correctly:
+                    obj_name = obj_name.get(list(obj_name.keys())[0])
+                parameters = getattr(self, obj_name).pars.get_critical_pars()
 
-                # some preprocessing parameters (the "preprocessing_steps") doesn't come from the
-                # config file, but instead comes from the preprocessing itself.
+                # some preprocessing parameters (the "preprocessing_steps") don't come from the
+                # config file, but instead come from the preprocessing itself.
                 # TODO: fix this as part of issue #147
-                if step == 'preprocessing':
-                    if 'preprocessing_steps' not in parameters:
-                        parameters['preprocessing_steps'] = ['overscan', 'linearity', 'flat', 'fringe']
+                # if step == 'preprocessing':
+                #     parameters['preprocessing_steps'] = ['overscan', 'linearity', 'flat', 'fringe']
 
                 # figure out which provenances go into the upstreams for this step
                 up_steps = UPSTREAM_STEPS[step]
@@ -397,7 +413,7 @@ class Pipeline:
 
                 provs[step] = provs[step].merge_concurrent(session=session, commit=commit)
 
-            # if commit:
-            #     session.commit()
+            if commit:
+                session.commit()
 
             return provs

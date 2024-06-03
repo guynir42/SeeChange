@@ -24,6 +24,10 @@ from util.logger import SCLogger
 from tests.conftest import CODE_ROOT
 
 
+def test_decam_reference(decam_ref_datastore):
+    pass
+
+
 def test_decam_exposure(decam_filename):
     assert os.path.isfile(decam_filename)
 

@@ -13,6 +13,7 @@ from astropy.wcs import utils
 
 from models.base import Base, SmartSession, AutoIDMixin, HasBitFlagBadness, FileOnDiskMixin, SeeChangeBase
 from models.enums_and_bitflags import catalog_match_badness_inverse
+from models.image import Image
 from models.source_list import SourceList
 
 
@@ -102,25 +103,42 @@ class WorldCoordinates(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         with SmartSession(session) as session:
             return session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).all()
         
-    def get_downstreams(self, session=None):
-        """Get the downstreams of this WorldCoordinates"""
-        # get the ZeroPoint that uses the same SourceList as this WCS
+    def get_downstreams(self, siblings=True, session=None):
+        """Get the downstreams of this WorldCoordinates.
+
+        If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects
+        that were created at the same time as this source list.
+        """
+        from models.source_list import SourceList
+        from models.psf import PSF
         from models.zero_point import ZeroPoint
-        from models.image import Image
         from models.provenance import Provenance
-        with SmartSession(session) as session:
-            zps = session.scalars(sa.select(ZeroPoint) 
-                                  .where(ZeroPoint.provenance 
-                                         .has(Provenance.upstreams 
-                                              .any(Provenance.id == self.provenance.id)))).all()
 
-            subs = session.scalars(sa.select(Image)
-                                   .where(Image.provenance
-                                          .has(Provenance.upstreams
-                                               .any(Provenance.id == self.provenance.id)))).all()
+        with (SmartSession(session) as session):
+            subs = session.scalars(
+                sa.select(Image).where(
+                    Image.provenance.has(Provenance.upstreams.any(Provenance.id == self.provenance.id))
+                )
+            ).all()
+            output = subs
 
-        downstreams = zps + subs
-        return downstreams
+            if siblings:
+                sources = session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).first()
+                output.append(sources)
+
+                psf = session.scalars(
+                    sa.select(PSF).where(
+                        PSF.image_id == sources.image_id, PSF.provenance_id == self.provenance_id
+                    )
+                ).first()
+                output.append(psf)
+
+                # TODO: add background object
+
+                zp = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == sources.id)).first()
+                output.append(zp)
+
+        return output
 
     def save( self, filename=None, **kwargs ):
         """Write the WCS data to disk.

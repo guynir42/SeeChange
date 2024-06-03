@@ -30,11 +30,11 @@ def test_report_bitflags(decam_exposure, decam_reference, decam_default_calibrat
     assert report.progress_steps == 'preprocessing, extraction'
 
     report.append_progress('preprocessing')  # appending it again makes no difference
-    assert report.progress_steps_bitflag == 2 ** 1 + 2 ** 2 + 2 ** 4
+    assert report.progress_steps_bitflag == 2 ** 1 + 2 ** 2
     assert report.progress_steps == 'preprocessing, extraction'
 
     report.append_progress('subtraction, cutting')  # append two at a time
-    assert report.progress_steps_bitflag == 2 ** 1 + 2 ** 2 + 2 ** 4 + 2 ** 5 + 2 ** 7
+    assert report.progress_steps_bitflag == 2 ** 1 + 2 ** 2 + 2 ** 5 + 2 ** 7
     assert report.progress_steps == 'preprocessing, extraction, subtraction, cutting'
 
     # test that the products exist flag is working

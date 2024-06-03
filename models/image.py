@@ -482,6 +482,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         self._instrument_object = None
         self._bitflag = 0
+        self.is_sub = False
 
         if 'header' in kwargs:
             kwargs['_header'] = kwargs.pop('header')
@@ -1797,7 +1798,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         return upstreams
 
-    def get_downstreams(self, session=None):
+    def get_downstreams(self, siblings=True, session=None):
         """Get all the objects that were created based on this image. """
         # avoids circular import
         from models.source_list import SourceList

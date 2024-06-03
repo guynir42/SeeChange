@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 import os
 import shutil
@@ -148,7 +150,7 @@ def ptf_datastore(datastore_factory, ptf_exposure, ptf_ref, ptf_cache_dir, ptf_b
         ptf_exposure,
         11,
         cache_dir=ptf_cache_dir,
-        cache_base_name='187/PTF_20110429_040004_11_R_Sci_5F5TAU',
+        cache_base_name='187/PTF_20110429_040004_11_R_Sci_QTD4UW',
         overrides={'extraction': {'threshold': 5}},
         bad_pixel_map=ptf_bad_pixel_map,
     )
@@ -211,6 +213,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, ptf_cache_di
         for url in urls:
             exp = ptf_downloader(url)
             exp.instrument_object.fetch_sections()
+            exp.md5sum = uuid.uuid4()  # this will save some memory as the exposure are not saved to archive
             try:
                 # produce an image
                 ds = datastore_factory(
@@ -357,18 +360,24 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
 
 
 @pytest.fixture
-def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, ptf_cache_dir, data_dir, code_version):
-    pipe = CoaddPipeline()
-    pipe.coadder = coadder  # use this one that has a test_parameter defined
+def ptf_ref(
+        ptf_reference_images,
+        ptf_aligned_images,
+        coadd_pipeline_for_tests,
+        ptf_cache_dir,
+        data_dir,
+        code_version
+):
+    pipe = coadd_pipeline_for_tests
 
     # build up the provenance tree
     with SmartSession() as session:
         code_version = session.merge(code_version)
         im = ptf_reference_images[0]
-        upstream_provs = [im.provenance, im.sources.provenance, im.psf.provenance, im.wcs.provenance, im.zp.provenance]
+        upstream_provs = [im.provenance, im.sources.provenance]
         im_prov = Provenance(
             process='coaddition',
-            parameters=coadder.pars.get_critical_pars(),
+            parameters=pipe.coadder.pars.get_critical_pars(),
             upstreams=upstream_provs,
             code_version=code_version,
             is_testing=True,
@@ -379,11 +388,7 @@ def ptf_ref(ptf_reference_images, ptf_aligned_images, coadder, ptf_cache_dir, da
         # this provenance is used for sources, psf, wcs, zp
         sources_prov = Provenance(
             process='extraction',
-            parameters={
-                'sources': pipe.extractor.pars.get_critical_pars(),
-                'wcs': pipe.astrometor.pars.get_critical_pars(),
-                'zp': pipe.photometor.pars.get_critical_pars(),
-            },
+            parameters=pipe.extractor.pars.get_critical_pars(),
             upstreams=[im_prov],
             code_version=code_version,
             is_testing=True,
