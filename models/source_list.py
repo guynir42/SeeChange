@@ -635,7 +635,6 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         self.num_sources = len( self.data )
         super().save(fullname, **kwargs)
 
-
     def free( self, ):
         """Free loaded source list memory.
 
@@ -646,7 +645,6 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         """
         self._data = None
         self._info = None
-
 
     @staticmethod
     def _convert_from_sextractor_to_numpy( arr, copy=False ):
@@ -760,6 +758,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         from models.psf import PSF
         from models.world_coordinates import WorldCoordinates
         from models.zero_point import ZeroPoint
+        from models.cutouts import Cutouts
         from models.provenance import Provenance
 
         with SmartSession(session) as session:
@@ -770,7 +769,10 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
             ).all()
             output = subs
 
-            if siblings:
+            if self.is_sub:
+                cutouts = session.scalars(sa.select(Cutouts).where(Cutouts.sources_id == self.id)).all()
+                output += cutouts
+            elif siblings:  # for "detections" we don't have siblings
                 psfs = session.scalars(
                     sa.select(PSF).where(PSF.image_id == self.image_id, PSF.provenance_id == self.provenance_id)
                 ).all()

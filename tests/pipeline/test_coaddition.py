@@ -20,7 +20,6 @@ from pipeline.detection import Detector
 from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
 
-from util.logger import SCLogger
 
 def estimate_psf_width(data, sz=15, upsampling=25):
     """Extract a bright star and estimate its FWHM.
@@ -300,7 +299,7 @@ def test_coaddition_run(coadder, ptf_reference_images, ptf_aligned_images):
     assert ref_image.instrument == 'PTF'
     assert ref_image.telescope == 'P48'
     assert ref_image.filter == 'R'
-    assert ref_image.section_id == '11'
+    assert str(ref_image.section_id) == '11'
 
     assert isinstance(ref_image.info, dict)
     assert isinstance(ref_image.header, fits.Header)
@@ -368,7 +367,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
         instrument="PTF",
         filter="R",
         section_id="11",
-        provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
+        provenance_ids=ptf_reference_images[0].provenance_id,
     )
 
     # without giving a start/end time, all these images will not be selected!
@@ -380,7 +379,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
         instrument="PTF",
         filter="R",
         section_id="11",
-        provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
+        provenance_ids=ptf_reference_images[0].provenance_id,
         start_time='2000-01-01',
         end_time='2007-01-01',
     )
@@ -392,7 +391,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
         instrument="PTF",
         filter="R",
         section_id="11",
-        provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
+        provenance_ids=ptf_reference_images[0].provenance_id,
         start_time='2000-01-01',
     )
     im_ids = set([im.id for im in pipe.images])
@@ -412,7 +411,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
         instrument="PTF",
         filter="R",
         section_id="11",
-        provenance_ids='5F5TAUCJJEXKX6I5H4CJ',
+        provenance_ids=ptf_reference_images[0].provenance_id,
         start_time='2000-01-01',
     )
 
@@ -436,7 +435,7 @@ def test_coaddition_pipeline_outputs(ptf_reference_images, ptf_aligned_images):
         assert coadd_image.instrument == 'PTF'
         assert coadd_image.telescope == 'P48'
         assert coadd_image.filter == 'R'
-        assert coadd_image.section_id == '11'
+        assert str(coadd_image.section_id) == '11'
         assert coadd_image.start_mjd == min([im.start_mjd for im in ptf_reference_images])
         assert coadd_image.end_mjd == max([im.end_mjd for im in ptf_reference_images])
         assert coadd_image.provenance_id is not None

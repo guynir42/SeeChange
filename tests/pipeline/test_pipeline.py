@@ -225,7 +225,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
             provs = session.scalars(sa.select(Provenance)).all()
             assert len(provs) > 0
             prov_processes = [p.process for p in provs]
-            expected_processes = ['preprocessing', 'extraction', 'astro_cal', 'photo_cal', 'subtraction', 'detection']
+            expected_processes = ['preprocessing', 'extraction', 'subtraction', 'detection', 'cutting', 'measuring']
             for process in expected_processes:
                 assert process in prov_processes
 
@@ -313,8 +313,8 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         ds.cutouts = None
         ds.measurements = None
 
-        ds.sources._bitflag = 2**17  # bitflag 2**17 is 'many sources'
-        desired_bitflag = 2**1 + 2**17 # bitflag for 'banding' and 'many sources'
+        ds.sources._bitflag = 2 ** 17  # bitflag 2**17 is 'many sources'
+        desired_bitflag = 2 ** 1 + 2 ** 17  # bitflag for 'banding' and 'many sources'
         ds = p.run(ds)
 
         assert ds.sources.bitflag == desired_bitflag 
@@ -324,7 +324,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         assert ds.detections._upstream_bitflag == desired_bitflag
         for cutout in ds.cutouts:
             assert cutout._upstream_bitflag == desired_bitflag
-        assert ds.image.bitflag == 2 # not in the downstream of sources
+        assert ds.image.bitflag == 2  # not in the downstream of sources
 
         # test part 3: test update_downstream_badness() function by adding and removing flags
         # and observing propagation
@@ -335,17 +335,17 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
             ds.image = session.merge(ds.image)
 
             # add a bitflag and check that it appears in downstreams
-            ds.image._bitflag = 16  # 16=2**4 is the bitflag for 'bad subtraction'  
+            ds.image._bitflag = 2 ** 4  # bitflag for 'bad subtraction'
             session.add(ds.image)
             session.commit()
-            ds.image.exposure.update_downstream_badness(session)
+            ds.image.exposure.update_downstream_badness(session=session)
             session.commit()
 
             desired_bitflag = 2 ** 1 + 2 ** 4 + 2 ** 17  # 'banding' 'bad subtraction' 'many sources'
             assert ds.exposure.bitflag == 2 ** 1
             assert ds.image.bitflag == 2 ** 1 + 2 ** 4  # 'banding' and 'bad subtraction'
             assert ds.sources.bitflag == desired_bitflag
-            assert ds.psf.bitflag == 2 ** 1 + 2 ** 4  # pending psf re-structure, only downstream of image
+            assert ds.psf.bitflag == 2 ** 1 + 2 ** 4
             assert ds.wcs.bitflag == desired_bitflag
             assert ds.zp.bitflag == desired_bitflag
             assert ds.sub_image.bitflag == desired_bitflag
@@ -356,13 +356,13 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
             # remove the bitflag and check that it disappears in downstreams
             ds.image._bitflag = 0  # remove 'bad subtraction'  
             session.commit()
-            ds.image.exposure.update_downstream_badness(session)
+            ds.image.exposure.update_downstream_badness(session=session)
             session.commit()
             desired_bitflag = 2 ** 1 + 2 ** 17  # 'banding' 'many sources'
             assert ds.exposure.bitflag == 2 ** 1
             assert ds.image.bitflag == 2 ** 1  # just 'banding' left on image
             assert ds.sources.bitflag == desired_bitflag
-            assert ds.psf.bitflag == 2 ** 1  # pending psf re-structure, only downstream of image
+            assert ds.psf.bitflag == 2 ** 1
             assert ds.wcs.bitflag == desired_bitflag
             assert ds.zp.bitflag == desired_bitflag
             assert ds.sub_image.bitflag == desired_bitflag
@@ -404,8 +404,8 @@ def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_de
             assert [upstream.id for upstream in ds.image.get_upstreams(session)] == [ds.exposure.id]
             assert [upstream.id for upstream in ds.sources.get_upstreams(session)] == [ds.image.id]
             assert [upstream.id for upstream in ds.wcs.get_upstreams(session)] == [ds.sources.id]
-            assert [upstream.id for upstream in ds.psf.get_upstreams(session)] == [ds.image.id] # until PSF upstreams settled
-            assert [upstream.id for upstream in ds.zp.get_upstreams(session)] == [ds.sources.id, ds.wcs.id]
+            assert [upstream.id for upstream in ds.psf.get_upstreams(session)] == [ds.image.id]
+            assert [upstream.id for upstream in ds.zp.get_upstreams(session)] == [ds.sources.id]
             assert [upstream.id for upstream in ds.sub_image.get_upstreams(session)] == [ref.image.id,
                                                                                   ref.image.sources.id,
                                                                                   ref.image.psf.id,
@@ -433,9 +433,9 @@ def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_de
                                                                                     ds.wcs.id,
                                                                                     ds.zp.id,
                                                                                     ds.sub_image.id]
-            assert [downstream.id for downstream in ds.sources.get_downstreams(session)] == [ds.wcs.id, ds.zp.id, ds.sub_image.id]
-            assert [downstream.id for downstream in ds.psf.get_downstreams(session)] == [] # until PSF downstreams settled
-            assert [downstream.id for downstream in ds.wcs.get_downstreams(session)] == [ds.zp.id, ds.sub_image.id]
+            assert [downstream.id for downstream in ds.sources.get_downstreams(session)] == [ds.sub_image.id]
+            assert [downstream.id for downstream in ds.psf.get_downstreams(session)] == [ds.sub_image.id]
+            assert [downstream.id for downstream in ds.wcs.get_downstreams(session)] == [ds.sub_image.id]
             assert [downstream.id for downstream in ds.zp.get_downstreams(session)] == [ds.sub_image.id]
             assert [downstream.id for downstream in ds.sub_image.get_downstreams(session)] == [ds.detections.id]
             assert np.all(np.isin([downstream.id for downstream in ds.detections.get_downstreams(session)], cutout_ids))
@@ -446,7 +446,6 @@ def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_de
                 assert np.all(np.isin(c_downstream_ids, measurement_ids))
             for measurement in ds.measurements:
                 assert [downstream.id for downstream in measurement.get_downstreams(session)] == []
-            
 
     finally:
         if 'ds' in locals():
@@ -537,48 +536,53 @@ def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, de
 def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_tests):
     from pipeline.top_level import PROCESS_OBJECTS
     p = pipeline_for_tests
-    for process, obj in PROCESS_OBJECTS.items():
+    for process, objects in PROCESS_OBJECTS.items():
+        if isinstance(objects, str):
+            objects = [objects]
+        elif isinstance(objects, dict):
+            objects = list(set(objects.values()))  # e.g., "extractor", "astrometor", "photometor"
         # first reset all warnings and errors
-        for _, obj2 in PROCESS_OBJECTS.items():
-            getattr(p, obj2).pars.inject_exceptions = False
-            getattr(p, obj2).pars.inject_warnings = False
+        for obj in objects:
+            for _, obj2 in PROCESS_OBJECTS.items():
+                getattr(p, obj2).pars.inject_exceptions = False
+                getattr(p, obj2).pars.inject_warnings = False
 
-        # set the warning:
-        getattr(p, obj).pars.inject_warnings = True
+            # set the warning:
+            getattr(p, obj).pars.inject_warnings = True
 
-        # run the pipeline
-        ds = p.run(decam_datastore)
-        expected = f"{process}: <class 'UserWarning'> Warning injected by pipeline parameters in process '{process}'"
-        assert expected in ds.report.warnings
-
-        # these are used to find the report later on
-        exp_id = ds.exposure_id
-        sec_id = ds.section_id
-        prov_id = ds.report.provenance_id
-
-        # set the error instead
-        getattr(p, obj).pars.inject_warnings = False
-        getattr(p, obj).pars.inject_exceptions = True
-        # run the pipeline again, this time with an exception
-
-        with pytest.raises(RuntimeError, match=f"Exception injected by pipeline parameters in process '{process}'"):
+            # run the pipeline
             ds = p.run(decam_datastore)
+            expected = f"{process}: <class 'UserWarning'> Warning injected by pipeline parameters in process '{process}'"
+            assert expected in ds.report.warnings
 
-        # fetch the report object
-        with SmartSession() as session:
-            reports = session.scalars(
-                sa.select(Report).where(
-                    Report.exposure_id == exp_id,
-                    Report.section_id == sec_id,
-                    Report.provenance_id == prov_id
-                ).order_by(Report.start_time.desc())
-            ).all()
-            report = reports[0]  # the last report is the one we just generated
-            assert len(reports) - 1 == report.num_prev_reports
-            assert not report.success
-            assert report.error_step == process
-            assert report.error_type == 'RuntimeError'
-            assert 'Exception injected by pipeline parameters' in report.error_message
+            # these are used to find the report later on
+            exp_id = ds.exposure_id
+            sec_id = ds.section_id
+            prov_id = ds.report.provenance_id
+
+            # set the error instead
+            getattr(p, obj).pars.inject_warnings = False
+            getattr(p, obj).pars.inject_exceptions = True
+            # run the pipeline again, this time with an exception
+
+            with pytest.raises(RuntimeError, match=f"Exception injected by pipeline parameters in process '{process}'"):
+                ds = p.run(decam_datastore)
+
+            # fetch the report object
+            with SmartSession() as session:
+                reports = session.scalars(
+                    sa.select(Report).where(
+                        Report.exposure_id == exp_id,
+                        Report.section_id == sec_id,
+                        Report.provenance_id == prov_id
+                    ).order_by(Report.start_time.desc())
+                ).all()
+                report = reports[0]  # the last report is the one we just generated
+                assert len(reports) - 1 == report.num_prev_reports
+                assert not report.success
+                assert report.error_step == process
+                assert report.error_type == 'RuntimeError'
+                assert 'Exception injected by pipeline parameters' in report.error_message
 
 
 def test_multiprocessing_make_provenances_and_exposure(decam_exposure, decam_reference, pipeline_for_tests):

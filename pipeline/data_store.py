@@ -1495,7 +1495,8 @@ class DataStore:
             self.products_committed = 'image, sources, psf, wcs, zp'
 
             if self.sub_image is not None:
-                self.reference = self.reference.merge_all(session)
+                if self.reference is not None:
+                    self.reference = self.reference.merge_all(session)
                 self.sub_image.new_image = self.image  # update with the now-merged image
                 self.sub_image = self.sub_image.merge_all(session)  # merges the upstream_images and downstream products
                 self.sub_image.ref_image.id = self.sub_image.ref_image_id

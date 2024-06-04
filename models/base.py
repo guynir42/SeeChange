@@ -1920,7 +1920,7 @@ class HasBitFlagBadness:
         doc='Free text comment about this data product, e.g., why it is bad. '
     )
 
-    def update_downstream_badness(self, siblings=True, session=None, commit=True):
+    def update_downstream_badness(self, session=None, commit=True, siblings=True):
         """Send a recursive command to update all downstream objects that have bitflags.
 
         Since this function is called recursively, it always updates the current
@@ -1936,17 +1936,17 @@ class HasBitFlagBadness:
 
         Parameters
         ----------
-        siblings: bool (default True)
-            Whether to also update the siblings of this object.
-            Default is True. This is usually what you want, unless
-            this function is called from a sibling, in which case you
-            don't want endless recursion, so set it to False.
         session: sqlalchemy session
             The session to use for the update. If None, will open a new session,
             which will also close at the end of the call. In that case, must
             provide a commit=True to commit the changes.
         commit: bool (default True)
             Whether to commit the changes to the database.
+        siblings: bool (default True)
+            Whether to also update the siblings of this object.
+            Default is True. This is usually what you want, but
+            anytime this function calls itself, it uses siblings=False,
+            to avoid infinite recursion.
         """
         # make sure this object is current:
         with SmartSession(session) as session:

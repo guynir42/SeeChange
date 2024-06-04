@@ -137,16 +137,10 @@ class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
 
     def get_upstreams(self, session=None):
         """Get the extraction SourceList and WorldCoordinates used to make this ZeroPoint"""
-        from models.provenance import Provenance
         with SmartSession(session) as session:
             sources = session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).all()
 
-            wcses = []
-            for s in sources:
-                wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == s.id)).first()
-                if wcs is not None:
-                    wcses.append(wcs)
-        return sources + wcses
+        return sources
 
     def get_downstreams(self, siblings=False, session=None):
         """Get the downstreams of this ZeroPoint.

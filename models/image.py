@@ -1809,9 +1809,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         downstreams = []
         with SmartSession(session) as session:
             # get all psfs that are related to this image (regardless of provenance)
-            psfs = session.scalars(
-                sa.select(PSF).where(PSF.image_id == self.id)
-            ).all()
+            psfs = session.scalars(sa.select(PSF).where(PSF.image_id == self.id)).all()
             downstreams += psfs
             if self.psf is not None and self.psf not in psfs:  # if not in the session, could be duplicate!
                 downstreams.append(self.psf)

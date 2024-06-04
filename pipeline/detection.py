@@ -230,10 +230,11 @@ class Detector:
 
                 self.pars.do_warning_exception_hangup_injection_here()
 
-                prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
                 if ds.sub_image is None and ds.image is not None and ds.image.is_sub:
                     ds.sub_image = ds.image
                     ds.image = ds.sub_image.new_image  # back-fill the image from the sub_image
+
+                prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
 
                 detections = ds.get_detections(prov, session=session)
 

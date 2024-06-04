@@ -106,7 +106,7 @@ def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_te
 
     measured_time = 0
     peak_memory = 0
-    for step in PROCESS_OBJECTS.keys():  # also make sure all the keys are present in both dictionaries
+    for step in ds.runtimes.keys():  # also make sure all the keys are present in both dictionaries
         measured_time += ds.runtimes[step]
         if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
             peak_memory = max(peak_memory, ds.memory_usages[step])
