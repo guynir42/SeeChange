@@ -1962,7 +1962,7 @@ class HasBitFlagBadness:
             # recursively do this for all downstream objects
             for downstream in merged_self.get_downstreams(siblings=siblings, session=session):
                 if hasattr(downstream, 'update_downstream_badness') and callable(downstream.update_downstream_badness):
-                    downstream.update_downstream_badness(session=session, commit=False)
+                    downstream.update_downstream_badness(session=session, siblings=False, commit=False)
 
             if commit:
                 session.commit()

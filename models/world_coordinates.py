@@ -103,7 +103,7 @@ class WorldCoordinates(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         with SmartSession(session) as session:
             return session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).all()
         
-    def get_downstreams(self, siblings=True, session=None):
+    def get_downstreams(self, siblings=False, session=None):
         """Get the downstreams of this WorldCoordinates.
 
         If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects

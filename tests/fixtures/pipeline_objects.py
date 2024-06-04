@@ -432,6 +432,7 @@ def datastore_factory(data_dir, pipeline_factory):
 
             # TODO: move the code below here up to above preprocessing, once we have reference sets
             try:  # check if this datastore can load a reference
+                # this is a hack to tell the datastore that the given image's provenance is the right one to use
                 ref = ds.get_reference(session=session)
                 ref_prov = ref.provenance
             except ValueError as e:
@@ -458,10 +459,6 @@ def datastore_factory(data_dir, pipeline_factory):
                     )
                 else:
                     raise e  # if any other error comes up, raise it
-
-            if ds.exposure is not None:
-                # make sure we have all the provenances set up to get the correct upstreams of things
-                ds.prov_tree = p.make_provenance_tree(exposure=ds.exposure, reference=ref_prov, session=session)
 
             ############# extraction to create sources / PSF / WCS / ZP #############
             if cache_dir is not None and cache_base_name is not None:

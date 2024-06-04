@@ -148,7 +148,7 @@ class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
                     wcses.append(wcs)
         return sources + wcses
 
-    def get_downstreams(self, siblings=True, session=None):
+    def get_downstreams(self, siblings=False, session=None):
         """Get the downstreams of this ZeroPoint.
 
         If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects

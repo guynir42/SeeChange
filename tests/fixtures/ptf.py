@@ -327,7 +327,7 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
             image.save()
             filepath = image.copy_to_cache(cache_dir)
             if image.psf.filepath is None:  # save only PSF objects that haven't been saved yet
-                image.psf.save()
+                image.psf.save(overwrite=True)
             image.psf.copy_to_cache(cache_dir)
             image.zp.copy_to_cache(cache_dir, filepath=filepath[:-len('.image.fits.json')]+'.zp.json')
             filenames.append(image.filepath)

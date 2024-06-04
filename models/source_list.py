@@ -751,7 +751,7 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         with SmartSession(session) as session:
             return session.scalars(sa.select(Image).where(Image.id == self.image_id)).all()
 
-    def get_downstreams(self, siblings=True, session=None):
+    def get_downstreams(self, siblings=False, session=None):
         """Get all the data products that are made using this source list.
 
         If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects

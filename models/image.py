@@ -546,14 +546,14 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             self.sources.provenance_id = self.sources.provenance.id if self.sources.provenance is not None else None
             new_image.sources = self.sources.merge_all(session=session)
 
-            new_image.wcs = new_image.sources.wcs
-            if new_image.wcs is not None:
+            if new_image.sources.wcs is not None:
+                new_image.wcs = new_image.sources.wcs
                 new_image.wcs.sources = new_image.sources
                 new_image.wcs.sources_id = new_image.sources.id
                 new_image.wcs.provenance_id = new_image.wcs.provenance.id if new_image.wcs.provenance is not None else None
 
-            new_image.zp = new_image.sources.zp
-            if new_image.zp is not None:
+            if new_image.sources.zp is not None:
+                new_image.zp = new_image.sources.zp
                 new_image.zp.sources = new_image.sources
                 new_image.zp.sources_id = new_image.sources.id
                 new_image.zp.provenance_id = new_image.zp.provenance.id if new_image.zp.provenance is not None else None
@@ -1798,7 +1798,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         return upstreams
 
-    def get_downstreams(self, siblings=True, session=None):
+    def get_downstreams(self, siblings=False, session=None):
         """Get all the objects that were created based on this image. """
         # avoids circular import
         from models.source_list import SourceList

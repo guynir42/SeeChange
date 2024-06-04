@@ -425,9 +425,6 @@ def decam_reference(decam_ref_datastore):
             upstreams=[
                 ds.image.provenance,
                 ds.sources.provenance,
-                ds.psf.provenance,
-                ds.wcs.provenance,
-                ds.zp.provenance,
             ],
             is_testing=True,
         )

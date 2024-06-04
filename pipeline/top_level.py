@@ -307,7 +307,7 @@ class Pipeline:
         with SmartSession() as session:
             self.run(session=session)
 
-    def make_provenance_tree(self, exposure, reference=None, session=None, commit=True):
+    def make_provenance_tree(self, exposure, reference=None, overrides=None, session=None, commit=True):
         """Use the current configuration of the pipeline and all the objects it has
         to generate the provenances for all the processing steps.
         This will conclude with the reporting step, which simply has an upstreams
@@ -328,6 +328,10 @@ class Pipeline:
             # TODO: when we implement reference sets, we will probably not allow this input directly to
             #  this function anymore. Instead, you will need to define the reference set in the config,
             #  under the subtraction parameters.
+        overrides: dict, optional
+            A dictionary of provenances to override any of the steps in the pipeline.
+            For example, set overrides={'preprocessing': prov} to use a specific provenance
+            for the basic Image provenance.
         session : SmartSession, optional
             The function needs to work with the database to merge existing provenances.
             If a session is given, it will use that, otherwise it will open a new session,
@@ -344,6 +348,9 @@ class Pipeline:
             keyed according to the different steps in the pipeline.
             The provenances are all merged to the session.
         """
+        if overrides is None:
+            overrides = {}
+
         with SmartSession(session) as session:
             # start by getting the exposure and reference
             # TODO: need a better way to find the relevant reference PROVENANCE for this exposure
@@ -380,36 +387,39 @@ class Pipeline:
             is_testing = exp_prov.is_testing
 
             for step in PROCESS_OBJECTS:
-                obj_name = PROCESS_OBJECTS[step]
-                if isinstance(obj_name, dict):
-                    # get the first item of the dictionary and hope its pars object has siblings defined correctly:
-                    obj_name = obj_name.get(list(obj_name.keys())[0])
-                parameters = getattr(self, obj_name).pars.get_critical_pars()
+                if step in overrides:
+                    provs[step] = overrides[step]
+                else:
+                    obj_name = PROCESS_OBJECTS[step]
+                    if isinstance(obj_name, dict):
+                        # get the first item of the dictionary and hope its pars object has siblings defined correctly:
+                        obj_name = obj_name.get(list(obj_name.keys())[0])
+                    parameters = getattr(self, obj_name).pars.get_critical_pars()
 
-                # some preprocessing parameters (the "preprocessing_steps") don't come from the
-                # config file, but instead come from the preprocessing itself.
-                # TODO: fix this as part of issue #147
-                # if step == 'preprocessing':
-                #     parameters['preprocessing_steps'] = ['overscan', 'linearity', 'flat', 'fringe']
+                    # some preprocessing parameters (the "preprocessing_steps") don't come from the
+                    # config file, but instead come from the preprocessing itself.
+                    # TODO: fix this as part of issue #147
+                    # if step == 'preprocessing':
+                    #     parameters['preprocessing_steps'] = ['overscan', 'linearity', 'flat', 'fringe']
 
-                # figure out which provenances go into the upstreams for this step
-                up_steps = UPSTREAM_STEPS[step]
-                if isinstance(up_steps, str):
-                    up_steps = [up_steps]
-                upstreams = []
-                for upstream in up_steps:
-                    if upstream == 'reference':
-                        upstreams += ref_prov.upstreams
-                    else:
-                        upstreams.append(provs[upstream])
+                    # figure out which provenances go into the upstreams for this step
+                    up_steps = UPSTREAM_STEPS[step]
+                    if isinstance(up_steps, str):
+                        up_steps = [up_steps]
+                    upstreams = []
+                    for upstream in up_steps:
+                        if upstream == 'reference':
+                            upstreams += ref_prov.upstreams
+                        else:
+                            upstreams.append(provs[upstream])
 
-                provs[step] = Provenance(
-                    code_version=code_version,
-                    process=step,
-                    parameters=parameters,
-                    upstreams=upstreams,
-                    is_testing=is_testing,
-                )
+                    provs[step] = Provenance(
+                        code_version=code_version,
+                        process=step,
+                        parameters=parameters,
+                        upstreams=upstreams,
+                        is_testing=is_testing,
+                    )
 
                 provs[step] = provs[step].merge_concurrent(session=session, commit=commit)
 
