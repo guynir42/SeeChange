@@ -36,6 +36,7 @@ from util.cache import copy_to_cache, copy_list_to_cache, copy_from_cache, copy_
 
 from improc.bitmask_tools import make_saturated_flag
 
+
 @pytest.fixture(scope='session')
 def preprocessor_factory(test_config):
 
@@ -626,13 +627,13 @@ def datastore_factory(data_dir, pipeline_factory):
 
                 ds.sources.save()
                 if cache_dir is not None and cache_base_name is not None:
-                    output_path = ds.sources.copy_to_cache(cache_dir)
+                    output_path = copy_to_cache(ds.sources, cache_dir)
                     if cache_dir is not None and cache_base_name is not None and output_path != sources_cache_path:
                         warnings.warn(f'cache path {sources_cache_path} does not match output path {output_path}')
 
                 ds.psf.save(overwrite=True)
                 if cache_dir is not None and cache_base_name is not None:
-                    output_path = ds.psf.copy_to_cache(cache_dir)
+                    output_path = copy_to_cache(ds.psf, cache_dir)
                     if cache_dir is not None and cache_base_name is not None and output_path != psf_cache_path:
                         warnings.warn(f'cache path {psf_cache_path} does not match output path {output_path}')
 
@@ -650,7 +651,7 @@ def datastore_factory(data_dir, pipeline_factory):
                 if (   ( not os.getenv( "LIMIT_CACHE_USAGE" ) ) and
                        ( cache_dir is not None ) and ( cache_base_name is not None )
                 ):
-                    output_path = ds.zp.copy_to_cache(cache_dir, cache_name)
+                    output_path = copy_to_cache(ds.zp, cache_dir, cache_name)
                     if output_path != zp_cache_path:
                         warnings.warn(f'cache path {zp_cache_path} does not match output path {output_path}')
 
