@@ -359,11 +359,16 @@ class SeeChangeBase:
         if session is None and not commit:
             raise RuntimeError("When session=None, commit must be True!")
 
-        with SmartSession(session) as session:
+        with SmartSession(session) as session, warnings.catch_warnings():
+            warnings.filterwarnings(
+                action='ignore',
+                message=r'.*DELETE statement on table .* expected to delete \d* row\(s\).*',
+            )
+
             need_commit = False
             if remove_downstreams:
                 try:
-                    downstreams = self.get_downstreams()
+                    downstreams = self.get_downstreams(session=session)
                     for d in downstreams:
                         if hasattr(d, 'delete_from_database'):
                             if d.delete_from_database(session=session, commit=False, remove_downstreams=True):
@@ -377,8 +382,8 @@ class SeeChangeBase:
             info = sa.inspect(self)
 
             if info.persistent:
-                session.delete(self)
-                need_commit = True
+                    session.delete(self)
+                    need_commit = True
             elif info.pending:
                 session.expunge(self)
                 need_commit = True

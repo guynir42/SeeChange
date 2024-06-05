@@ -1,3 +1,4 @@
+import warnings
 import math
 import datetime
 import sqlalchemy as sa
@@ -1555,7 +1556,11 @@ class DataStore:
         if session is None and not commit:
             raise ValueError('If session is None, commit must be True')
 
-        with SmartSession( session, self.session ) as session:
+        with SmartSession( session, self.session ) as session, warnings.catch_warnings():
+            warnings.filterwarnings(
+                action='ignore',
+                message=r'.*DELETE statement on table .* expected to delete \d* row\(s\).*',
+            )
             autoflush_state = session.autoflush
             try:
                 # no flush to prevent some foreign keys from being voided before all objects are deleted
@@ -1598,6 +1603,7 @@ class DataStore:
                         session.expunge(obj.provenance)
 
                 session.flush()  # flush to finalize deletion of objects before we delete the Image
+
                 # verify that the objects are in fact deleted by deleting the image at the root of the datastore
                 if self.image is not None and self.image.id is not None:
                     session.execute(sa.delete(Image).where(Image.id == self.image.id))
@@ -1619,6 +1625,7 @@ class DataStore:
                 session.commit()
 
             finally:
+                session.flush()
                 session.autoflush = autoflush_state
 
         self.products_committed = ''  # TODO: maybe not critical, but what happens if we fail to delete some of them?

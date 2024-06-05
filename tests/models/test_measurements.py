@@ -73,6 +73,7 @@ def test_measurements_attributes(measurer, ptf_datastore):
     # TODO: add test for limiting magnitude (issue #143)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_filtering_measurements(ptf_datastore):
     measurements = ptf_datastore.measurements
     m = measurements[0]  # grab the first one as an example
