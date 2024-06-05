@@ -542,11 +542,17 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
             objects = [objects]
         elif isinstance(objects, dict):
             objects = list(set(objects.values()))  # e.g., "extractor", "astrometor", "photometor"
+
         # first reset all warnings and errors
         for obj in objects:
-            for _, obj2 in PROCESS_OBJECTS.items():
-                getattr(p, obj2).pars.inject_exceptions = False
-                getattr(p, obj2).pars.inject_warnings = False
+            for _, objects2 in PROCESS_OBJECTS.items():
+                if isinstance(objects2, str):
+                    objects2 = [objects2]
+                elif isinstance(objects2, dict):
+                    objects2 = list(set(objects2.values()))  # e.g., "extractor", "astrometor", "photometor"
+                for obj2 in objects2:
+                    getattr(p, obj2).pars.inject_exceptions = False
+                    getattr(p, obj2).pars.inject_warnings = False
 
             # set the warning:
             getattr(p, obj).pars.inject_warnings = True

@@ -171,9 +171,10 @@ coaddition:
       ignore_flags: 0
   # The following are used to override the regular "extraction" parameters
   extraction:
-    measure_psf: true
-    threshold: 3.0
-    method: sextractor
+    sources:
+      measure_psf: true
+      threshold: 3.0
+      method: sextractor
     # The following are used to override the regular astrometric calibration parameters
     wcs:
       cross_match_catalog: gaia_dr3

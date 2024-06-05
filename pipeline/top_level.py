@@ -263,9 +263,13 @@ class Pipeline:
             # extract sources and make a SourceList and PSF from the image
             SCLogger.info(f"extractor for image id {ds.image.id}")
             ds = self.extractor.run(ds, session)
+            ds.update_report('extraction', session)
+
             # find astrometric solution, save WCS into Image object and FITS headers
             SCLogger.info(f"astrometor for image id {ds.image.id}")
             ds = self.astrometor.run(ds, session)
+            ds.update_report('extraction', session)
+
             # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
             SCLogger.info(f"photometor for image id {ds.image.id}")
             ds = self.photometor.run(ds, session)

@@ -170,6 +170,7 @@ def test_measurements_cannot_be_saved_twice(ptf_datastore):
                 session.delete(m2)
                 session.commit()
 
+
 def test_threshold_flagging(ptf_datastore, measurer):
 
     measurements = ptf_datastore.measurements
