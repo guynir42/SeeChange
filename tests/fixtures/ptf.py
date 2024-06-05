@@ -1,4 +1,5 @@
 import uuid
+import warnings
 
 import pytest
 import os
@@ -381,7 +382,11 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
 
     # must delete these here, as the cleanup for the getfixturevalue() happens after pytest_sessionfinish!
     if 'ptf_reference_images' in locals():
-        with SmartSession() as session:
+        with SmartSession() as session, warnings.catch_warnings():
+            warnings.filterwarnings(
+                action='ignore',
+                message=r'.*DELETE statement on table .* expected to delete \d* row\(s\).*',
+            )
             for image in ptf_reference_images:
                 image = session.merge(image)
                 image.exposure.delete_from_disk_and_database(commit=False, session=session)
