@@ -1798,7 +1798,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         return upstreams
 
-    def get_downstreams(self, siblings=False, session=None):
+    def get_downstreams(self, session=None, siblings=False):
         """Get all the objects that were created based on this image. """
         # avoids circular import
         from models.source_list import SourceList

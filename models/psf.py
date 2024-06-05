@@ -527,7 +527,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         with SmartSession(session) as session:
             return session.scalars(sa.select(Image).where(Image.id == self.image_id)).all()
         
-    def get_downstreams(self, siblings=False, session=None):
+    def get_downstreams(self, session=None, siblings=False):
         """Get the downstreams of this PSF.
 
         If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects

@@ -428,11 +428,11 @@ def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_de
 
             # test get_downstreams
             assert [downstream.id for downstream in ds.exposure.get_downstreams(session)] == [ds.image.id]
-            assert [downstream.id for downstream in ds.image.get_downstreams(session)] == [ds.psf.id,
+            assert set([downstream.id for downstream in ds.image.get_downstreams(session)]) == set([ds.psf.id,
                                                                                     ds.sources.id,
                                                                                     ds.wcs.id,
                                                                                     ds.zp.id,
-                                                                                    ds.sub_image.id]
+                                                                                    ds.sub_image.id])
             assert [downstream.id for downstream in ds.sources.get_downstreams(session)] == [ds.sub_image.id]
             assert [downstream.id for downstream in ds.psf.get_downstreams(session)] == [ds.sub_image.id]
             assert [downstream.id for downstream in ds.wcs.get_downstreams(session)] == [ds.sub_image.id]

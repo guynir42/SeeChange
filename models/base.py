@@ -327,7 +327,7 @@ class SeeChangeBase:
         """Get all data products that were directly used to create this object (non-recursive)."""
         raise NotImplementedError('get_upstreams not implemented for this class')
 
-    def get_downstreams(self, siblings=True, session=None):
+    def get_downstreams(self, session=None, siblings=True):
         """Get all data products that were created directly from this object (non-recursive).
 
         This optionally includes siblings: data products that are co-created in the same pipeline step
@@ -1960,7 +1960,7 @@ class HasBitFlagBadness:
                 merged_self._upstream_bitflag = new_bitflag
 
             # recursively do this for all downstream objects
-            for downstream in merged_self.get_downstreams(siblings=siblings, session=session):
+            for downstream in merged_self.get_downstreams(session=session, siblings=siblings):
                 if hasattr(downstream, 'update_downstream_badness') and callable(downstream.update_downstream_badness):
                     downstream.update_downstream_badness(session=session, siblings=False, commit=False)
 
