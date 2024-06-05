@@ -317,7 +317,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         desired_bitflag = 2 ** 1 + 2 ** 17  # bitflag for 'banding' and 'many sources'
         ds = p.run(ds)
 
-        assert ds.sources.bitflag == desired_bitflag 
+        assert ds.sources.bitflag == desired_bitflag
         assert ds.wcs._upstream_bitflag == desired_bitflag
         assert ds.zp._upstream_bitflag == desired_bitflag
         assert ds.sub_image._upstream_bitflag == desired_bitflag
@@ -335,6 +335,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
             ds.image = session.merge(ds.image)
 
             # add a bitflag and check that it appears in downstreams
+
             ds.image._bitflag = 2 ** 4  # bitflag for 'bad subtraction'
             session.add(ds.image)
             session.commit()
@@ -354,7 +355,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
                 assert cutout.bitflag == desired_bitflag
 
             # remove the bitflag and check that it disappears in downstreams
-            ds.image._bitflag = 0  # remove 'bad subtraction'  
+            ds.image._bitflag = 0  # remove 'bad subtraction'
             session.commit()
             ds.image.exposure.update_downstream_badness(session=session)
             session.commit()
@@ -424,7 +425,7 @@ def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_de
             cutout_ids = np.unique([cutout.id for cutout in ds.cutouts])
             for measurement in ds.measurements:
                 m_upstream_ids =  np.array([upstream.id for upstream in measurement.get_upstreams(session)])
-                assert np.all(np.isin(m_upstream_ids, cutout_ids)) 
+                assert np.all(np.isin(m_upstream_ids, cutout_ids))
 
             # test get_downstreams
             assert [downstream.id for downstream in ds.exposure.get_downstreams(session)] == [ds.image.id]
