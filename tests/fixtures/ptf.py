@@ -335,10 +335,10 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
             output_images[-1].zp = copy_from_cache(ZeroPoint, cache_dir, imfile + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
-
-        # I don't know why, but some other test is expiring the code_version (maybe via rollback)
-        with SmartSession() as session:
-            code_version = session.merge(code_version)
+        #
+        # # I don't know why, but some other test is expiring the code_version (maybe via rollback)
+        # with SmartSession() as session:
+        #     code_version = session.merge(code_version)
 
         images_to_align = ptf_reference_images
         prov = Provenance(
