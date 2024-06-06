@@ -337,6 +337,9 @@ class Instrument:
     values either in time or in space.
 
     """
+    # all possible preprocessing steps that can be applied when preprocessing exposures into images
+    PREPROCESSING_STEPS = [ 'overscan', 'zero', 'dark', 'linearity', 'flat', 'fringe', 'illumination' ]
+
     def __init__(self, **kwargs):
         """
         Create a new Instrument. This should only be called
@@ -382,15 +385,20 @@ class Instrument:
         self._dateobs_for_sections = getattr(self, '_dateobs_for_sections', None)  # dateobs when sections were loaded
         self._dateobs_range_days = getattr(self, '_dateobs_range_days', 1.0)  # how many days from dateobs to reload
 
-        # List of the preprocessing steps to apply to images from this
-        # instrument, in order overscan must always be first.  The
-        # values here (in the Instrument class) are all possible values.
-        # Subclasses should redefine this with the subset that they
-        # actually need.  If a subclass has to add a new preprocessing
-        # step, then it should add that step to this list, and (if it's
-        # a step that includes a calibraiton image or datafile) to the
-        # CalibratorTypeConverter dict in enums_and_bitflags.py
-        self.preprocessing_steps = [ 'overscan', 'zero','dark', 'linearity', 'flat', 'fringe', 'illumination' ]
+        # List of the preprocessing steps that can be applied to exposures from this
+        # instrument, in order.  'overscan' must always be first.
+        # Use PREPROCESSING_STEPS, defined on the Instrument class to see all possible values.
+        # Subclasses of Instrumeent should redefine this with the subset that they
+        # actually need to apply. So, if an instrument has exposures
+        # that already have overscan removed, that instrument should remove 'overscan' from this list.
+        # If a subclass has to add a new preprocessing step,
+        # then it should add that step to Instrument.PREPROCESSING_STEPS,
+        # and (if it's a step that includes a calibraiton image or datafile)
+        # to the CalibratorTypeConverter dict in enums_and_bitflags.py
+        self.preprocessing_steps_available = ['overscan', 'zero', 'dark', 'linearity', 'flat', 'fringe', 'illumination']
+        # a list of preprocessing steps that are pre-applied to the exposure data
+        self.preprocessing_steps_done = []
+
         # nofile_steps are ones that don't have an associated file
         self.preprocessing_nofile_steps = [ 'overscan' ]
 
