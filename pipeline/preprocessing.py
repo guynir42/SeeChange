@@ -25,15 +25,17 @@ class ParsPreprocessor(Parameters):
 
         self.use_sky_subtraction = self.add_par('use_sky_subtraction', False, bool, 'Apply sky subtraction. ',
                                                 critical=True)
-        self.add_par( 'steps', None, ( list, None ), "Steps to do; don't specify, or pass None, to do all." )
+
+        self.add_par( 'steps_required', None, list, "Steps that need to be done to each exposure" )
+
         self.add_par( 'calibset', None, ( str, None ),
-                      ( "One of the CalibratorSetConverter enum; "
-                        "the calibrator set to use.  Defaults to the instrument default" ),
-                      critical = True )
+                      "The calibrator set to use.  Choose one of the CalibratorSetConverter enum. ",
+                      critical=True )
         self.add_alias( 'calibrator_set', 'calibset' )
+
         self.add_par( 'flattype', None, ( str, None ),
-                      ( "One of the FlatTypeConverter enum; defaults to the instrument default" ),
-                      critical = True )
+                      "One of the FlatTypeConverter enum. ",
+                      critical=True )
 
         self._enforce_no_new_attrs = True
 
@@ -124,41 +126,13 @@ class Preprocessor:
             if ( self.instrument is None ) or ( self.instrument.name != ds.exposure.instrument ):
                 self.instrument = ds.exposure.instrument_object
 
-            # The only reason these are saved in self, rather than being
-            # local variables, is so that tests can probe them
-            self._calibset = None
-            self._flattype = None
-            self._stepstodo = None
+            # check that all required steps can be done (or have been done) by the instrument:
 
-            if 'calibset' in kwargs:
-                self._calibset = kwargs['calibset']
-            elif 'calibratorset' in kwargs:
-                self._calibset = kwargs['calibrator_set']
-            elif self.pars.calibset is not None:
-                self._calibset = self.pars.calibset
-            else:
-                self._calibset = cfg.value( f'{self.instrument.name}.calibratorset',
-                                            default=cfg.value( 'instrument_default.calibratorset' ) )
-
-            if 'flattype' in kwargs:
-                self._flattype = kwargs['flattype']
-            elif self.pars.flattype is not None:
-                self._flattype = self.pars.flattype
-            else:
-                self._flattype = cfg.value( f'{self.instrument.name}.flattype',
-                                            default=cfg.value( 'instrument_default.flattype' ) )
-
-            if 'steps' in kwargs:
-                self._stepstodo = [ s for s in self.instrument.preprocessing_steps if s in kwargs['steps'] ]
-            elif self.pars.steps is not None:
-                self._stepstodo = [ s for s in self.instrument.preprocessing_steps if s in self.pars.steps ]
-            else:
-                self._stepstodo = self.instrument.preprocessing_steps
 
             # Get the calibrator files
             SCLogger.debug("preprocessing: getting calibrator files")
-            preprocparam = self.instrument.preprocessing_calibrator_files( self._calibset,
-                                                                           self._flattype,
+            preprocparam = self.instrument.preprocessing_calibrator_files( self.pars.calibset,
+                                                                           self.pars.flattype,
                                                                            ds.section_id,
                                                                            ds.exposure.filter_short,
                                                                            ds.exposure.mjd,
