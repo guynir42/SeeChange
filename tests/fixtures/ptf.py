@@ -389,7 +389,7 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
             )
             warnings.filterwarnings(
                 'ignore',
-                message=r".*Object of type .* not in session, delete operation along .* won't proceed.*"
+                message=r".*Object of type .* not in session, .* operation along .* won't proceed.*"
             )
             for image in ptf_reference_images:
                 image = session.merge(image)
