@@ -387,14 +387,14 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
                 action='ignore',
                 message=r'.*DELETE statement on table .* expected to delete \d* row\(s\).*',
             )
-            warnings.filterwarnings(
-                'ignore',
-                message=r".*Object of type .* not in session, .* operation along .* won't proceed.*"
-            )
+            # warnings.filterwarnings(
+            #     'ignore',
+            #     message=r".*Object of type .* not in session, .* operation along .* won't proceed.*"
+            # )
             for image in ptf_reference_images:
                 image = session.merge(image)
-                image.exposure.delete_from_disk_and_database(commit=False, session=session)
-                image.delete_from_disk_and_database(commit=False, session=session, remove_downstreams=True)
+                image.exposure.delete_from_disk_and_database(commit=False, session=session, remove_downstreams=True)
+                # image.delete_from_disk_and_database(commit=False, session=session, remove_downstreams=True)
             session.commit()
 
 
