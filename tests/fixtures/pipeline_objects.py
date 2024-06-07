@@ -846,7 +846,8 @@ def datastore_factory(data_dir, pipeline_factory):
 
             cache_name = os.path.join(cache_dir, cache_sub_name + f'.measurements_{prov.id[:6]}.json')
 
-            if os.path.isfile(cache_name):  # note that the cache contains ALL the measurements, not only the good ones
+            if ( not os.getenv( "LIMIT_CACHE_USAGE" ) ) and ( os.path.isfile(cache_name) ):
+                # note that the cache contains ALL the measurements, not only the good ones
                 SCLogger.debug('loading measurements from cache. ')
                 ds.all_measurements = copy_list_from_cache(Measurements, cache_dir, cache_name)
                 [setattr(m, 'provenance', prov) for m in ds.all_measurements]

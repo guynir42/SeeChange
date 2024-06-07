@@ -341,7 +341,6 @@ class Detector:
             finally:  # make sure datastore is returned to be used in the next step
                 return ds
 
-
     def extract_sources(self, image):
         """Calls one of the extraction methods, based on self.pars.method. """
         sources = None
