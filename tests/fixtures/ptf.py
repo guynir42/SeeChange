@@ -422,7 +422,7 @@ def ptf_ref(
             is_testing=True,
         )
 
-        cache_base_name = f'187/PTF_20090405_073932_11_R_ComSci_{im_prov.id[:6]}_u-ywhkxr'
+        cache_base_name = f'187/PTF_20090405_073932_11_R_ComSci_{im_prov.id[:6]}_u-wswtff'
 
         # this provenance is used for sources, psf, wcs, zp
         sources_prov = Provenance(
@@ -432,14 +432,18 @@ def ptf_ref(
             code_version=code_version,
             is_testing=True,
         )
-    extensions = ['image.fits', f'psf_{sources_prov.id[:6]}.fits', f'sources_{sources_prov.id[:6]}.fits', 'wcs', 'zp']
-    if not os.getenv( "LIMIT_CACHE_USAGE" ):
-        filenames = [os.path.join(ptf_cache_dir, cache_base_name) + f'.{ext}.json' for ext in extensions]
-    else:
-        filenames = []
-    if (     ( not os.getenv( "LIMIT_CACHE_USAGE" ) ) and
-             ( all([os.path.isfile(filename) for filename in filenames]) )
-        ):  # can load from cache
+    extensions = [
+        'image.fits',
+        f'psf_{sources_prov.id[:6]}.fits',
+        f'sources_{sources_prov.id[:6]}.fits',
+        f'wcs_{sources_prov.id[:6]}.txt',
+        'zp'
+    ]
+    filenames = [os.path.join(ptf_cache_dir, cache_base_name) + f'.{ext}.json' for ext in extensions]
+
+    if ( not os.getenv( "LIMIT_CACHE_USAGE" ) and
+         all([os.path.isfile(filename) for filename in filenames])
+    ):  # can load from cache
         # get the image:
         coadd_image = copy_from_cache(Image, ptf_cache_dir, cache_base_name + '.image.fits')
         # we must load these images in order to save the reference image with upstreams
@@ -461,7 +465,9 @@ def ptf_ref(
         assert coadd_image.sources.provenance_id == coadd_image.sources.provenance.id
 
         # get the WCS:
-        coadd_image.wcs = copy_from_cache(WorldCoordinates, ptf_cache_dir, cache_base_name + '.wcs')
+        coadd_image.wcs = copy_from_cache(
+            WorldCoordinates, ptf_cache_dir, cache_base_name + f'.wcs_{sources_prov.id[:6]}.txt'
+        )
         coadd_image.wcs.provenance = sources_prov
         coadd_image.sources.wcs = coadd_image.wcs
         assert coadd_image.wcs.provenance_id == coadd_image.wcs.provenance.id
@@ -485,7 +491,7 @@ def ptf_ref(
             copy_to_cache(pipe.datastore.image, ptf_cache_dir)
             copy_to_cache(pipe.datastore.sources, ptf_cache_dir)
             copy_to_cache(pipe.datastore.psf, ptf_cache_dir)
-            copy_to_cache(pipe.datastore.wcs, ptf_cache_dir, cache_base_name + '.wcs.json')
+            copy_to_cache(pipe.datastore.wcs, ptf_cache_dir)
             copy_to_cache(pipe.datastore.zp, ptf_cache_dir, cache_base_name + '.zp.json')
 
     with SmartSession() as session:
