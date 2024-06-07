@@ -237,7 +237,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, ptf_cache_di
         for url in urls:
             exp = ptf_downloader(url)
             exp.instrument_object.fetch_sections()
-            exp.md5sum = uuid.uuid4()  # this will save some memory as the exposure are not saved to archive
+            exp.md5sum = uuid.uuid4()  # this will save some memory as the exposures are not saved to archive
             try:
                 # produce an image
                 ds = datastore_factory(
@@ -269,7 +269,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, ptf_cache_di
                 SCLogger.debug(f'Error processing {url}')  # this will also leave behind exposure and image data on disk only
                 raise e
                 # SCLogger.debug(e)  # TODO: should we be worried that some of these images can't complete their processing?
-                continue
+                # continue
 
             images.append(ds.image)
             if max_images is not None and len(images) >= max_images:

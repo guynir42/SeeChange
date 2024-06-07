@@ -79,9 +79,9 @@ def test_filtering_measurements(ptf_datastore):
     from pprint import pprint
     pprint(measurements)
     if hasattr(ptf_datastore, 'all_measurements'):
-        idx = [442, 520, 538, 543, 549, 559, 564, 567]
+        idx = [442, 520, 538, 543, 549, 559] # , 564, 567]
         chosen = np.array(ptf_datastore.all_measurements)[idx]
-        pprint([(m, m.is_bad) for m in chosen])
+        pprint([(m, m.is_bad, m.cutouts.sub_nandata[12, 12]) for m in chosen])
 
     m = measurements[0]  # grab the first one as an example
 
