@@ -77,9 +77,11 @@ from models.measurements import Measurements
 def test_filtering_measurements(ptf_datastore):
     measurements = ptf_datastore.measurements
     from pprint import pprint
+    print('measurements: ')
     pprint(measurements)
+
     if hasattr(ptf_datastore, 'all_measurements'):
-        idx = [442, 520, 538, 543, 549, 559] # , 564, 567]
+        idx = [m.cutouts.index_in_sources for m in measurements]
         chosen = np.array(ptf_datastore.all_measurements)[idx]
         pprint([(m, m.is_bad, m.cutouts.sub_nandata[12, 12]) for m in chosen])
 
