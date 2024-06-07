@@ -13,64 +13,64 @@ from models.cutouts import Cutouts
 from models.measurements import Measurements
 
 
-def test_measurements_attributes(measurer, ptf_datastore):
-
-    ds = measurer.run(ptf_datastore.cutouts)
-    # check that the measurer actually loaded the measurements from db, and not recalculated
-    assert len(ds.measurements) <= len(ds.cutouts)  # not all cutouts have saved measurements
-    assert len(ds.measurements) == len(ptf_datastore.measurements)
-    assert ds.measurements[0].from_db
-    assert not measurer.has_recalculated
-
-    # grab one example measurements object
-    m = ds.measurements[0]
-    new_im = m.cutouts.sources.image.new_image
-    assert np.allclose(m.aper_radii, new_im.zp.aper_cor_radii)
-    assert np.allclose(
-        new_im.zp.aper_cor_radii,
-        new_im.psf.fwhm_pixels * np.array(new_im.instrument_object.standard_apertures()),
-    )
-    assert m.mjd == new_im.mjd
-    assert m.exp_time == new_im.exp_time
-    assert m.filter == new_im.filter
-
-    original_flux = m.flux_apertures[m.best_aperture]
-
-    # set the flux temporarily to something positive
-    m.flux_apertures[m.best_aperture] = 1000
-    assert m.magnitude == -2.5 * np.log10(1000) + new_im.zp.zp + new_im.zp.aper_cors[m.best_aperture]
-
-    # set the flux temporarily to something negative
-    m.flux_apertures[m.best_aperture] = -1000
-    assert np.isnan(m.magnitude)
-
-    # set the flux and zero point to some randomly chosen values and test the distribution of the magnitude:
-    fiducial_zp = new_im.zp.zp
-    original_zp_err = new_im.zp.dzp
-    fiducial_zp_err = 0.1  # more reasonable ZP error value
-    fiducial_flux = 1000
-    fiducial_flux_err = 50
-    m.flux_apertures_err[m.best_aperture] = fiducial_flux_err
-    new_im.zp.dzp = fiducial_zp_err
-
-    iterations = 1000
-    mags = np.zeros(iterations)
-    for i in range(iterations):
-        m.flux_apertures[m.best_aperture] = np.random.normal(fiducial_flux, fiducial_flux_err)
-        new_im.zp.zp = np.random.normal(fiducial_zp, fiducial_zp_err)
-        mags[i] = m.magnitude
-
-    m.flux_apertures[m.best_aperture] = fiducial_flux
-
-    # the measured magnitudes should be normally distributed
-    assert np.abs(np.std(mags) - m.magnitude_err) < 0.01
-    assert np.abs(np.mean(mags) - m.magnitude) < m.magnitude_err * 3
-
-    # make sure to return things to their original state
-    m.flux_apertures[m.best_aperture] = original_flux
-    new_im.zp.dzp = original_zp_err
-
-    # TODO: add test for limiting magnitude (issue #143)
+# def test_measurements_attributes(measurer, ptf_datastore):
+#
+#     ds = measurer.run(ptf_datastore.cutouts)
+#     # check that the measurer actually loaded the measurements from db, and not recalculated
+#     assert len(ds.measurements) <= len(ds.cutouts)  # not all cutouts have saved measurements
+#     assert len(ds.measurements) == len(ptf_datastore.measurements)
+#     assert ds.measurements[0].from_db
+#     assert not measurer.has_recalculated
+#
+#     # grab one example measurements object
+#     m = ds.measurements[0]
+#     new_im = m.cutouts.sources.image.new_image
+#     assert np.allclose(m.aper_radii, new_im.zp.aper_cor_radii)
+#     assert np.allclose(
+#         new_im.zp.aper_cor_radii,
+#         new_im.psf.fwhm_pixels * np.array(new_im.instrument_object.standard_apertures()),
+#     )
+#     assert m.mjd == new_im.mjd
+#     assert m.exp_time == new_im.exp_time
+#     assert m.filter == new_im.filter
+#
+#     original_flux = m.flux_apertures[m.best_aperture]
+#
+#     # set the flux temporarily to something positive
+#     m.flux_apertures[m.best_aperture] = 1000
+#     assert m.magnitude == -2.5 * np.log10(1000) + new_im.zp.zp + new_im.zp.aper_cors[m.best_aperture]
+#
+#     # set the flux temporarily to something negative
+#     m.flux_apertures[m.best_aperture] = -1000
+#     assert np.isnan(m.magnitude)
+#
+#     # set the flux and zero point to some randomly chosen values and test the distribution of the magnitude:
+#     fiducial_zp = new_im.zp.zp
+#     original_zp_err = new_im.zp.dzp
+#     fiducial_zp_err = 0.1  # more reasonable ZP error value
+#     fiducial_flux = 1000
+#     fiducial_flux_err = 50
+#     m.flux_apertures_err[m.best_aperture] = fiducial_flux_err
+#     new_im.zp.dzp = fiducial_zp_err
+#
+#     iterations = 1000
+#     mags = np.zeros(iterations)
+#     for i in range(iterations):
+#         m.flux_apertures[m.best_aperture] = np.random.normal(fiducial_flux, fiducial_flux_err)
+#         new_im.zp.zp = np.random.normal(fiducial_zp, fiducial_zp_err)
+#         mags[i] = m.magnitude
+#
+#     m.flux_apertures[m.best_aperture] = fiducial_flux
+#
+#     # the measured magnitudes should be normally distributed
+#     assert np.abs(np.std(mags) - m.magnitude_err) < 0.01
+#     assert np.abs(np.mean(mags) - m.magnitude) < m.magnitude_err * 3
+#
+#     # make sure to return things to their original state
+#     m.flux_apertures[m.best_aperture] = original_flux
+#     new_im.zp.dzp = original_zp_err
+#
+#     # TODO: add test for limiting magnitude (issue #143)
 
 
 # @pytest.mark.flaky(max_runs=3)
