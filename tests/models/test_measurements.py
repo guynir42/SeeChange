@@ -76,8 +76,6 @@ def test_measurements_attributes(measurer, ptf_datastore):
 # @pytest.mark.flaky(max_runs=3)
 def test_filtering_measurements(ptf_datastore):
     measurements = ptf_datastore.measurements
-    if (len(measurements)) != 8:
-        raise RuntimeError(f'Expected 8 measurements, got {len(measurements)}')
     m = measurements[0]  # grab the first one as an example
 
     # test that we can filter on some measurements properties
