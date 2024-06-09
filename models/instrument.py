@@ -1902,7 +1902,8 @@ class DemoInstrument(Instrument):
         Instrument.__init__(self, **kwargs)
 
         # DemoInstrument doesn't know how to preprocess
-        self.preprocessing_steps = []
+        self.preprocessing_steps_available = []
+        self.preprocessing_steps_done = ['overscan', 'linearity', 'flat', 'fringe']
 
     @classmethod
     def get_section_ids(cls):
