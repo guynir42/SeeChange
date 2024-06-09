@@ -34,6 +34,7 @@ from models.instrument import get_instrument_instance
 from models.enums_and_bitflags import (
     ImageFormatConverter,
     ImageTypeConverter,
+    ImagePreprocConverter,
     image_badness_inverse,
 )
 
@@ -360,6 +361,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         index=False,
         doc='Bitflag specifying which preprocessing steps have been completed for the image.'
     )
+
+    @property
+    def preprocessing_done(self):
+        """Return a list of the names of preprocessing steps that have been completed for this image."""
+        return ImagePreprocConverter.convert(self.preproc_bitflag)
 
     astro_cal_done = sa.Column(
         sa.BOOLEAN,

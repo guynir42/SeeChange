@@ -79,7 +79,6 @@ catalog_gaiadr3:
 pipeline: {}
 
 preprocessing:
-  use_sky_subtraction: False
   steps_required: [ 'overscan', 'linearity', 'flat', 'fringe' ]
 
 extraction:
