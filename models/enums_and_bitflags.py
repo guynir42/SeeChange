@@ -176,26 +176,6 @@ class ImageTypeConverter( EnumConverter ):
     _dict_inverse = None
 
 
-# bitflag for image preprocessing steps that have been done
-image_preprocessing_dict = {
-    0: 'overscan',
-    1: 'zero',
-    2: 'dark',
-    3: 'linearity',
-    4: 'flat',
-    5: 'fringe',
-    6: 'illumination'
-}
-image_preprocessing_inverse = {EnumConverter.c(v):k for k, v in image_preprocessing_dict.items()}
-
-
-class ImagePreprocConverter( EnumConverter ):
-    _dict = image_preprocessing_dict
-    _allowed_values = None
-    _dict_filtered = None
-    _dict_inverse = None
-
-
 class CatalogExcerptFormatConverter( FormatConverter ):
     _allowed_values = [ 'fitsldac' ]
     _dict_filtered = None
@@ -343,6 +323,19 @@ def string_to_bitflag(value, dictionary):
                 raise ValueError(f'Keyword "{original_keyword.strip()}" not recognized in dictionary')
             output += 2 ** dictionary[keyword]
         return output
+
+
+# bitflag for image preprocessing steps that have been done
+image_preprocessing_dict = {
+    0: 'overscan',
+    1: 'zero',
+    2: 'dark',
+    3: 'linearity',
+    4: 'flat',
+    5: 'fringe',
+    6: 'illumination'
+}
+image_preprocessing_inverse = {EnumConverter.c(v):k for k, v in image_preprocessing_dict.items()}
 
 
 # these are the ways an Image or Exposure are allowed to be bad
