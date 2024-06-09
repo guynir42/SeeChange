@@ -45,6 +45,17 @@ utcnow = func.timezone("UTC", func.current_timestamp())
 
 # this is the root SeeChange folder
 CODE_ROOT = os.path.abspath(os.path.join(__file__, os.pardir, os.pardir))
+#
+# # printout the list of relevant environmental variables:
+# print("SeeChange environment variables:")
+# for key in [
+#     'INTERACTIVE',
+#     'LIMIT_CACHE_USAGE',
+#     'SKIP_NOIRLAB_DOWNLOADS',
+#     'RUN_SLOW_TESTS',
+#     'SEECHANGE_TRACEMALLOC',
+# ]:
+#     print(f'{key}: {os.getenv(key)}')
 
 
 # This is a list of warnings that are categorically ignored in the pipeline. Beware:
