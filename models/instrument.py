@@ -1534,7 +1534,7 @@ class Instrument:
                                    .filter( CalibratorFile.calibrator_set == calibset )
                                    .filter( CalibratorFile.instrument == self.name )
                                    .filter( CalibratorFile.type == calibtype )
-                                   .filter( CalibratorFile.sensor_section == section )
+                                   .filter( CalibratorFile.sensor_section == str(section) )
                                    .filter( sa.or_( CalibratorFile.validity_start == None,
                                                     CalibratorFile.validity_start <= expdatetime ) )
                                    .filter( sa.or_( CalibratorFile.validity_end == None,
