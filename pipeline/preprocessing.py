@@ -25,12 +25,12 @@ class ParsPreprocessor(Parameters):
 
         self.add_par( 'steps_required', [], list, "Steps that need to be done to each exposure" )
 
-        self.add_par( 'calibset', None, ( str, None ),
+        self.add_par( 'calibset', 'externally_supplied', str,
                       "The calibrator set to use.  Choose one of the CalibratorSetConverter enum. ",
                       critical=True )
         self.add_alias( 'calibrator_set', 'calibset' )
 
-        self.add_par( 'flattype', None, ( str, None ),
+        self.add_par( 'flattype', 'externally_supplied', str,
                       "One of the FlatTypeConverter enum. ",
                       critical=True )
 
@@ -167,7 +167,8 @@ class Preprocessor:
             # (i.e., the instrument's preprocessing_steps_done) but does not
             # include the things that were skipped for this filter
             # (i.e., the instrument's preprocessing_step_skip_by_filter)
-            if not needed_steps.issubset(set(image.preprocessing_done)):  # still things to do here
+            already_done = set(image.preprocessing_done.split(', ') if image.preprocessing_done else [])
+            if not needed_steps.issubset(already_done):  # still things to do here
                 self.has_recalculated = True
                 # Overscan is always first (as it reshapes the image)
                 if 'overscan' in needed_steps:
