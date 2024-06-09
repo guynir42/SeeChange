@@ -1,4 +1,3 @@
-import re
 import pathlib
 
 import numpy as np

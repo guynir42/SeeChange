@@ -101,6 +101,10 @@ def test_filtering_measurements(ptf_datastore):
     print(f'ref_image values: {ptf_datastore.ref_image.data[250, 240:250]}')
     print(f'sub_image values: {ptf_datastore.sub_image.data[250, 240:250]}')
 
+    print(f'number of images in ref image: {len(ptf_datastore.ref_image.upstream_images)}')
+    for i, im in enumerate(ptf_datastore.ref_image.upstream_images):
+        print(f'upstream image {i}: {im.data[250, 240:250]}')
+
     m = measurements[0]  # grab the first one as an example
 
     # test that we can filter on some measurements properties
