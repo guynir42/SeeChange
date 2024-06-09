@@ -530,8 +530,8 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     def get_downstreams(self, session=None, siblings=False):
         """Get the downstreams of this PSF.
 
-        If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects
-        that were created at the same time as this source list.
+        If siblings=True then also include the SourceLists, WCSes, ZPs and background objects
+        that were created at the same time as this PSF.
         """
         from models.source_list import SourceList
         from models.world_coordinates import WorldCoordinates
@@ -553,18 +553,28 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                     sa.select(SourceList).where(
                         SourceList.image_id == self.image_id, SourceList.provenance_id == self.provenance_id
                     )
-                ).first()
-                output.append(sources)
+                ).all()
+                if len(sources) != 1:
+                    raise ValueError(f"Expected exactly one source list for PSF {self.id}, but found {len(sources)}")
+
+                output.append(sources[0])
 
                 # TODO: add background object
 
                 wcs = session.scalars(
                     sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == sources.id)
-                ).first()
-                output.append(wcs)
+                ).all()
+                if len(wcs) != 1:
+                    raise ValueError(f"Expected exactly one wcs for PSF {self.id}, but found {len(wcs)}")
 
-                zp = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == sources.id)).first()
-                output.append(zp)
+                output.append(wcs[0])
+
+                zp = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == sources.id)).all()
+
+                if len(zp) != 1:
+                    raise ValueError(f"Expected exactly one zp for PSF {self.id}, but found {len(zp)}")
+
+                output.append(zp[0])
 
         return output
     

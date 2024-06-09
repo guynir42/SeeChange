@@ -145,15 +145,15 @@ class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
     def get_downstreams(self, session=None, siblings=False):
         """Get the downstreams of this ZeroPoint.
 
-        If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects
-        that were created at the same time as this source list.
+        If siblings=True then also include the SourceLists, PSFs, WCSes, and background objects
+        that were created at the same time as this ZeroPoint.
         """
         from models.source_list import SourceList
         from models.psf import PSF
         from models.world_coordinates import WorldCoordinates
         from models.provenance import Provenance
 
-        with (SmartSession(session) as session):
+        with SmartSession(session) as session:
             subs = session.scalars(
                 sa.select(Image).where(
                     Image.provenance.has(Provenance.upstreams.any(Provenance.id == self.provenance.id))
@@ -162,21 +162,32 @@ class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
             output = subs
 
             if siblings:
-                sources = session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).first()
-                output.append(sources)
+                sources = session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).all()
+                if len(sources) > 1:
+                    raise ValueError(
+                        f"Expected exactly one SourceList for ZeroPoint {self.id}, but found {len(sources)}."
+                    )
+                output.append(sources[0])
 
                 psf = session.scalars(
                     sa.select(PSF).where(
                         PSF.image_id == sources.image_id, PSF.provenance_id == self.provenance_id
                     )
-                ).first()
-                output.append(psf)
+                ).all()
+                if len(psf) > 1:
+                    raise ValueError(f"Expected exactly one PSF for ZeroPoint {self.id}, but found {len(psf)}.")
+
+                output.append(psf[0])
 
                 # TODO: add background object
 
                 wcs = session.scalars(
                     sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == sources.id)
-                ).first()
-                output.append(wcs)
+                ).all()
+
+                if len(wcs) > 1:
+                    raise ValueError(f"Expected exactly one WCS for ZeroPoint {self.id}, but found {len(wcs)}.")
+
+                output.append(wcs[0])
 
         return output

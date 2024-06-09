@@ -752,8 +752,8 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     def get_downstreams(self, session=None, siblings=False):
         """Get all the data products that are made using this source list.
 
-        If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects
-        that were created at the same time as this source list.
+        If siblings=True then also include the PSFs, WCSes, ZPs and background objects
+        that were created at the same time as this SourceList.
         """
         from models.psf import PSF
         from models.world_coordinates import WorldCoordinates
@@ -776,9 +776,21 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                 psfs = session.scalars(
                     sa.select(PSF).where(PSF.image_id == self.image_id, PSF.provenance_id == self.provenance_id)
                 ).all()
+                if len(psfs) != 1:
+                    raise ValueError(f"Expected exactly one PSF for SourceList {self.id}, but found {len(psfs)}")
+
                 # TODO: add background object
+
                 wcs = session.scalars(sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == self.id)).all()
+                if len(wcs) != 1:
+                    raise ValueError(
+                        f"Expected exactly one WorldCoordinates for SourceList {self.id}, but found {len(wcs)}"
+                    )
                 zps = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == self.id)).all()
+                if len(zps) != 1:
+                    raise ValueError(
+                        f"Expected exactly one ZeroPoint for SourceList {self.id}, but found {len(zps)}"
+                    )
                 output += psfs + wcs + zps
 
         return output

@@ -382,8 +382,8 @@ class SeeChangeBase:
             info = sa.inspect(self)
 
             if info.persistent:
-                    session.delete(self)
-                    need_commit = True
+                session.delete(self)
+                need_commit = True
             elif info.pending:
                 session.expunge(self)
                 need_commit = True

@@ -534,8 +534,7 @@ class DataStore:
     def _get_provenance_for_an_upstream(self, process, session=None):
         """Get the provenance for a given process, without parameters or code version.
         This is used to get the provenance of upstream objects.
-        This simply looks for a matching provenance in the prov_tree attribute,
-        or, if it is None, will call the latest provenance (for that process) from the database.
+        Looks for a matching provenance in the prov_tree attribute.
 
         Example:
         When making a SourceList in the extraction phase, we will want to know the provenance
@@ -545,8 +544,6 @@ class DataStore:
 
         Will raise if no provenance can be found.
         """
-        session = self.session if session is None else session
-
         # see if it is in the prov_tree
         if self.prov_tree is not None:
             if process in self.prov_tree:

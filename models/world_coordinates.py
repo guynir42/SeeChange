@@ -106,8 +106,8 @@ class WorldCoordinates(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
     def get_downstreams(self, session=None, siblings=False):
         """Get the downstreams of this WorldCoordinates.
 
-        If siblings=True (default) then also include the PSFs, WCSes, ZPs and background objects
-        that were created at the same time as this source list.
+        If siblings=True  then also include the SourceLists, PSFs, ZPs and background objects
+        that were created at the same time as this WorldCoordinates.
         """
         from models.source_list import SourceList
         from models.psf import PSF
@@ -123,20 +123,34 @@ class WorldCoordinates(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
             output = subs
 
             if siblings:
-                sources = session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).first()
-                output.append(sources)
+                sources = session.scalars(sa.select(SourceList).where(SourceList.id == self.sources_id)).all()
+                if len(sources) > 1:
+                    raise ValueError(
+                        f"Expected exactly one SourceList for WorldCoordinates {self.id}, but found {len(sources)}."
+                    )
+
+                output.append(sources[0])
 
                 psf = session.scalars(
                     sa.select(PSF).where(
                         PSF.image_id == sources.image_id, PSF.provenance_id == self.provenance_id
                     )
-                ).first()
-                output.append(psf)
+                ).all()
+
+                if len(psf) > 1:
+                    raise ValueError(f"Expected exactly one PSF for WorldCoordinates {self.id}, but found {len(psf)}.")
+
+                output.append(psf[0])
 
                 # TODO: add background object
 
-                zp = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == sources.id)).first()
-                output.append(zp)
+                zp = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == sources.id)).all()
+
+                if len(zp) > 1:
+                    raise ValueError(
+                        f"Expected exactly one ZeroPoint for WorldCoordinates {self.id}, but found {len(zp)}."
+                    )
+                output.append(zp[0])
 
         return output
 
