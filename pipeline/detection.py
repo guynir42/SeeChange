@@ -3,6 +3,7 @@ import pathlib
 import random
 import subprocess
 import time
+import warnings
 
 import numpy as np
 import numpy.lib.recfunctions as rfn
@@ -439,13 +440,25 @@ class Detector:
             # Now that we have a psf, run sextractor (maybe a second time)
             # to get the actual measurements.
             SCLogger.debug( "detection: running sextractor with psf to get final source list" )
-            sources, bkg, bkgsig = self._run_sextractor_once( image, apers=apers,
-                                                              psffile=psfpath, tempname=tempnamebase )
+
+            if psf is not None:
+                psf_clip = psf.get_clip()
+                psf_norm = 1 / np.sqrt(np.sum(psf_clip ** 2))  # normalization factor for the sextractor thresholds
+            else:  # we don't have a psf for some reason, use the "good enough" approximation
+                psf_norm = 3.0
+
+            sources, bkg, bkgsig = self._run_sextractor_once(
+                image,
+                apers=apers,
+                psffile=psfpath,
+                psfnorm=psf_norm,
+                tempname=tempnamebase,
+            )
             SCLogger.debug( f"detection: sextractor found {len(sources.data)} sources" )
 
             snr = sources.apfluxadu()[0] / sources.apfluxadu()[1]
             if snr.min() > self.pars.threshold:
-                SCLogger.warning( "SExtractor may not have detected everything down to your threshold." )
+                warnings.warn( "SExtractor may not have detected everything down to your threshold." )
             w = np.where( snr >= self.pars.threshold )
             sources.data = sources.data[w]
             sources.num_sources = len( sources.data )
@@ -463,7 +476,7 @@ class Detector:
 
         return sources, psf, bkg, bkgsig
 
-    def _run_sextractor_once( self, image, apers=[5, ], psffile=None, tempname=None, do_not_cleanup=False ):
+    def _run_sextractor_once(self, image, apers=[5, ], psffile=None, psfnorm=3.0, tempname=None, do_not_cleanup=False):
         """Extract a SourceList from a FITS image using SExtractor.
 
         This function should not be called from outside this class.
@@ -480,6 +493,12 @@ class Detector:
           psffile: Path or str, or None
             File that has the PSF to use for PSF photometry.  If None,
             won't do psf photometry.
+
+          psfnorm: float
+            The normalization of the PSF image (i.e., the sqrt of the
+            sum of squares of the psf values).  This is used to set the
+            threshold for sextractor.  When the PSF is not known, we
+            will use a rough approximation and set this value to 3.0.
 
           tempname: str
             If not None, a filename base for where the catalog will be
@@ -637,8 +656,8 @@ class Detector:
                      "-XML_NAME", tmpxml,
                      "-PARAMETERS_NAME", paramfile,
                      "-THRESH_TYPE", "RELATIVE",
-                     "-DETECT_THRESH", str( self.pars.threshold / 3. ),
-                     "-ANALYSIS_THRESH", str( self.pars.threshold / 3. ),
+                     "-DETECT_THRESH", str( self.pars.threshold / psfnorm ),
+                     "-ANALYSIS_THRESH", str( self.pars.threshold / psfnorm ),
                      "-FILTER", "Y",
                      "-FILTER_NAME", str(conv),
                      "-WEIGHT_TYPE", "MAP_WEIGHT",
@@ -649,7 +668,7 @@ class Detector:
                      "-FLAG_TYPE", "OR",
                      "-PHOT_APERTURES", ",".join( [ str(a*2.) for a in apers ] ),
                      "-SATUR_LEVEL", str( image.instrument_object.average_saturation_limit( image ) ),
-                     "-GAIN", "1.0",
+                     "-GAIN", "1.0",  # TODO: we should probably put the instrument gain here
                      "-STARNNW_NAME", nnw,
                      "-BACK_TYPE", "AUTO",
                      "-BACK_SIZE", str( image.instrument_object.background_box_size ),
