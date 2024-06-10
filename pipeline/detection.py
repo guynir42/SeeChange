@@ -47,31 +47,54 @@ class ParsDetector(Parameters):
             critical=True
         )
 
-        self.psf = self.add_par(
-            'psf',
-            None,
-            ( PSF, int, None ),
-            'Use this PSF; pass the PSF object, or its integer id. '
-            'If None, will not do PSF photometry.  Ignored if measure_psf is True.' ,
+        self.background_format = self.add_par(
+            'background_format',
+            'map',
+            str,
+            'Format of the background; one of "map", "scalar", or "polynomial".',
+            critical=True
+        )
+
+        self.background_order = self.add_par(
+            'background_order',
+            2,
+            int,
+            'Order of the polynomial background. Ignored unless background is "polynomial".',
+            critical=True
+        )
+
+        self.background_method = self.add_par(
+            'background_method',
+            'sep',
+            str,
+            'Method to use for background subtraction; currently only "sep" is supported.',
             critical=True
         )
 
         self.apers = self.add_par(
             'apers',
-            None,
-            ( None, list ),
-            'Apertures in which to measure photometry; a list of floats or None',
+            [1.0, 2.0, 3.0, 5.0],
+            list,
+            'Apertures in which to measure photometry; a list of floats. ',
             critical=True
         )
         self.add_alias( 'apertures', 'apers' )
 
         self.inf_aper_num = self.add_par(
             'inf_aper_num',
-            None,
-            ( None, int ),
-            ( 'Which of apers is the one to use as the "infinite" aperture for aperture corrections; '
-              'default is to use the last one.  Ignored if self.apers is None.' ),
+            -1,
+            int,
+            'Which of apers is the one to use as the "infinite" aperture for aperture corrections. '
+            'If -1, will use the last aperture, not the PSF flux! ',
             critical=True
+        )
+
+        self.best_aper_num = self.add_par(
+            'best_aper_num',
+            0,
+            int,
+            'Which of apers is the one to use as the "best" aperture, for things like plotting or calculating'
+            'the limiting magnitude. Note that -1 will use the PSF flux, not the last aperture on the list. '
         )
 
         self.aperunit = self.add_par(
@@ -351,8 +374,7 @@ class Detector:
             sources = self.extract_sources_sep(image)
         elif self.pars.method == 'sextractor':
             if self.pars.subtraction:
-                psffile = None if self.pars.psf is None else self.pars.psf.get_fullpath()
-                sources, _, _, _ = self.extract_sources_sextractor(image, psffile=psffile)
+                sources, _, _, _ = self.extract_sources_sextractor(image, psffile=None)
             else:
                 sources, psf, bkg, bkgsig = self.extract_sources_sextractor(image)
         elif self.pars.method == 'filter':
@@ -381,14 +403,7 @@ class Detector:
         psfxmlpath = None
 
         try:  # cleanup at the end
-            if self.pars.apers is None:
-                apers = np.array( image.instrument_object.standard_apertures() )
-                inf_aper_num = image.instrument_object.fiducial_aperture()
-            else:
-                apers = self.pars.apers
-                inf_aper_num = self.pars.inf_aper_num
-                if inf_aper_num is None:
-                    inf_aper_num = len( apers ) - 1
+            apers = np.array(self.pars.apers)
 
             if self.pars.measure_psf:
                 # Run sextractor once without a psf to get objects from
@@ -411,9 +426,6 @@ class Detector:
                 psf = self._run_psfex( tempnamebase, image, do_not_cleanup=True )
                 psfpath = pathlib.Path( FileOnDiskMixin.temp_path ) / f'{tempnamebase}.sources.psf'
                 psfxmlpath = pathlib.Path( FileOnDiskMixin.temp_path ) / f'{tempnamebase}.sources.psf.xml'
-            elif self.pars.psf is not None:
-                psf = self.pars.psf
-                psfpath, psfxmlpath = psf.get_fullpath()
             else:
                 psf = None
 
@@ -437,14 +449,17 @@ class Detector:
             w = np.where( snr >= self.pars.threshold )
             sources.data = sources.data[w]
             sources.num_sources = len( sources.data )
-            sources._inf_aper_num = inf_aper_num
+            sources.inf_aper_num = self.pars.inf_aper_num
+            sources.best_aper_num = self.pars.best_aper_num
 
         finally:
             # Clean up the temporary files created (that weren't already cleaned up by _run_sextractor_once)
             sourcepath.unlink( missing_ok=True )
-            if ( psffile is None ) and ( self.pars.psf is None ):
-                if psfpath is not None: psfpath.unlink( missing_ok=True )
-                if psfxmlpath is not None: psfxmlpath.unlink( missing_ok=True )
+            if psffile is None:
+                if psfpath is not None:
+                    psfpath.unlink( missing_ok=True )
+                if psfxmlpath is not None:
+                    psfxmlpath.unlink( missing_ok=True )
 
         return sources, psf, bkg, bkgsig
 

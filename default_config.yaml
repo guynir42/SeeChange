@@ -83,9 +83,18 @@ preprocessing:
 
 extraction:
   sources:
-    measure_psf: true
-    threshold: 3.0
     method: sextractor
+    measure_psf: true
+    background_format: map
+    background_order: 1
+    background_method: sep
+    apertures: [1.0, 2.0, 3.0, 5.0]
+    inf_aper_num: -1
+    best_aper_num: 0
+    aperunit: fwhm
+    separation_fwhm: 1.0
+    threshold: 3.0
+    subtraction: false
 
   wcs:
     cross_match_catalog: gaia_dr3

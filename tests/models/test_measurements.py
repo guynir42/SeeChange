@@ -13,8 +13,9 @@ from models.cutouts import Cutouts
 from models.measurements import Measurements
 
 
-def test_measurements_attributes(measurer, ptf_datastore):
+def test_measurements_attributes(measurer, ptf_datastore, test_config):
 
+    aper_radii = test_config.value('extraction.sources.apertures')
     ds = measurer.run(ptf_datastore.cutouts)
     # check that the measurer actually loaded the measurements from db, and not recalculated
     assert len(ds.measurements) <= len(ds.cutouts)  # not all cutouts have saved measurements
@@ -28,7 +29,7 @@ def test_measurements_attributes(measurer, ptf_datastore):
     assert np.allclose(m.aper_radii, new_im.zp.aper_cor_radii)
     assert np.allclose(
         new_im.zp.aper_cor_radii,
-        new_im.psf.fwhm_pixels * np.array(new_im.instrument_object.standard_apertures()),
+        new_im.psf.fwhm_pixels * np.array(aper_radii),
     )
     assert m.mjd == new_im.mjd
     assert m.exp_time == new_im.exp_time

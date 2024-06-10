@@ -239,6 +239,27 @@ class PSFFormatConverter( EnumConverter ):
     _dict_inverse = None
 
 
+class BackgroundFormatConverter( EnumConverter ):
+    _dict = {
+        0: 'scalar',
+        1: 'map',
+        2: 'polynomial',
+    }
+    _allowed_values = None
+    _dict_filtered = None
+    _dict_inverse = None
+
+
+class BackgroundMethodConverter( EnumConverter ):
+    _dict = {
+        0: 'zero',
+        1: 'sep',
+    }
+    _allowed_values = None
+    _dict_filtered = None
+    _dict_inverse = None
+
+
 def bitflag_to_string(value, dictionary):
 
     """
@@ -361,6 +382,15 @@ catalog_match_badness_dict = {
 catalog_match_badness_inverse = {EnumConverter.c(v): k for k, v in catalog_match_badness_dict.items()}
 
 
+# TODO: need to consider what kinds of bad backgrounds we really might have
+# TODO: make sure we are not repeating the same keywords in other badness dictionaries
+bg_badness_dict = {
+    31: 'too dense',
+    32: 'bad fit',
+}
+bg_badness_inverse = {EnumConverter.c(v): k for k, v in bg_badness_dict.items()}
+
+
 # these are the ways a Cutouts object is allowed to be bad
 cutouts_badness_dict = {
     41: 'cosmic ray',
@@ -378,6 +408,9 @@ data_badness_dict = {}
 data_badness_dict.update(image_badness_dict)
 data_badness_dict.update(cutouts_badness_dict)
 data_badness_dict.update(source_list_badness_dict)
+data_badness_dict.update(psf_badness_dict)
+data_badness_dict.update(catalog_match_badness_dict)
+data_badness_dict.update(bg_badness_dict)
 data_badness_inverse = {EnumConverter.c(v): k for k, v in data_badness_dict.items()}
 if 0 in data_badness_inverse:
     raise ValueError('Cannot have a badness bitflag of zero. This is reserved for good data.')

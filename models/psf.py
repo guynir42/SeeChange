@@ -274,7 +274,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
           psfpath : str or Path, default None
             If None, files will be read using the get_fullpath() method
             to get the right files form the local store and/or archive
-            given the databse fields.  If not None, read _header and
+            given the database fields.  If not None, read _header and
             _data from this file.  (This exists so that this method may
             be used to load the data with a psf that's not yet in the
             database, without having to play games with the filepath
