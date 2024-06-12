@@ -764,7 +764,8 @@ class SourceList(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         with SmartSession(session) as session:
             subs = session.scalars(
                 sa.select(Image).where(
-                    Image.provenance.has(Provenance.upstreams.any(Provenance.id == self.provenance.id))
+                    Image.provenance.has(Provenance.upstreams.any(Provenance.id == self.provenance.id)),
+                    Image.upstream_images.any(Image.id == self.image_id),
                 )
             ).all()
             output = subs

@@ -121,10 +121,7 @@ class ParsDetector(Parameters):
         self.override(kwargs)
 
     def get_process_name(self):
-        if self.subtraction:
-            return 'detection'
-        else:
-            return 'extraction'
+        return 'detection'
 
 
 class Detector:
@@ -234,7 +231,7 @@ class Detector:
                     ds.sub_image = ds.image
                     ds.image = ds.sub_image.new_image  # back-fill the image from the sub_image
 
-                prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
+                prov = ds.get_provenance('detection', self.pars.get_critical_pars(), session=session)
 
                 detections = ds.get_detections(prov, session=session)
 
@@ -281,7 +278,7 @@ class Detector:
                 return ds
 
         else:  # regular image
-            prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
+            prov = ds.get_provenance('extraction', self.pars.get_critical_pars(), session=session)
             try:
                 t_start = time.perf_counter()
                 if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
