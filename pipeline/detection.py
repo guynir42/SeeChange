@@ -912,7 +912,8 @@ class Detector:
         # TODO: we should check if we still need this after b/g subtraction on the input images
         mu, sigma = sigma_clipping(score)
         score = (score - mu) / sigma
-        det_map = abs(score) > self.pars.threshold  # catch negative peaks too (can get rid of them later)
+        # det_map = abs(score) > self.pars.threshold  # catch negative peaks too (can get rid of them later)
+        det_map = score > self.pars.threshold
 
         # dilate the map to merge nearby peaks
         struc = np.zeros((3, 3), dtype=bool)

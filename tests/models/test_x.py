@@ -10,6 +10,9 @@ from models.source_list import SourceList
 from models.cutouts import Cutouts
 from models.measurements import Measurements
 
+import pdb
+import matplotlib.pyplot as plt
+
 
 def test_filtering_measurements(ptf_datastore):
     # printout the list of relevant environmental variables:
@@ -44,6 +47,7 @@ def test_filtering_measurements(ptf_datastore):
 
     m = measurements[0]  # grab the first one as an example
 
+    # pdb.set_trace()
     # test that we can filter on some measurements properties
     with SmartSession() as session:
         ms = session.scalars(sa.select(Measurements).where(Measurements.flux_apertures[0] > 0)).all()
