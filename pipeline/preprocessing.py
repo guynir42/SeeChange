@@ -136,7 +136,7 @@ class Preprocessor:
             SCLogger.debug("preprocessing: got calibrator files")
 
             # get the provenance for this step, using the current parameters:
-            prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
+            prov = ds.get_provenance('preprocessing', self.pars.get_critical_pars(), session=session)
 
             # check if the image already exists in memory or in the database:
             image = ds.get_image(prov, session=session)
