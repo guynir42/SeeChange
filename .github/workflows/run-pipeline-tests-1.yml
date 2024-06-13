@@ -1,12 +1,4 @@
-<<<<<<< HEAD
-<<<<<<< HEAD:.github/workflows/run-pipeline-tests-1.yml
 name: Run Pipeline Tests 1
-=======
-name: Run Pipeline Tests 2
->>>>>>> upstream/main:.github/workflows/run-pipeline-tests-2.yml
-=======
-name: Run Pipeline Tests 1
->>>>>>> upstream/main
 
 on:
   push:
@@ -67,15 +59,5 @@ jobs:
 
       - name: run test
         run: |
-<<<<<<< HEAD
-          shopt -s nullglob
-<<<<<<< HEAD:.github/workflows/run-pipeline-tests-1.yml
-          TEST_SUBFOLDER=$(ls tests/pipeline/test_{a..o}*.py) docker compose run runtests
-=======
-          TEST_SUBFOLDER=$(ls tests/pipeline/test_{p..z}*.py) docker compose run runtests
->>>>>>> upstream/main:.github/workflows/run-pipeline-tests-2.yml
-=======
-          df -h
           shopt -s nullglob
           TEST_SUBFOLDER=$(ls tests/pipeline/test_{a..o}*.py) docker compose run runtests
->>>>>>> upstream/main
