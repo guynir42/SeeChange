@@ -537,6 +537,17 @@ def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, de
 def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_tests):
     from pipeline.top_level import PROCESS_OBJECTS
     p = pipeline_for_tests
+
+    obj_to_process_name = {
+        'preprocessor': 'preprocessing',
+        'extractor': 'detection',
+        'astrometor': 'astro_cal',
+        'photometor': 'photo_cal',
+        'subtractor': 'subtraction',
+        'detector': 'detection',
+        'cutter': 'cutting',
+        'measurer': 'measuring',
+    }
     for process, objects in PROCESS_OBJECTS.items():
         if isinstance(objects, str):
             objects = [objects]
@@ -559,7 +570,8 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
 
             # run the pipeline
             ds = p.run(decam_datastore)
-            expected = f"{process}: <class 'UserWarning'> Warning injected by pipeline parameters in process '{process}'"
+            expected = (f"{process}: <class 'UserWarning'> Warning injected by pipeline parameters "
+                        f"in process '{obj_to_process_name[obj]}'")
             assert expected in ds.report.warnings
 
             # these are used to find the report later on
@@ -572,7 +584,10 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
             getattr(p, obj).pars.inject_exceptions = True
             # run the pipeline again, this time with an exception
 
-            with pytest.raises(RuntimeError, match=f"Exception injected by pipeline parameters in process '{process}'"):
+            with pytest.raises(
+                    RuntimeError,
+                    match=f"Exception injected by pipeline parameters in process '{obj_to_process_name[obj]}'"
+            ):
                 ds = p.run(decam_datastore)
 
             # fetch the report object
