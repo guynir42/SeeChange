@@ -12,6 +12,7 @@ from models.exposure import Exposure
 from models.image import Image, image_upstreams_association_table
 from models.source_list import SourceList
 from models.psf import PSF
+from models.background import Background
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
 from models.reference import Reference
@@ -790,7 +791,7 @@ class DataStore:
 
         return self.psf
 
-    def get_bg(self, provenance=None, session=None):
+    def get_background(self, provenance=None, session=None):
         """Get a Background object, either from memory or from the database.
 
         Parameters
@@ -820,9 +821,9 @@ class DataStore:
         if provenance is None:  # try to get the provenance from the prov_tree
             provenance = self._get_provenance_for_an_upstream(process_name, session)
 
-        # if psf exists in memory, check the provenance is ok
+        # if background exists in memory, check the provenance is ok
         if self.bg is not None:
-            # make sure the psf object has the correct provenance
+            # make sure the background object has the correct provenance
             if self.bg.provenance is None:
                 raise ValueError('Background has no provenance!')
             if provenance is not None and provenance.id != self.bg.provenance.id:

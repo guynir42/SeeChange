@@ -447,7 +447,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         'data',
         'flags',
         'weight',
-        'background',  # TODO: remove this when adding the Background object (issue #186)
         'score',  # the matched-filter score of the image (e.g., from ZOGY)
         'psfflux',  # the PSF-fitted equivalent flux of the image (e.g., from ZOGY)
         'psffluxerr', # the error in the PSF-fitted equivalent flux of the image (e.g., from ZOGY)
@@ -465,7 +464,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self._data = None  # the underlying pixel data array (2D float array)
         self._flags = None  # the bit-flag array (2D int array)
         self._weight = None  # the inverse-variance array (2D float array)
-        self._background = None  # an estimate for the background flux (2D float array)
         self._score = None  # the image after filtering with the PSF and normalizing to S/N units (2D float array)
         self._psfflux = None  # the PSF-fitted equivalent flux of the image (2D float array)
         self._psffluxerr = None  # the error in the PSF-fitted equivalent flux of the image (2D float array)

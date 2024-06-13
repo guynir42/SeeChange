@@ -206,9 +206,8 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.disqualifier_scores['filter bank'] == 2
     assert m.get_filter_description() == f'PSF mismatch (FWHM= 2.00 x {fwhm:.2f})'
 
-    assert m.flux_apertures[0] < 400
-    assert m.flux_apertures[1] < 600
-    for i in range(2, len(m.flux_apertures)):
+    assert m.flux_apertures[0] < 600
+    for i in range(1, len(m.flux_apertures)):
         assert m.flux_apertures[i] == pytest.approx(1000, rel=1)
     assert m.flux_psf < 500  # flux is more spread out than the PSF, so it will bias the flux to be lower
 

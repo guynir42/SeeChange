@@ -286,19 +286,6 @@ class Measurer:
                     m.flux_psf_err = fluxerr
                     m.area_psf = area
 
-                    # decide on the "best" aperture
-                    if self.pars.chosen_aperture == 'auto':
-                        raise NotImplementedError('Automatic aperture selection is not yet implemented.')
-                    if self.pars.chosen_aperture == 'psf':
-                        ap_index = -1
-                    elif isinstance(self.pars.chosen_aperture, int):
-                        ap_index = self.pars.chosen_aperture
-                    else:
-                        raise ValueError(
-                            f'Invalid value "{self.pars.chosen_aperture}" for chosen_aperture in the measuring parameters.'
-                        )
-                    m.best_aperture = ap_index
-
                     # update the provenance
                     m.provenance = prov
                     m.provenance_id = prov.id

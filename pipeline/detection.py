@@ -24,8 +24,9 @@ from pipeline.data_store import DataStore
 
 from models.base import FileOnDiskMixin, CODE_ROOT
 from models.image import Image
-from models.psf import PSF
 from models.source_list import SourceList
+from models.psf import PSF
+from models.background import Background
 
 from improc.tools import sigma_clipping
 
@@ -69,6 +70,22 @@ class ParsDetector(Parameters):
             'sep',
             str,
             'Method to use for background subtraction; currently only "sep" is supported.',
+            critical=True
+        )
+
+        self.background_box_size = self.add_par(
+            'background_box_size',
+            128,
+            int,
+            'Size of the box to use for background estimation in sep.',
+            critical=True
+        )
+
+        self.background_filt_size = self.add_par(
+            'background_filt_size',
+            3,
+            int,
+            'Size of the filter to use for background estimation in sep.',
             critical=True
         )
 
@@ -313,8 +330,9 @@ class Detector:
 
                 sources = ds.get_sources(prov, session=session)
                 psf = ds.get_psf(prov, session=session)
+                bg = ds.get_background(prov, session=session)
 
-                if sources is None or psf is None:
+                if sources is None or psf is None or bg is None:
                     # TODO: when only one of these is not found (which is a strange situation)
                     #  we may end up with a new version of the existing object
                     #  (if sources is missing, we will end up with one sources and two psfs).
@@ -331,6 +349,7 @@ class Detector:
                         raise ValueError(f'Cannot find an image corresponding to the datastore inputs: {ds.get_inputs()}')
 
                     sources, psf, bkg, bkgsig = self.extract_sources( image )
+
                     sources.image = image
                     if sources.provenance is None:
                         sources.provenance = prov
@@ -343,14 +362,50 @@ class Detector:
                         psf.provenance = prov
                     else:
                         if psf.provenance.id != prov.id:
-                            raise ValueError('Provenance mismatch for pfs and provenance!')
+                            raise ValueError('Provenance mismatch for PSF and extraction provenance!')
+
+                    # TODO: can we get this straight from sextractor?
+                    if self.pars.background_method == 'sep':
+                        # Estimate the background mean and RMS with sep
+                        boxsize = self.pars.background_box_size
+                        filtsize = self.pars.background_filt_size
+                        SCLogger.debug("Subtracting sky and estimating sky RMS")
+                        # Dysfunctionality alert: sep requires a *float* image for the mask
+                        # IEEE 32-bit floats have 23 bits in the mantissa, so they should
+                        # be able to precisely represent a 16-bit integer mask image
+                        # In any event, sep.Background uses >0 as "bad"
+                        fmask = np.array(image._flags, dtype=np.float32)
+                        backgrounder = sep.Background(image.data, mask=fmask,
+                                                      bw=boxsize, bh=boxsize, fw=filtsize, fh=filtsize)
+                        fmask = None
+                        bg = Background(
+                            value=np.nanmedian(backgrounder.back()),
+                            noise=np.nanmedian(backgrounder.rms()),
+                            counts=backgrounder.back(),
+                            rms=backgrounder.rms(),
+                            format='map',
+                            method='sep'
+                        )
+                    elif self.pars.background_method == 'zero':  # don't measure the b/g
+                        bg = Background(value=0, noise=0, format='scalar', method='zero')
+                    else:
+                        raise ValueError(f'Unknown background method "{self.pars.background_method}"')
+
+                    bg.image_id = image.id
+                    bg.image = image
+                    if bg.provenance is None:
+                        bg.provenance = prov
+                    else:
+                        if bg.provenance.id != prov.id:
+                            raise ValueError('Provenance mismatch for background and extraction provenance!')
 
                 ds.sources = sources
                 ds.psf = psf
+                ds.bg = bg
                 ds.image.fwhm_estimate = psf.fwhm_pixels  # TODO: should we only write if the property is None?
                 if self.has_recalculated:
-                    ds.image.bkg_mean_estimate = float( bkg )
-                    ds.image.bkg_rms_estimate = float( bkgsig )
+                    ds.image.bkg_mean_estimate = float( bg.value )
+                    ds.image.bkg_rms_estimate = float( bg.noise )
 
                 ds.runtimes['extraction'] = time.perf_counter() - t_start
                 if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
@@ -363,7 +418,25 @@ class Detector:
                 return ds
 
     def extract_sources(self, image):
-        """Calls one of the extraction methods, based on self.pars.method. """
+        """Calls one of the extraction methods, based on self.pars.method.
+
+        Parameters
+        ----------
+        image: Image
+          The Image object from which to extract sources.
+
+        Returns
+        -------
+        sources: SourceList object
+            A list of sources with their positions and fluxes.
+        psf: PSF object
+            An estimate for the point spread function of the image.
+        bkg: float
+            An estimate for the mean value of the background of the image.
+        bkgsig: float
+            An estimate for the standard deviation of the background of the image.
+
+        """
         sources = None
         psf = None
         bkg = None
@@ -383,14 +456,10 @@ class Detector:
         else:
             raise ValueError(f'Unknown extraction method "{self.pars.method}"')
 
-        if psf is not None:
-            if psf._upstream_bitflag is None:
-                psf._upstream_bitflag = 0
-            psf._upstream_bitflag |= image.bitflag
         if sources is not None:
-            if sources._upstream_bitflag is None:
-                sources._upstream_bitflag = 0
             sources._upstream_bitflag |= image.bitflag
+        if psf is not None:
+            psf._upstream_bitflag |= image.bitflag
 
         return sources, psf, bkg, bkgsig
 

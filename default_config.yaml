@@ -88,6 +88,8 @@ extraction:
     background_format: map
     background_order: 1
     background_method: sep
+    background_box_size: 128
+    background_filt_size: 3
     apertures: [1.0, 2.0, 3.0, 5.0]
     inf_aper_num: -1
     best_aper_num: 0
@@ -184,6 +186,7 @@ coaddition:
       measure_psf: true
       threshold: 3.0
       method: sextractor
+      background_method: zero
     # The following are used to override the regular astrometric calibration parameters
     wcs:
       cross_match_catalog: gaia_dr3

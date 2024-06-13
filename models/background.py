@@ -161,7 +161,13 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
     @property
     def rms(self):
+        if self.variance is None:
+            return None
         return np.sqrt(self.variance)
+
+    @rms.setter
+    def rms(self, value):
+        self.variance = value ** 2
 
     def _get_inverse_badness(self):
         """Get a dict with the allowed values of badness that can be assigned to this object"""
