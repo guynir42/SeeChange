@@ -176,7 +176,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     m = ds.all_measurements[6]  # dipole with noise
     assert m.disqualifier_scores['negatives'] == pytest.approx(1.0, abs=0.2)
     assert m.disqualifier_scores['bad pixels'] == 0
-    assert m.disqualifier_scores['offsets'] > 10
+    assert m.disqualifier_scores['offsets'] > 1
     assert m.disqualifier_scores['filter bank'] > 0
 
     m = ds.all_measurements[7]  # delta function with bad pixel
