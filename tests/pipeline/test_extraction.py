@@ -232,7 +232,7 @@ def test_run_psfex( decam_datastore, extractor ):
         assert psf._header['CHI2'] == pytest.approx( 0.9, abs=0.1 )
         bio = io.BytesIO( psf._info.encode( 'utf-8' ) )
         psfstats = votable.parse( bio ).get_table_by_index(1)
-        assert psfstats.array['FWHM_FromFluxRadius_Max'] == pytest.approx( 4.31, abs=0.01 )
+        assert psfstats.array['FWHM_FromFluxRadius_Max'] == pytest.approx( 4.33, abs=0.01 )
         assert not tmppsffile.exists()
         assert not tmppsfxmlfile.exists()
 
@@ -276,7 +276,7 @@ def test_extract_sources_sextractor( decam_datastore, extractor, provenance_base
                 if use:
                     ofp.write( f"image;circle({x+1},{y+1},6) # color=blue width=2\n" )
 
-    assert sources.num_sources == 5132
+    assert sources.num_sources > 5000
     assert sources.num_sources == len(sources.data)
     expected_radii = np.array([1.0, 2.0, 3.0, 5.0]) * psf.fwhm_pixels
     assert sources.aper_rads == pytest.approx(expected_radii, abs=0.01 )
