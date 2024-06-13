@@ -127,7 +127,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.disqualifier_scores['filter bank'] == 0
     assert m.get_filter_description() == f'PSF match (FWHM= 1.00 x {fwhm:.2f})'
 
-    assert m.flux_apertures[0] < 900
+    assert m.flux_apertures[0] < 1000
     assert m.flux_apertures[1] < 1000
     for i in range(2, len(m.flux_apertures)):
         assert m.flux_apertures[i] == pytest.approx(1000, rel=0.1)

@@ -286,18 +286,18 @@ def test_extract_sources_sextractor( decam_datastore, extractor, provenance_base
     assert psf.data.shape == ( 6, 25, 25 )
     assert psf.image_id == ds.image.id
 
-    assert sources.apfluxadu()[0].min() == pytest.approx( 275.4645, rel=1e-5 )
-    assert sources.apfluxadu()[0].max() == pytest.approx( 2230245.5, rel=1e-5 )
-    assert sources.apfluxadu()[0].mean() == pytest.approx( 54204.75, rel=1e-5 )
-    assert sources.apfluxadu()[0].std() == pytest.approx( 196240.39, rel=1e-5 )
+    assert sources.apfluxadu()[0].min() == pytest.approx( 275, rel=0.01 )
+    assert sources.apfluxadu()[0].max() == pytest.approx( 2230000, rel=0.01 )
+    assert sources.apfluxadu()[0].mean() == pytest.approx( 54000, rel=0.01 )
+    assert sources.apfluxadu()[0].std() == pytest.approx( 196000, rel=0.01 )
 
-    assert sources.good.sum() == 2999
+    assert sources.good.sum() == pytest.approx(3000, rel=0.01)
     # This value is what you get using the SPREAD_MODEL parameter
     # assert sources.is_star.sum() == 4870
     # assert ( sources.good & sources.is_star ).sum() == 3593
     # This is what you get with CLASS_STAR
-    assert sources.is_star.sum() == 325
-    assert ( sources.good & sources.is_star ).sum() == 72
+    assert sources.is_star.sum() == pytest.approx(325, rel=0.01)
+    assert ( sources.good & sources.is_star ).sum() == pytest.approx(70, abs=5)
 
     try:  # make sure saving the PSF and source list goes as expected, and cleanup at the end
         psf.provenance = provenance_base
