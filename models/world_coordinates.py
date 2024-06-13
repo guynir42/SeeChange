@@ -75,6 +75,7 @@ class WorldCoordinates(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
     def __init__(self, *args, **kwargs):
         FileOnDiskMixin.__init__( self, **kwargs )
+        HasBitFlagBadness.__init__(self)
         SeeChangeBase.__init__( self )
         self._wcs = None
 
@@ -223,4 +224,12 @@ class WorldCoordinates(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         with open( txtpath ) as ifp:
             headertxt = ifp.read()
             self.wcs = WCS( fits.Header.fromstring( headertxt , sep='\\n' ))
-    
+
+    def free(self):
+        """Free loaded world coordinates memory.
+
+        Wipe out the _wcs text field, freeing a small amount of memory.
+        Depends on python garbage collection, so if there are other
+        references to those objects, the memory won't actually be freed.
+        """
+        self._wcs = None

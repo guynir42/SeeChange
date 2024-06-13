@@ -94,6 +94,7 @@ class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
     )
 
     def __init__(self, *args, **kwargs):
+        HasBitFlagBadness.__init__(self)
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
 
         # manually set all properties (columns or not)

@@ -271,6 +271,7 @@ class DataStore:
         self.image = None  # single image from one sensor section
         self.sources = None  # extracted sources (a SourceList object, basically a catalog)
         self.psf = None  # psf determined from the extracted sources
+        self.bg = None  # background from the extraction phase
         self.wcs = None  # astrometric solution
         self.zp = None  # photometric calibration
         self.reference = None  # the Reference object needed to make subtractions
@@ -749,8 +750,6 @@ class DataStore:
             the current code version and critical parameters.
             If none is given, uses the appropriate provenance
             from the prov_tree dictionary.
-            If prov_tree is None, will use the latest provenance
-            for the "extraction" process.
             Usually the provenance is not given when the psf is loaded
             in order to be used as an upstream of the current process.
         session: sqlalchemy.orm.session.Session
@@ -790,6 +789,60 @@ class DataStore:
                     ).first()
 
         return self.psf
+
+    def get_bg(self, provenance=None, session=None):
+        """Get a Background object, either from memory or from the database.
+
+        Parameters
+        ----------
+        provenance: Provenance object
+            The provenance to use for the background.
+            This provenance should be consistent with
+            the current code version and critical parameters.
+            If none is given, uses the appropriate provenance
+            from the prov_tree dictionary.
+            Usually the provenance is not given when the background is loaded
+            in order to be used as an upstream of the current process.
+        session: sqlalchemy.orm.session.Session
+            An optional session to use for the database query.
+            If not given, will use the session stored inside the
+            DataStore object; if there is none, will open a new session
+            and close it at the end of the function.
+
+        Returns
+        -------
+        bg: Background object
+            The background object for this image,
+            or None if no matching background is found.
+
+        """
+        process_name = 'extraction'
+        if provenance is None:  # try to get the provenance from the prov_tree
+            provenance = self._get_provenance_for_an_upstream(process_name, session)
+
+        # if psf exists in memory, check the provenance is ok
+        if self.bg is not None:
+            # make sure the psf object has the correct provenance
+            if self.bg.provenance is None:
+                raise ValueError('Background has no provenance!')
+            if provenance is not None and provenance.id != self.bg.provenance.id:
+                self.bg = None
+
+        # TODO: do we need to test the b/g Provenance has upstreams consistent with self.image.provenance?
+
+        # not in memory, look for it on the DB
+        if self.bg is None:
+            with SmartSession(session, self.session) as session:
+                image = self.get_image(session=session)
+                if image is not None:
+                    self.bg = session.scalars(
+                        sa.select(Background).where(
+                            Background.image_id == image.id,
+                            Background.provenance.has(id=provenance.id),
+                        )
+                    ).first()
+
+        return self.bg
 
     def get_wcs(self, provenance=None, session=None):
         """Get an astrometric solution in the form of a WorldCoordinates object, from memory or from the database.
@@ -1485,8 +1538,9 @@ class DataStore:
             if self.image_id is None and self.image is not None:
                 self.image_id = self.image.id
 
-            self.psf = self.image.psf
             self.sources = self.image.sources
+            self.psf = self.image.psf
+            self.bg = self.image.bg
             self.wcs = self.image.wcs
             self.zp = self.image.zp
 

@@ -167,6 +167,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
     def __init__( self, *args, **kwargs ):
         FileOnDiskMixin.__init__( self, **kwargs )
+        HasBitFlagBadness.__init__(self)
         SeeChangeBase.__init__( self )
         self._header = None
         self._data = None
@@ -305,7 +306,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
             self._info = ifp.read()
 
     def free( self ):
-        """Free loaded world coordinates memory.
+        """Free loaded PSF memory.
 
         Wipe out the data, info, and header fields, freeing memory.
         Depends on python garbage collection, so if there are other

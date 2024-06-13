@@ -291,6 +291,7 @@ class Measurements(Base, AutoIDMixin, SpatiallyIndexed, HasBitFlagBadness):
 
     def __init__(self, **kwargs):
         SeeChangeBase.__init__(self)  # don't pass kwargs as they could contain non-column key-values
+        HasBitFlagBadness.__init__(self)
         self._cutouts_list_index = None  # helper (transient) attribute that helps find the right cutouts in a list
 
         # manually set all properties (columns or not)

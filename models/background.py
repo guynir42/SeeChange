@@ -169,6 +169,7 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
     def __init__( self, *args, **kwargs ):
         FileOnDiskMixin.__init__( self, **kwargs )
+        HasBitFlagBadness.__init__(self)
         SeeChangeBase.__init__( self )
         self._image_shape = None
         self._counts_data = None
