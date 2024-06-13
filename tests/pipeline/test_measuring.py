@@ -128,8 +128,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.get_filter_description() == f'PSF match (FWHM= 1.00 x {fwhm:.2f})'
 
     assert m.flux_apertures[0] < 1000
-    assert m.flux_apertures[1] < 1000
-    for i in range(2, len(m.flux_apertures)):
+    for i in range(1, len(m.flux_apertures)):
         assert m.flux_apertures[i] == pytest.approx(1000, rel=0.1)
     assert m.flux_psf == pytest.approx(1000, rel=0.1)
     assert m.background == pytest.approx(0, abs=0.01)
@@ -144,8 +143,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.disqualifier_scores['filter bank'] == 0
 
     assert m.flux_apertures[0] < 500
-    assert m.flux_apertures[1] < 500
-    for i in range(2, len(m.flux_apertures)):
+    for i in range(1, len(m.flux_apertures)):
         assert m.flux_apertures[i] == pytest.approx(500, rel=0.1)
     assert m.flux_psf == pytest.approx(500, rel=0.1)
     assert m.background == pytest.approx(0, abs=0.01)
@@ -172,8 +170,7 @@ def test_measuring(measurer, decam_cutouts, decam_default_calibrators):
     assert m.get_filter_description() == f'PSF match (FWHM= 1.00 x {fwhm:.2f})'
 
     assert m.flux_apertures[0] < 500
-    assert m.flux_apertures[1] < 500
-    for i in range(2, len(m.flux_apertures)):
+    for i in range(1, len(m.flux_apertures)):
         assert m.flux_apertures[i] == pytest.approx(500, rel=0.1)
 
     m = ds.all_measurements[6]  # dipole with noise
