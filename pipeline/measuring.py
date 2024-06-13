@@ -39,15 +39,11 @@ class ParsMeasurer(Parameters):
             'adjust the annulus size for each image based on the PSF width. '
         )
 
-        # TODO: should we choose the "best aperture" using the config, or should each Image have its own aperture?
-        self.chosen_aperture = self.add_par(
-            'chosen_aperture',
-            0,
-            [str, int],
-            'The aperture radius that is used for photometry. '
-            'Choose either the index in the aperture_radii list, '
-            'the string "psf", or the string "auto" to choose '
-            'the best aperture in each image separately. '
+        self.use_annulus_for_centroids = self.add_par(
+            'use_annulus_for_centroids',
+            True,
+            bool,
+            'Use the local background measurements via an annulus to adjust the centroids and second moments. '
         )
 
         self.analytical_cuts = self.add_par(
@@ -217,6 +213,7 @@ class Measurer:
                     # make sure to remember which cutout belongs to this measurement,
                     # before either of them is in the DB and then use the cutouts_id instead
                     m._cutouts_list_index = i
+                    m.best_aperture = c.sources.best_aper_num
 
                     m.aper_radii = c.sources.image.new_image.zp.aper_cor_radii  # zero point corrected aperture radii
 
@@ -239,6 +236,7 @@ class Measurer:
                         flags,
                         radii=m.aper_radii,
                         annulus=annulus_radii_pixels,
+                        local_bg=self.pars.use_annulus_for_centroids,
                     )
 
                     m.flux_apertures = output['fluxes']

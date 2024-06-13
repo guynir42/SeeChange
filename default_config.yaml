@@ -127,7 +127,7 @@ cutting:
 measuring:
   annulus_radii: [10, 15]
   annulus_units: pixels
-  chosen_aperture: 0
+  use_annulus_for_centroids: true
   analytical_cuts: ['negatives', 'bad pixels', 'offsets', 'filter bank']
   outlier_sigma: 3.0
   bad_pixel_radius: 3.0
