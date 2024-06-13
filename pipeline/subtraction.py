@@ -258,7 +258,7 @@ class Subtractor:
                         f'Cannot find a reference image corresponding to the datastore inputs: {ds.get_inputs()}'
                     )
 
-                prov = ds.get_provenance(self.pars.get_process_name(), self.pars.get_critical_pars(), session=session)
+                prov = ds.get_provenance('subtraction', self.pars.get_critical_pars(), session=session)
                 sub_image = ds.get_subtraction(prov, session=session)
 
                 if sub_image is None:

@@ -464,7 +464,6 @@ class DataStore:
         ----------
         process: str
             The name of the process, e.g., "preprocess", "extraction", "subtraction".
-            Use a Parameter object's get_process_name().
         pars_dict: dict
             A dictionary of parameters used for the process.
             These include the critical parameters for this process.
