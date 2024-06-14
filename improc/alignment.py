@@ -520,6 +520,12 @@ class ImageAligner:
         if target_image == source_image:
             warped_image = Image.copy_image( source_image )
             warped_image.type = 'Warped'
+            if source_image.bg is None:
+                warnings.warn("No background image found. Using original image data.")
+                warped_image.data = source_image.data
+            else:
+                warped_image.data = source_image.data_bg
+
             warped_image.psf = source_image.psf
             warped_image.zp = source_image.zp
             warped_image.wcs = source_image.wcs

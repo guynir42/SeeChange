@@ -20,6 +20,7 @@ from models.exposure import Exposure
 from models.image import Image
 from models.source_list import SourceList
 from models.psf import PSF
+from models.background import Background
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
 from models.reference import Reference
@@ -422,7 +423,7 @@ def ptf_ref(
             is_testing=True,
         )
 
-        cache_base_name = f'187/PTF_20090405_073932_11_R_ComSci_{im_prov.id[:6]}_u-wswtff'
+        cache_base_name = f'187/PTF_20090405_073932_11_R_ComSci_{im_prov.id[:6]}_u-iqxrjn'
 
         # this provenance is used for sources, psf, wcs, zp
         sources_prov = Provenance(
@@ -434,8 +435,9 @@ def ptf_ref(
         )
     extensions = [
         'image.fits',
-        f'psf_{sources_prov.id[:6]}.fits',
         f'sources_{sources_prov.id[:6]}.fits',
+        f'psf_{sources_prov.id[:6]}.fits',
+        f'bg_{sources_prov.id[:6]}.h5',
         f'wcs_{sources_prov.id[:6]}.txt',
         'zp'
     ]
@@ -452,17 +454,22 @@ def ptf_ref(
         coadd_image.ref_image_id = ptf_reference_images[-1].id  # make sure to replace the ID with the new DB value
         assert coadd_image.provenance_id == coadd_image.provenance.id
 
-        # get the PSF:
-        coadd_image.psf = copy_from_cache(PSF, ptf_cache_dir, cache_base_name + f'.psf_{sources_prov.id[:6]}.fits')
-        coadd_image.psf.provenance = sources_prov
-        assert coadd_image.psf.provenance_id == coadd_image.psf.provenance.id
-
         # get the source list:
         coadd_image.sources = copy_from_cache(
             SourceList, ptf_cache_dir, cache_base_name + f'.sources_{sources_prov.id[:6]}.fits'
         )
         coadd_image.sources.provenance = sources_prov
         assert coadd_image.sources.provenance_id == coadd_image.sources.provenance.id
+
+        # get the PSF:
+        coadd_image.psf = copy_from_cache(PSF, ptf_cache_dir, cache_base_name + f'.psf_{sources_prov.id[:6]}.fits')
+        coadd_image.psf.provenance = sources_prov
+        assert coadd_image.psf.provenance_id == coadd_image.psf.provenance.id
+
+        # get the background:
+        coadd_image.bg = copy_from_cache(Background, ptf_cache_dir, cache_base_name + f'.bg_{sources_prov.id[:6]}.h5')
+        coadd_image.bg.provenance = sources_prov
+        assert coadd_image.bg.provenance_id == coadd_image.bg.provenance.id
 
         # get the WCS:
         coadd_image.wcs = copy_from_cache(
@@ -491,6 +498,7 @@ def ptf_ref(
             copy_to_cache(pipe.datastore.image, ptf_cache_dir)
             copy_to_cache(pipe.datastore.sources, ptf_cache_dir)
             copy_to_cache(pipe.datastore.psf, ptf_cache_dir)
+            copy_to_cache(pipe.datastore.bg, ptf_cache_dir)
             copy_to_cache(pipe.datastore.wcs, ptf_cache_dir)
             copy_to_cache(pipe.datastore.zp, ptf_cache_dir, cache_base_name + '.zp.json')
 

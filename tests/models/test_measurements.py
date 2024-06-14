@@ -74,7 +74,7 @@ def test_measurements_attributes(measurer, ptf_datastore, test_config):
     # TODO: add test for limiting magnitude (issue #143)
 
 
-@pytest.mark.skip(reason="This test fails on GA but not locally, see issue #306")
+# @pytest.mark.skip(reason="This test fails on GA but not locally, see issue #306")
 # @pytest.mark.flaky(max_runs=3)
 def test_filtering_measurements(ptf_datastore):
     # printout the list of relevant environmental variables:
