@@ -346,6 +346,19 @@ def string_to_bitflag(value, dictionary):
         return output
 
 
+# bitflag for image preprocessing steps that have been done
+image_preprocessing_dict = {
+    0: 'overscan',
+    1: 'zero',
+    2: 'dark',
+    3: 'linearity',
+    4: 'flat',
+    5: 'fringe',
+    6: 'illumination'
+}
+image_preprocessing_inverse = {EnumConverter.c(v):k for k, v in image_preprocessing_dict.items()}
+
+
 # these are the ways an Image or Exposure are allowed to be bad
 image_badness_dict = {
     1: 'banding',
@@ -441,6 +454,7 @@ image_preprocessing_dict = {
     6: 'illumination'
 }
 image_preprocessing_inverse = {EnumConverter.c(v):k for k, v in image_preprocessing_dict.items()}
+
 
 # bitflag used in flag images
 flag_image_bits = {
