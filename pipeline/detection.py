@@ -375,12 +375,12 @@ class Detector:
                         # be able to precisely represent a 16-bit integer mask image
                         # In any event, sep.Background uses >0 as "bad"
                         fmask = np.array(image._flags, dtype=np.float32)
-                        backgrounder = sep.Background(image.data, mask=fmask,
+                        backgrounder = sep.Background(image.data.copy(), mask=fmask,
                                                       bw=boxsize, bh=boxsize, fw=filtsize, fh=filtsize)
                         fmask = None
                         bg = Background(
-                            value=np.nanmedian(backgrounder.back()),
-                            noise=np.nanmedian(backgrounder.rms()),
+                            value=float(np.nanmedian(backgrounder.back())),
+                            noise=float(np.nanmedian(backgrounder.rms())),
                             counts=backgrounder.back(),
                             rms=backgrounder.rms(),
                             format='map',

@@ -3,6 +3,7 @@ import pathlib
 import random
 import time
 import subprocess
+import warnings
 
 import numpy as np
 
@@ -12,7 +13,7 @@ from astropy.io import fits
 
 from util import ldac
 from util.exceptions import SubprocessFailure
-from util.util import read_fits_image
+from util.util import read_fits_image, save_fits_image_file
 from util.logger import SCLogger
 import improc.scamp
 import improc.tools
@@ -347,14 +348,26 @@ class ImageAligner:
             # putting in a symbolic link for the full FITS, instead of
             # copying the FITS data as here.  Look into that.)
 
-            with fits.open( impaths[imdex], mode='readonly' ) as hdul:
-                improc.tools.strip_wcs_keywords( hdul[0].header )
-                hdul[0].header.update( imagewcs.wcs.to_header() )
-                hdul.writeto( tmpim )
-            with fits.open( impaths[fldex], mode='readonly' ) as hdul:
-                improc.tools.strip_wcs_keywords( hdul[0].header )
-                hdul[0].header.update( imagewcs.wcs.to_header() )
-                hdul.writeto( tmpflags )
+            hdr = image.header.copy()
+            improc.tools.strip_wcs_keywords(hdr)
+            hdr.update(imagewcs.wcs.to_header())
+            if image.bg is None:
+                # to avoid this warning, consider adding a "zero" background object to the image
+                warnings.warn("No background image found. Using original image data.")
+                data = image.data
+            else:
+                data = image.data_bg
+            save_fits_image_file(tmpim, data, hdr, extname=None, single_file=False)
+            save_fits_image_file(tmpflags, image.flags, hdr, extname=None, single_file=False)
+
+            # with fits.open( impaths[imdex], mode='readonly' ) as hdul:
+            #     improc.tools.strip_wcs_keywords( hdul[0].header )
+            #     hdul[0].header.update( imagewcs.wcs.to_header() )
+            #     hdul.writeto( tmpim )
+            # with fits.open( impaths[fldex], mode='readonly' ) as hdul:
+            #     improc.tools.strip_wcs_keywords( hdul[0].header )
+            #     hdul[0].header.update( imagewcs.wcs.to_header() )
+            #     hdul.writeto( tmpflags )
 
             swarp_vmem_dir.mkdir( exist_ok=True, parents=True )
 
@@ -402,8 +415,9 @@ class ImageAligner:
 
             warpedim.data, warpedim.header = read_fits_image( outim, output="both" )
             # TODO: either make this not a hardcoded header value, or verify
-            # that we've constructed these images to have these hardcoded values
-            # (which would probably be a mistake, since it a priori assumes two amps).
+            #  that we've constructed these images to have these hardcoded values
+            #  (which would probably be a mistake, since it a priori assumes two amps).
+            #  Issue #216
             for att in ['SATURATA', 'SATURATB']:
                 if att in image.header:
                     warpedim.header[att] = image.header[att]

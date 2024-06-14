@@ -292,7 +292,7 @@ class Cutouts(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagBa
             filename = os.path.splitext(filename)[0]
 
         filename += '.cutouts_'
-        self.provenance.update_id()
+        # self.provenance.update_id()
         filename += self.provenance.id[:6]
         if self.format == 'hdf5':
             filename += '.h5'

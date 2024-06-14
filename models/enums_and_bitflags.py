@@ -372,6 +372,12 @@ source_list_badness_dict = {
 source_list_badness_inverse = {EnumConverter.c(v): k for k, v in source_list_badness_dict.items()}
 
 
+# these are the ways a Background object is allowed to be bad
+background_badness_dict = {
+
+}
+
+
 # these are the ways a WorldCoordinates/ZeroPoint object is allowed to be bad
 # mostly due to bad matches to the catalog
 catalog_match_badness_dict = {
@@ -409,6 +415,7 @@ data_badness_dict.update(image_badness_dict)
 data_badness_dict.update(cutouts_badness_dict)
 data_badness_dict.update(source_list_badness_dict)
 data_badness_dict.update(psf_badness_dict)
+data_badness_dict.update(bg_badness_dict)
 data_badness_dict.update(catalog_match_badness_dict)
 data_badness_dict.update(bg_badness_dict)
 data_badness_inverse = {EnumConverter.c(v): k for k, v in data_badness_dict.items()}
@@ -421,6 +428,7 @@ class BadnessConverter( EnumConverter ):
     _allowed_values = data_badness_dict
     _dict_filtered = None
     _dict_inverse = None
+
 
 # bitflag for image preprocessing steps that have been done
 image_preprocessing_dict = {
@@ -454,7 +462,7 @@ class BitFlagConverter( EnumConverter ):
 # the list of possible processing steps from a section of an exposure up to measurements, r/b scores, and report
 process_steps_dict = {
     1: 'preprocessing',  # creates an Image from a section of the Exposure
-    2: 'extraction',     # creates a SourceList from an Image, and a PSF
+    2: 'extraction',     # creates a SourceList, PSF, Background, WorldCoordinates, and ZeroPoint from an Image
     5: 'subtraction',    # creates a subtraction Image
     6: 'detection',      # creates a SourceList from a subtraction Image
     7: 'cutting',        # creates Cutouts from a subtraction Image
@@ -469,7 +477,7 @@ pipeline_products_dict = {
     1: 'image',
     2: 'sources',
     3: 'psf',
-    # 4: 'background',  # not yet implemented
+    4: 'bg',
     5: 'wcs',
     6: 'zp',
     7: 'sub_image',

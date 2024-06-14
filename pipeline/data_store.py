@@ -57,6 +57,7 @@ class DataStore:
         'image',
         'sources',
         'psf',
+        'bg',
         'wcs',
         'zp',
         'sub_image',
@@ -367,6 +368,12 @@ class DataStore:
             if key == 'sources' and not isinstance(value, SourceList):
                 raise ValueError(f'sources must be a SourceList object, got {type(value)}')
 
+            if key == 'psf' and not isinstance(value, PSF):
+                raise ValueError(f'psf must be a PSF object, got {type(value)}')
+
+            if key == 'bg' and not isinstance(value, Background):
+                raise ValueError(f'bg must be a Background object, got {type(value)}')
+
             if key == 'wcs' and not isinstance(value, WorldCoordinates):
                 raise ValueError(f'WCS must be a WorldCoordinates object, got {type(value)}')
 
@@ -663,7 +670,7 @@ class DataStore:
                             sa.select(Image).where(
                                 Image.exposure_id == self.exposure_id,
                                 Image.section_id == str(self.section_id),
-                                Image.provenance.has(id=provenance.id)
+                                Image.provenance_id == provenance.id,
                             )
                         ).first()
 
@@ -675,7 +682,7 @@ class DataStore:
         pipeline applications, to make sure the image
         object has all the data products it needs.
         """
-        for att in ['sources', 'psf', 'wcs', 'zp', 'detections', 'cutouts', 'measurements']:
+        for att in ['sources', 'psf', 'bg', 'wcs', 'zp', 'detections', 'cutouts', 'measurements']:
             if getattr(self, att, None) is not None:
                 setattr(image, att, getattr(self, att))
         if image.sources is not None:
@@ -734,7 +741,7 @@ class DataStore:
                         sa.select(SourceList).where(
                             SourceList.image_id == image.id,
                             SourceList.is_sub.is_(False),
-                            SourceList.provenance.has(id=provenance.id),
+                            SourceList.provenance_id == provenance.id,
                         )
                     ).first()
 
@@ -786,7 +793,7 @@ class DataStore:
                 image = self.get_image(session=session)
                 if image is not None:
                     self.psf = session.scalars(
-                        sa.select(PSF).where(PSF.image_id == image.id, PSF.provenance.has(id=provenance.id))
+                        sa.select(PSF).where(PSF.image_id == image.id, PSF.provenance_id == provenance.id)
                     ).first()
 
         return self.psf
@@ -839,7 +846,7 @@ class DataStore:
                     self.bg = session.scalars(
                         sa.select(Background).where(
                             Background.image_id == image.id,
-                            Background.provenance.has(id=provenance.id),
+                            Background.provenance_id == provenance.id,
                         )
                     ).first()
 
@@ -894,7 +901,7 @@ class DataStore:
                 if sources is not None and sources.id is not None:
                     self.wcs = session.scalars(
                         sa.select(WorldCoordinates).where(
-                            WorldCoordinates.sources_id == sources.id, WorldCoordinates.provenance.has(id=provenance.id)
+                            WorldCoordinates.sources_id == sources.id, WorldCoordinates.provenance_id == provenance.id
                         )
                     ).first()
 
@@ -949,7 +956,7 @@ class DataStore:
                 if sources is not None and sources.id is not None:
                     self.zp = session.scalars(
                         sa.select(ZeroPoint).where(
-                            ZeroPoint.sources_id == sources.id, ZeroPoint.provenance.has(id=provenance.id)
+                            ZeroPoint.sources_id == sources.id, ZeroPoint.provenance_id == provenance.id
                         )
                     ).first()
 
@@ -1188,7 +1195,7 @@ class DataStore:
                             aliased_table.c.upstream_id == image.id,
                             aliased_table.c.downstream_id == Image.id,
                         )
-                    ).where(Image.provenance.has(id=provenance.id))
+                    ).where(Image.provenance_id == provenance.id)
                 ).first()
 
         if self.sub_image is not None:
@@ -1243,7 +1250,7 @@ class DataStore:
                     sa.select(SourceList).where(
                         SourceList.image_id == sub_image.id,
                         SourceList.is_sub.is_(True),
-                        SourceList.provenance.has(id=provenance.id),
+                        SourceList.provenance_id == provenance.id,
                     )
                 ).first()
 
@@ -1288,7 +1295,7 @@ class DataStore:
                 if self.cutouts[0].provenance is None:
                     raise ValueError('Cutouts have no provenance!')
                 if provenance is not None and provenance.id != self.cutouts[0].provenance.id:
-                    self.detections = None
+                    self.cutouts = None
 
         # not in memory, look for it on the DB
         if self.cutouts is None:
@@ -1307,7 +1314,7 @@ class DataStore:
                 self.cutouts = session.scalars(
                     sa.select(Cutouts).where(
                         Cutouts.sources_id == sub_image.sources.id,
-                        Cutouts.provenance.has(id=provenance.id),
+                        Cutouts.provenance_id == provenance.id,
                     )
                 ).all()
 
@@ -1358,7 +1365,7 @@ class DataStore:
                 self.measurements = session.scalars(
                     sa.select(Measurements).where(
                         Measurements.cutouts_id.in_(cutout_ids),
-                        Measurements.provenance.has(id=provenance.id),
+                        Measurements.provenance_id == provenance.id,
                     )
                 ).all()
 
@@ -1389,7 +1396,7 @@ class DataStore:
             no nested). Any None values will be removed.
         """
         attributes = [] if omit_exposure else [ '_exposure' ]
-        attributes.extend( [ 'image', 'wcs', 'sources', 'psf', 'zp', 'sub_image',
+        attributes.extend( [ 'image', 'wcs', 'sources', 'psf', 'bg', 'zp', 'sub_image',
                              'detections', 'cutouts', 'measurements' ] )
         result = {att: getattr(self, att) for att in attributes}
         if output == 'dict':
@@ -1484,7 +1491,7 @@ class DataStore:
                 continue
 
             SCLogger.debug( f'save_and_commit considering a {obj.__class__.__name__} with filepath '
-                           f'{obj.filepath if isinstance(obj,FileOnDiskMixin) else "<none>"}' )
+                            f'{obj.filepath if isinstance(obj,FileOnDiskMixin) else "<none>"}' )
 
             if isinstance(obj, FileOnDiskMixin):
                 mustsave = True
@@ -1527,7 +1534,7 @@ class DataStore:
         with SmartSession(session, self.session) as session:
             if self.image is not None:
                 self.image = self.image.merge_all(session)
-                for att in ['sources', 'psf', 'wcs', 'zp']:
+                for att in ['sources', 'psf', 'bg', 'wcs', 'zp']:
                     setattr(self, att, None)  # avoid automatically appending to the image self's non-merged products
                 for att in ['exposure', 'sources', 'psf', 'wcs', 'zp']:
                     if getattr(self.image, att, None) is not None:
@@ -1546,7 +1553,7 @@ class DataStore:
             self.zp = self.image.zp
 
             session.commit()
-            self.products_committed = 'image, sources, psf, wcs, zp'
+            self.products_committed = 'image, sources, psf, wcs, zp, bg'
 
             if self.sub_image is not None:
                 if self.reference is not None:
@@ -1563,7 +1570,8 @@ class DataStore:
                 if self.cutouts is not None:
                     if self.measurements is not None:  # keep track of which cutouts goes to which measurements
                         for m in self.measurements:
-                            m._cutouts_list_index = self.cutouts.index(m.cutouts)
+                            idx = [c.index_in_sources for c in self.cutouts].index(m.cutouts.index_in_sources)
+                            m._cutouts_list_index = idx
                     for cutout in self.cutouts:
                         cutout.sources = self.detections
                     self.cutouts = Cutouts.merge_list(self.cutouts, session)

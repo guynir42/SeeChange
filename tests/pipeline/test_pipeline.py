@@ -171,7 +171,7 @@ def test_parameters( test_config ):
         'subtraction': { 'method': 'override' },
         'detection': { 'threshold': 3.14 },
         'cutting': { 'cutout_size': 666 },
-        'measuring': { 'chosen_aperture': 1 }
+        'measuring': { 'outlier_sigma': 3.5 }
     }
     pipelinemodule = {
         'preprocessing': 'preprocessor',
@@ -232,7 +232,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
             check_datastore_and_database_have_everything(exposure.id, sec_id, ref.image.id, session, ds)
 
         # feed the pipeline the same data, but missing the upstream data. TODO: add cutouts and measurements
-        attributes = ['image', 'sources', 'wcs', 'zp', 'sub_image', 'detections']
+        attributes = ['image', 'sources', 'sub_image', 'detections', 'cutouts', 'measurements']
 
         for i in range(len(attributes)):
             for j in range(i + 1):

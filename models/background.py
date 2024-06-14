@@ -327,9 +327,9 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                     f'Loaded background format "{loaded_format}" does not match the expected format "{self.format}".'
                 )
 
-            self.value = h5f['background'].attrs['value']
-            self.noise = h5f['background'].attrs['noise']
-            self.image_shape = h5f['background'].attrs['image_shape']
+            self.value = float(h5f['background'].attrs['value'])
+            self.noise = float(h5f['background'].attrs['noise'])
+            self.image_shape = tuple(h5f['background'].attrs['image_shape'])
 
             if loaded_format == 'map':
                 self._counts_data = h5f['background/counts'][:]

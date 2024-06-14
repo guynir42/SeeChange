@@ -109,6 +109,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
         lazy='selectin',
+        join_depth=1,  # this enables the eager load of one generation of upstreams
         order_by='images.c.mjd',  # in chronological order of exposure start time
         doc='Images used to produce a multi-image object, like a coadd or a subtraction. '
     )

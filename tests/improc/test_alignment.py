@@ -35,10 +35,17 @@ def test_warp_decam( decam_datastore, decam_reference ):
         # Check a couple of spots on the image
         # First, around a star:
         assert ds.image.data[ 2223:2237, 545:559 ].sum() == pytest.approx( 58014.1, rel=0.01 )
-        assert warped.data[ 2223:2237, 545:559 ].sum() == pytest.approx( 22597.9, rel=0.01 )
-        # And a blank spot
-        assert ds.image.data[ 2243:2257, 575:589 ].sum() == pytest.approx( 35298.6, rel=0.01 )    # sky not subtracted
-        assert warped.data[ 2243:2257, 575:589 ].sum() == pytest.approx( 971.7, rel=0.01 )
+        assert warped.data[ 2223:2237, 545:559 ].sum() == pytest.approx( 21602.75, rel=0.01 )
+
+        # And a blank spot (here we can do some statistics instead of hard coded values)
+        num_pix = ds.image.data[2243:2257, 575:589].size
+        bg_mean = num_pix * ds.image.bg.value
+        bg_noise = np.sqrt(num_pix) * ds.image.bg.noise
+        assert abs(ds.image.data[ 2243:2257, 575:589 ].sum() - bg_mean) < bg_noise
+
+        bg_mean = 0  # assume the warped image is background subtracted
+        bg_noise = np.sqrt(num_pix) * ds.ref_image.bg.noise
+        assert abs(warped.data[ 2243:2257, 575:589 ].sum() - bg_mean) < bg_noise
 
         # Make sure the warped image WCS is about right.  We don't
         # expect it to be exactly identical, but it should be very

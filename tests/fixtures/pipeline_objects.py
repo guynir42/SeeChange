@@ -15,6 +15,7 @@ from models.enums_and_bitflags import BitFlagConverter
 from models.image import Image
 from models.source_list import SourceList
 from models.psf import PSF
+from models.background import Background
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
 from models.cutouts import Cutouts
@@ -554,15 +555,15 @@ def datastore_factory(data_dir, pipeline_factory):
                     ds.psf.save(verify_md5=False, overwrite=True)
 
                 # try to get the background from cache
-                cache_name = f'{cache_base_name}.bg_{prov.id[:6]}.fits.json'
+                cache_name = f'{cache_base_name}.bg_{prov.id[:6]}.h5.json'
                 bg_cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(bg_cache_path):
                     SCLogger.debug('loading background from cache. ')
-                    ds.bg = copy_from_cache(Image, cache_dir, cache_name)
+                    ds.bg = copy_from_cache(Background, cache_dir, cache_name)
 
                     # if BG already exists on the database, use that instead of this one
                     existing = session.scalars(
-                        sa.select(Image).where(Image.filepath == ds.bg.filepath)
+                        sa.select(Background).where(Background.filepath == ds.bg.filepath)
                     ).first()
                     if existing is not None:
                         # overwrite the existing row data using the JSON cache file
@@ -668,7 +669,7 @@ def datastore_factory(data_dir, pipeline_factory):
                 ds.bg.save(overwrite=True)
                 if cache_dir is not None and cache_base_name is not None:
                     output_path = copy_to_cache(ds.bg, cache_dir)
-                    if cache_dir is not None and cache_base_name is not None and output_path != psf_cache_path:
+                    if cache_dir is not None and cache_base_name is not None and output_path != bg_cache_path:
                         warnings.warn(f'cache path {bg_cache_path} does not match output path {output_path}')
 
                 SCLogger.debug('Running astrometric calibration')
