@@ -9,7 +9,7 @@ import sqlalchemy.orm as orm
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.schema import UniqueConstraint
 
-from models.base import Base, SeeChangeBase, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness
+from models.base import Base, SeeChangeBase, SmartSession, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness
 from models.image import Image
 
 from models.enums_and_bitflags import BackgroundFormatConverter, BackgroundMethodConverter, bg_badness_inverse
@@ -354,3 +354,67 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         """
         self._counts_data = None
         self._var_data = None
+
+    def get_upstreams(self, session=None):
+        """Get the image that was used to make this Background object. """
+        with SmartSession(session) as session:
+            return session.scalars(sa.select(Image).where(Image.id == self.image_id)).all()
+
+    def get_downstreams(self, session=None, siblings=False):
+        """Get the downstreams of this Background object.
+
+        If siblings=True then also include the SourceList, PSF, WCS, and ZP
+        that were created at the same time as this PSF.
+        """
+        from models.source_list import SourceList
+        from models.psf import PSF
+        from models.world_coordinates import WorldCoordinates
+        from models.zero_point import ZeroPoint
+        from models.provenance import Provenance
+
+        with SmartSession(session) as session:
+            subs = session.scalars(
+                sa.select(Image).where(
+                    Image.provenance.has(Provenance.upstreams.any(Provenance.id == self.provenance.id)),
+                    Image.upstream_images.any(Image.id == self.image_id),
+                )
+            ).all()
+            output = subs
+
+            if siblings:
+                # There should be exactly one source list, wcs, and zp per PSF, with the same provenance
+                # as they are created at the same time.
+                sources = session.scalars(
+                    sa.select(SourceList).where(
+                        SourceList.image_id == self.image_id, SourceList.provenance_id == self.provenance_id
+                    )
+                ).all()
+                if len(sources) != 1:
+                    raise ValueError(f"Expected exactly one source list for PSF {self.id}, but found {len(sources)}")
+
+                output.append(sources[0])
+
+                psfs = session.scalars(
+                    sa.select(PSF).where(PSF.image_id == self.image_id, PSF.provenance_id == self.provenance_id)
+                ).all()
+                if len(psfs) != 1:
+                    raise ValueError(f"Expected exactly one PSF for PSF {self.id}, but found {len(psfs)}")
+
+                output.append(psfs[0])
+
+                wcs = session.scalars(
+                    sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == sources.id)
+                ).all()
+                if len(wcs) != 1:
+                    raise ValueError(f"Expected exactly one wcs for PSF {self.id}, but found {len(wcs)}")
+
+                output.append(wcs[0])
+
+                zp = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == sources.id)).all()
+
+                if len(zp) != 1:
+                    raise ValueError(f"Expected exactly one zp for PSF {self.id}, but found {len(zp)}")
+
+                output.append(zp[0])
+
+        return output

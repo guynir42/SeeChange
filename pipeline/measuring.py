@@ -243,8 +243,9 @@ class Measurer:
                     m.flux_apertures_err = [np.sqrt(output['variance']) * norm for norm in output['normalizations']]
                     m.aper_radii = output['radii']
                     m.area_apertures = output['areas']
-                    m.background = output['background']
-                    m.background_err = np.sqrt(output['variance'])
+                    m.bkg_mean = output['background']
+                    m.bkg_std = np.sqrt(output['variance'])
+                    m.bkg_pix = output['n_pix_bg']
                     m.offset_x = output['offset_x']
                     m.offset_y = output['offset_y']
                     m.width = (output['major'] + output['minor']) / 2
@@ -292,10 +293,10 @@ class Measurer:
 
                     # Apply analytic cuts to each stamp image, to rule out artefacts.
                     m.disqualifier_scores = {}
-                    if m.background != 0 and m.background_err > 0.1:
-                        norm_data = (c.sub_nandata - m.background) / m.background_err  # normalize
+                    if m.bkg_mean != 0 and m.bkg_std > 0.1:
+                        norm_data = (c.sub_nandata - m.bkg_mean) / m.bkg_std  # normalize
                     else:
-                        warnings.warn(f'Background mean= {m.background}, std= {m.background_err}, normalization skipped!')
+                        warnings.warn(f'Background mean= {m.bkg_mean}, std= {m.bkg_std}, normalization skipped!')
                         norm_data = c.sub_nandata  # no good background measurement, do not normalize!
 
                     positives = np.sum(norm_data > self.pars.outlier_sigma)

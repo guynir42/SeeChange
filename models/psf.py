@@ -523,17 +523,18 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                                               )
 
     def get_upstreams(self, session=None):
-        """Get the image that was used to make this source list. """
+        """Get the image that was used to make this PSF. """
         with SmartSession(session) as session:
             return session.scalars(sa.select(Image).where(Image.id == self.image_id)).all()
         
     def get_downstreams(self, session=None, siblings=False):
         """Get the downstreams of this PSF.
 
-        If siblings=True then also include the SourceLists, WCSes, ZPs and background objects
+        If siblings=True then also include the SourceList, WCS, ZP and background object
         that were created at the same time as this PSF.
         """
         from models.source_list import SourceList
+        from models.background import Background
         from models.world_coordinates import WorldCoordinates
         from models.zero_point import ZeroPoint
         from models.provenance import Provenance
@@ -560,7 +561,16 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
 
                 output.append(sources[0])
 
-                # TODO: add background object
+                bgs = session.scalars(
+                    sa.select(Background).where(
+                        Background.image_id == self.image_id,
+                        Background.provenance_id == self.provenance_id
+                    )
+                ).all()
+                if len(bgs) != 1:
+                    raise ValueError(f"Expected exactly one Background for SourceList {self.id}, but found {len(bgs)}")
+
+                output.append(bgs[0])
 
                 wcs = session.scalars(
                     sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == sources.id)

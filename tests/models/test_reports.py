@@ -131,7 +131,7 @@ def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_te
         assert rep.process_memory == ds.memory_usages
         # 'preprocessing, extraction, subtraction, detection, cutting, measuring'
         assert rep.progress_steps == ', '.join(PROCESS_OBJECTS.keys())
-        assert rep.products_exist == 'image, sources, psf, wcs, zp, sub_image, detections, cutouts, measurements'
+        assert rep.products_exist == 'image, sources, psf, bg, wcs, zp, sub_image, detections, cutouts, measurements'
         assert rep.products_committed == ''  # we don't save the data store objects at any point?
         assert rep.provenance.upstreams[0].id == ds.measurements[0].provenance.id
         assert rep.num_prev_reports == 0

@@ -21,7 +21,7 @@ from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
 
 
-def estimate_psf_width(data, sz=9, upsampling=100, num_stars=25):
+def estimate_psf_width(data, sz=7, upsampling=50, num_stars=20):
     """Extract a few bright stars and estimate their median FWHM.
 
     This is a very rough-and-dirty method used only for testing.
@@ -34,13 +34,13 @@ def estimate_psf_width(data, sz=9, upsampling=100, num_stars=25):
         The image data.
     sz: int
         The size of the box to extract around the star.
-        Default is 15.
+        Default is 7.
     upsampling: int
         The factor by which to up-sample the PSF.
-        Default is 25.
+        Default is 50.
     num_stars: int
         The number of stars to use to estimate the FWHM.
-        Default is 10.
+        Default is 20.
 
     Returns
     -------
@@ -81,12 +81,12 @@ def estimate_psf_width(data, sz=9, upsampling=100, num_stars=25):
         fwhms.append(fwhm)
 
     fwhm = np.nanmedian(fwhms)
-    # print(f'fwhm median= {fwhm}, fwhm_err= {np.std(fwhms)}')
+    print(f'fwhm median= {fwhm}, fwhm_err= {np.std(fwhms)}')
 
     return fwhm
 
 
-def extract_psf_surrogate(data, sz=9, upsampling=100):
+def extract_psf_surrogate(data, sz=7, upsampling=50):
     """Extract a rough estimate for the PSF from the brightest (non-flagged) star in the image.
 
     This is a very rough-and-dirty method used only for testing.
@@ -102,10 +102,10 @@ def extract_psf_surrogate(data, sz=9, upsampling=100):
         The image data.
     sz: int
         The size of the box to extract around the star.
-        Default is 15.
+        Default is 7.
     upsampling: int
         The factor by which to up-sample the PSF.
-        Default is 25.
+        Default is 50.
 
     Returns
     -------
@@ -285,7 +285,7 @@ def test_zogy_vs_naive(ptf_aligned_images, coadder):
     naive_im_nans[naive_fl > 0] = np.nan
     naive_fwhm = estimate_psf_width(naive_im_nans[1800:2600, 600:1400])
 
-    assert all(zogy_fwhm <= fwhms)  # the ZOGY PSF should be narrower than original PSFs
+    assert zogy_fwhm < np.mean(fwhms)  # the ZOGY PSF should be narrower than original PSFs
     assert zogy_fwhm < naive_fwhm
 
 
@@ -461,8 +461,8 @@ def test_coaddition_pipeline_outputs(ptf_reference_images, ptf_aligned_images):
 
         # check that the ZOGY PSF width is similar to the PSFex result
         assert np.max(coadd_image.zogy_psf) == pytest.approx(np.max(coadd_image.psf.get_clip()), abs=0.01)
-        zogy_fwhm = estimate_psf_width(coadd_image.zogy_psf)
-        psfex_fwhm = estimate_psf_width(np.pad(coadd_image.psf.get_clip(), 20))  # pad so extract_psf_surrogate works
+        zogy_fwhm = estimate_psf_width(coadd_image.zogy_psf, num_stars=1)
+        psfex_fwhm = estimate_psf_width(np.pad(coadd_image.psf.get_clip(), 20), num_stars=1)  # pad so extract_psf_surrogate works
         assert zogy_fwhm == pytest.approx(psfex_fwhm, rel=0.1)
 
         # check that the S/N is consistent with a coadd

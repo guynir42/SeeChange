@@ -38,12 +38,24 @@ def test_measurements_attributes(measurer, ptf_datastore, test_config):
     original_flux = m.flux_apertures[m.best_aperture]
 
     # set the flux temporarily to something positive
-    m.flux_apertures[m.best_aperture] = 1000
-    assert m.magnitude == -2.5 * np.log10(1000) + new_im.zp.zp + new_im.zp.aper_cors[m.best_aperture]
+    m.flux_apertures[0] = 1000
+    assert m.mag_apertures[0] == -2.5 * np.log10(1000) + new_im.zp.zp + new_im.zp.aper_cors[0]
+
+    m.flux_psf = 1000
+    expected_mag = -2.5 * np.log10(1000) + new_im.zp.zp
+    assert m.mag_psf == expected_mag
 
     # set the flux temporarily to something negative
-    m.flux_apertures[m.best_aperture] = -1000
-    assert np.isnan(m.magnitude)
+    m.flux_apertures[0] = -1000
+    assert np.isnan(m.mag_apertures[0])
+
+    # check that background is subtracted from the "flux" and "magnitude" properties
+    if m.best_aperture == -1:
+        assert m.flux == m.flux_psf - m.bkg_mean * m.area_psf
+        assert m.magnitude > m.mag_psf  # the magnitude has background subtracted from it
+        assert m.magnitude_err > m.mag_psf_err  # the magnitude error is larger because of the error in background
+    else:
+        assert m.flux == m.flux_apertures[m.best_aperture] - m.bkg_mean * m.area_apertures[m.best_aperture]
 
     # set the flux and zero point to some randomly chosen values and test the distribution of the magnitude:
     fiducial_zp = new_im.zp.zp
@@ -74,7 +86,7 @@ def test_measurements_attributes(measurer, ptf_datastore, test_config):
     # TODO: add test for limiting magnitude (issue #143)
 
 
-# @pytest.mark.skip(reason="This test fails on GA but not locally, see issue #306")
+@pytest.mark.skip(reason="This test fails on GA but not locally, see issue #306")
 # @pytest.mark.flaky(max_runs=3)
 def test_filtering_measurements(ptf_datastore):
     # printout the list of relevant environmental variables:
@@ -135,7 +147,7 @@ def test_filtering_measurements(ptf_datastore):
             )).all()
         assert len(ms) == len(measurements)  # all measurements have the same filter
 
-        ms = session.scalars(sa.select(Measurements).where(Measurements.background > 0)).all()
+        ms = session.scalars(sa.select(Measurements).where(Measurements.bkg_mean > 0)).all()
         assert len(ms) <= len(measurements)  # only some of the measurements have positive background
 
         ms = session.scalars(sa.select(Measurements).where(

@@ -146,11 +146,12 @@ class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
     def get_downstreams(self, session=None, siblings=False):
         """Get the downstreams of this ZeroPoint.
 
-        If siblings=True then also include the SourceLists, PSFs, WCSes, and background objects
+        If siblings=True then also include the SourceList, PSF, background object and WCS
         that were created at the same time as this ZeroPoint.
         """
         from models.source_list import SourceList
         from models.psf import PSF
+        from models.background import Background
         from models.world_coordinates import WorldCoordinates
         from models.provenance import Provenance
 
@@ -180,7 +181,18 @@ class ZeroPoint(Base, AutoIDMixin, HasBitFlagBadness):
 
                 output.append(psf[0])
 
-                # TODO: add background object
+                bgs = session.scalars(
+                    sa.select(Background).where(
+                        Background.image_id == sources.image_id, Background.provenance_id == self.provenance_id
+                    )
+                ).all()
+
+                if len(bgs) > 1:
+                    raise ValueError(
+                        f"Expected exactly one Background for WorldCoordinates {self.id}, but found {len(bgs)}."
+                    )
+
+                output.append(bgs[0])
 
                 wcs = session.scalars(
                     sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == sources.id)
