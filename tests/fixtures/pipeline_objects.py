@@ -24,6 +24,7 @@ from models.measurements import Measurements
 from pipeline.data_store import DataStore
 from pipeline.preprocessing import Preprocessor
 from pipeline.detection import Detector
+from pipeline.backgrounding import Backgrounder
 from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
 from pipeline.coaddition import Coadder, CoaddPipeline
@@ -78,6 +79,27 @@ def extractor_factory(test_config):
 @pytest.fixture
 def extractor(extractor_factory):
     return extractor_factory()
+
+
+@pytest.fixture(scope='session')
+def backgrounder_factory(test_config):
+
+    def make_backgrounder():
+        bg = Backgrounder(**test_config.value('extraction.bg'))
+        bg.pars._enforce_no_new_attrs = False
+        bg.pars.test_parameter = bg.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        bg.pars._enforce_no_new_attrs = True
+
+        return bg
+
+    return make_backgrounder
+
+
+@pytest.fixture
+def backgrounder(backgrounder_factory):
+    return backgrounder_factory()
 
 
 @pytest.fixture(scope='session')
@@ -232,6 +254,7 @@ def measurer(measurer_factory):
 def pipeline_factory(
         preprocessor_factory,
         extractor_factory,
+        backgrounder_factory,
         astrometor_factory,
         photometor_factory,
         subtractor_factory,
@@ -244,12 +267,19 @@ def pipeline_factory(
         p = Pipeline(**test_config.value('pipeline'))
         p.preprocessor = preprocessor_factory()
         p.extractor = extractor_factory()
+        p.backgrounder = backgrounder_factory()
         p.astrometor = astrometor_factory()
         p.photometor = photometor_factory()
 
         # make sure when calling get_critical_pars() these objects will produce the full, nested dictionary
-        siblings = {'sources': p.extractor.pars, 'wcs': p.astrometor.pars, 'zp': p.photometor.pars}
+        siblings = {
+            'sources': p.extractor.pars,
+            'bg': p.backgrounder.pars,
+            'wcs': p.astrometor.pars,
+            'zp': p.photometor.pars
+        }
         p.extractor.pars.add_siblings(siblings)
+        p.backgrounder.pars.add_siblings(siblings)
         p.astrometor.pars.add_siblings(siblings)
         p.photometor.pars.add_siblings(siblings)
 
@@ -284,8 +314,14 @@ def coadd_pipeline_factory(
         p.photometor = photometor_factory()
 
         # make sure when calling get_critical_pars() these objects will produce the full, nested dictionary
-        siblings = {'sources': p.extractor.pars, 'wcs': p.astrometor.pars, 'zp': p.photometor.pars}
+        siblings = {
+            'sources': p.extractor.pars,
+            'bg': p.backgrounder.pars,
+            'wcs': p.astrometor.pars,
+            'zp': p.photometor.pars,
+        }
         p.extractor.pars.add_siblings(siblings)
+        p.backgrounder.pars.add_siblings(siblings)
         p.astrometor.pars.add_siblings(siblings)
         p.photometor.pars.add_siblings(siblings)
 
@@ -582,7 +618,7 @@ def datastore_factory(data_dir, pipeline_factory):
                     # make sure this is saved to the archive as well
                     ds.bg.save(verify_md5=False, overwrite=True)
 
-                ############## astro_cal to create wcs ################
+                # try to get the WCS from cache
                 cache_name = f'{cache_base_name}.wcs_{prov.id[:6]}.txt.json'
                 wcs_cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(wcs_cache_path):
@@ -617,7 +653,7 @@ def datastore_factory(data_dir, pipeline_factory):
                     # make sure this is saved to the archive as well
                     ds.wcs.save(verify_md5=False, overwrite=True)
 
-                ########### photo_cal to create zero point ############
+                # try to get the ZP from cache
                 cache_name = cache_base_name + '.zp.json'
                 zp_cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(zp_cache_path):
@@ -666,6 +702,9 @@ def datastore_factory(data_dir, pipeline_factory):
                     if cache_dir is not None and cache_base_name is not None and output_path != psf_cache_path:
                         warnings.warn(f'cache path {psf_cache_path} does not match output path {output_path}')
 
+                SCLogger.debug('Running background estimation')
+                ds = p.backgrounder.run(ds, session)
+
                 ds.bg.save(overwrite=True)
                 if cache_dir is not None and cache_base_name is not None:
                     output_path = copy_to_cache(ds.bg, cache_dir)
@@ -674,7 +713,7 @@ def datastore_factory(data_dir, pipeline_factory):
 
                 SCLogger.debug('Running astrometric calibration')
                 ds = p.astrometor.run(ds, session)
-                ds.wcs.save()
+                ds.wcs.save(overwrite=True)
                 if ((cache_dir is not None) and (cache_base_name is not None) and
                         (not os.getenv("LIMIT_CACHE_USAGE"))):
                     output_path = copy_to_cache(ds.wcs, cache_dir)

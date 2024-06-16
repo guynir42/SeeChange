@@ -330,9 +330,8 @@ class Detector:
 
                 sources = ds.get_sources(prov, session=session)
                 psf = ds.get_psf(prov, session=session)
-                bg = ds.get_background(prov, session=session)
 
-                if sources is None or psf is None or bg is None:
+                if sources is None or psf is None:
                     # TODO: when only one of these is not found (which is a strange situation)
                     #  we may end up with a new version of the existing object
                     #  (if sources is missing, we will end up with one sources and two psfs).
@@ -364,48 +363,9 @@ class Detector:
                         if psf.provenance.id != prov.id:
                             raise ValueError('Provenance mismatch for PSF and extraction provenance!')
 
-                    # TODO: can we get this straight from sextractor?
-                    if self.pars.background_method == 'sep':
-                        # Estimate the background mean and RMS with sep
-                        boxsize = self.pars.background_box_size
-                        filtsize = self.pars.background_filt_size
-                        SCLogger.debug("Subtracting sky and estimating sky RMS")
-                        # Dysfunctionality alert: sep requires a *float* image for the mask
-                        # IEEE 32-bit floats have 23 bits in the mantissa, so they should
-                        # be able to precisely represent a 16-bit integer mask image
-                        # In any event, sep.Background uses >0 as "bad"
-                        fmask = np.array(image._flags, dtype=np.float32)
-                        backgrounder = sep.Background(image.data.copy(), mask=fmask,
-                                                      bw=boxsize, bh=boxsize, fw=filtsize, fh=filtsize)
-                        fmask = None
-                        bg = Background(
-                            value=float(np.nanmedian(backgrounder.back())),
-                            noise=float(np.nanmedian(backgrounder.rms())),
-                            counts=backgrounder.back(),
-                            rms=backgrounder.rms(),
-                            format='map',
-                            method='sep'
-                        )
-                    elif self.pars.background_method == 'zero':  # don't measure the b/g
-                        bg = Background(value=0, noise=0, format='scalar', method='zero')
-                    else:
-                        raise ValueError(f'Unknown background method "{self.pars.background_method}"')
-
-                    bg.image_id = image.id
-                    bg.image = image
-                    if bg.provenance is None:
-                        bg.provenance = prov
-                    else:
-                        if bg.provenance.id != prov.id:
-                            raise ValueError('Provenance mismatch for background and extraction provenance!')
-
                 ds.sources = sources
                 ds.psf = psf
-                ds.bg = bg
                 ds.image.fwhm_estimate = psf.fwhm_pixels  # TODO: should we only write if the property is None?
-                if self.has_recalculated:
-                    ds.image.bkg_mean_estimate = float( bg.value )
-                    ds.image.bkg_rms_estimate = float( bg.noise )
 
                 ds.runtimes['extraction'] = time.perf_counter() - t_start
                 if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):

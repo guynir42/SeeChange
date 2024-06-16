@@ -97,6 +97,7 @@ def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_te
 
     assert p.preprocessor.has_recalculated
     assert p.extractor.has_recalculated
+    assert p.backgrounder.has_recalculated
     assert p.astrometor.has_recalculated
     assert p.photometor.has_recalculated
     assert p.subtractor.has_recalculated

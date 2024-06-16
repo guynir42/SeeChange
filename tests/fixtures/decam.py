@@ -27,6 +27,7 @@ from util.retrydownload import retry_download
 from util.logger import SCLogger
 from util.cache import copy_to_cache, copy_list_to_cache, copy_from_cache, copy_list_from_cache
 
+
 @pytest.fixture(scope='session')
 def decam_cache_dir(cache_dir):
     output = os.path.join(cache_dir, 'DECam')
@@ -327,6 +328,7 @@ def decam_fits_image_filename(download_url, decam_cache_dir):
         except FileNotFoundError:
             pass
 
+
 @pytest.fixture
 def decam_fits_image_filename2(download_url, decam_cache_dir):
     download_url = os.path.join(download_url, 'DECAM')
@@ -344,6 +346,7 @@ def decam_fits_image_filename2(download_url, decam_cache_dir):
             os.unlink( filepath )
         except FileNotFoundError:
             pass
+
 
 @pytest.fixture
 def decam_ref_datastore( code_version, download_url, decam_cache_dir, data_dir, datastore_factory ):
