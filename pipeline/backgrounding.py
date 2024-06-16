@@ -133,16 +133,28 @@ class Backgrounder:
 
                 bg.image_id = image.id
                 bg.image = image
-                if bg.provenance is None:
-                    bg.provenance = prov
-                else:
-                    if bg.provenance.id != prov.id:
-                        raise ValueError('Provenance mismatch for background and extraction provenance!')
+
+            if bg.provenance is None:
+                bg.provenance = prov
+            else:
+                if bg.provenance.id != prov.id:
+                    raise ValueError('Provenance mismatch for background and extraction provenance!')
 
             # since these are "first look estimates" we don't update them if they are already set
             if ds.image.bkg_mean_estimate is None and ds.image.bkg_rms_estimate is None:
                 ds.image.bkg_mean_estimate = float( bg.value )
                 ds.image.bkg_rms_estimate = float( bg.noise )
+
+            ds._upstream_bitflag = 0
+            ds._upstream_bitflag |= ds.image.bitflag
+
+            sources = ds.get_sources(session=session)
+            if sources is not None:
+                ds._upstream_bitflag |= sources.bitflag
+
+            psf = ds.get_psf(session=session)
+            if psf is not None:
+                ds._upstream_bitflag |= psf.bitflag
 
             ds.bg = bg
 

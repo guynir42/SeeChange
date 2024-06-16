@@ -1,5 +1,6 @@
 import os
 import datetime
+import time
 import warnings
 
 import sqlalchemy as sa
@@ -34,7 +35,7 @@ PROCESS_OBJECTS = {
     'extraction': {
         'sources': 'extractor',
         'psf': 'extractor',
-        'background': 'backgrounder',
+        'bg': 'backgrounder',
         'wcs': 'astrometor',
         'zp': 'photometor',
     },
@@ -304,8 +305,17 @@ class Pipeline:
             ds.update_report('extraction', session)
 
             if self.pars.save_before_subtraction:
-                SCLogger.info(f"Saving intermediate image for image id {ds.image.id}")
-                ds.save_and_commit(session=session)
+                t_start = time.perf_counter()
+                try:
+                    SCLogger.info(f"Saving intermediate image for image id {ds.image.id}")
+                    ds.save_and_commit(session=session)
+                except Exception as e:
+                    ds.update_report('save intermediate', session)
+                    SCLogger.error(f"Failed to save intermediate image for image id {ds.image.id}")
+                    SCLogger.error(e)
+                    raise e
+
+                ds.runtimes['save_intermediate'] = time.perf_counter() - t_start
 
             # fetch reference images and subtract them, save subtracted Image objects to DB and disk
             SCLogger.info(f"subtractor for image id {ds.image.id}")
@@ -329,6 +339,8 @@ class Pipeline:
 
             # measure deep learning models on the cutouts/measurements
             # TODO: add this...
+
+            # TODO: add a saving step at the end too?
 
             ds.finalize_report(session)
 
