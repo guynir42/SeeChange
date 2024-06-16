@@ -649,6 +649,7 @@ class CoaddPipeline:
 
         # TODO: add the warnings/exception capturing, runtime/memory tracking (and Report making) as in top_level.py
         self.datastore = self.extractor.run(self.datastore)
+        self.datastore = self.backgrounder.run(self.datastore)
         self.datastore = self.astrometor.run(self.datastore)
         self.datastore = self.photometor.run(self.datastore)
 

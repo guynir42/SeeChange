@@ -209,6 +209,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
     sec_id = ref.section_id
     try:  # cleanup the file at the end
         p = Pipeline()
+        p.pars.save_before_subtraction = False
         assert p.extractor.pars.threshold != 3.14
         assert p.detector.pars.threshold != 3.14
 
@@ -230,7 +231,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
 
             check_datastore_and_database_have_everything(exposure.id, sec_id, ref.image.id, session, ds)
 
-        # feed the pipeline the same data, but missing the upstream data. TODO: add cutouts and measurements
+        # feed the pipeline the same data, but missing the upstream data.
         attributes = ['image', 'sources', 'sub_image', 'detections', 'cutouts', 'measurements']
 
         for i in range(len(attributes)):

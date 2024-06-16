@@ -188,7 +188,8 @@ class Report(Base, AutoIDMixin):
         The keywords will be added to the list "progress_steps"
         and progress_bitflag for this report will be updated accordingly.
         """
-        self.progress_steps_bitflag |= string_to_bitflag(value, process_steps_inverse)
+        if value in process_steps_dict:
+            self.progress_steps_bitflag |= string_to_bitflag(value, process_steps_inverse)
 
     products_exist_bitflag = sa.Column(
         sa.BIGINT,

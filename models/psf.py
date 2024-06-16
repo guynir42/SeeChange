@@ -66,6 +66,7 @@ class PSF(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         'Image',
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
+        lazy='selectin',
         doc="Image for which this is the PSF."
     )
 

@@ -269,7 +269,7 @@ def decam_datastore(
         decam_exposure,
         'N1',
         cache_dir=decam_cache_dir,
-        cache_base_name='115/c4d_20221104_074232_N1_g_Sci_VCOACQ',
+        cache_base_name='115/c4d_20221104_074232_N1_g_Sci_NBXRIO',
         save_original_image=True
     )
     # This save is redundant, as the datastore_factory calls save_and_commit
