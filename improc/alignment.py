@@ -22,6 +22,7 @@ from models.base import FileOnDiskMixin
 from models.provenance import Provenance
 from models.image import Image
 from models.source_list import SourceList
+from models.background import Background
 from models.enums_and_bitflags import string_to_bitflag, flag_image_bits_inverse
 
 from pipeline.data_store import DataStore
@@ -217,13 +218,15 @@ class ImageAligner:
         tmptargetcat = tmppath / f'{tmpname}_target.sources.fits'
         tmpim = tmppath / f'{tmpname}_image.fits'
         tmpflags = tmppath / f'{tmpname}_flags.fits'
+        tmpbg = tmppath / f'{tmpname}_bg.fits'
 
         outim = tmppath / f'{tmpname}_warped.image.fits'
         outwt = tmppath / f'{tmpname}_warped.weight.fits'
         outfl = tmppath / f'{tmpname}_warped.flags.fits'
+        outbg = tmppath / f'{tmpname}_warped.bg.fits'
         outimhead = tmppath / f'{tmpname}_warped.image.head'
         outflhead = tmppath / f'{tmpname}_warped.flags.head'
-
+        outbghead = tmppath / f'{tmpname}_warped.bg.head'
         swarp_vmem_dir = tmppath /f'{tmpname}_vmem'
 
         # Writing this all out because several times I've looked at code
@@ -326,6 +329,7 @@ class ImageAligner:
             hdr['NAXIS2'] = target.data.shape[0]
             hdr.tofile( outimhead )
             hdr.tofile( outflhead )
+            hdr.tofile( outbghead )
 
             # Warp the image
             # TODO : support single image with image, weight, flags in
@@ -357,17 +361,9 @@ class ImageAligner:
                 data = image.data
             else:
                 data = image.data_bg
+
             save_fits_image_file(tmpim, data, hdr, extname=None, single_file=False)
             save_fits_image_file(tmpflags, image.flags, hdr, extname=None, single_file=False)
-
-            # with fits.open( impaths[imdex], mode='readonly' ) as hdul:
-            #     improc.tools.strip_wcs_keywords( hdul[0].header )
-            #     hdul[0].header.update( imagewcs.wcs.to_header() )
-            #     hdul.writeto( tmpim )
-            # with fits.open( impaths[fldex], mode='readonly' ) as hdul:
-            #     improc.tools.strip_wcs_keywords( hdul[0].header )
-            #     hdul[0].header.update( imagewcs.wcs.to_header() )
-            #     hdul.writeto( tmpflags )
 
             swarp_vmem_dir.mkdir( exist_ok=True, parents=True )
 
@@ -426,6 +422,43 @@ class ImageAligner:
             warpedim.flags = read_fits_image(outfl)
             warpedim.flags = np.rint(warpedim.flags).astype(np.uint16)  # convert back to integers
 
+            # warp the background noise image:
+            if image.bg is not None:
+                bg = Background(
+                    value=0,
+                    noise=image.bg.noise,
+                    format=image.bg.format,
+                    method=image.bg.method,
+                    _bitflag=image.bg._bitflag,
+                    image=warpedim,
+                    provenance=image.bg.provenance,
+                    provenance_id=image.bg.provenance_id,
+                )
+                # TODO: what about polynomial model backgrounds?
+                if image.bg.format == 'map':
+                    save_fits_image_file(tmpbg, image.bg.variance, hdr, extname=None, single_file=False)
+                    command = ['swarp', tmpbg,
+                               '-IMAGEOUT_NAME', outbg,
+                               '-SUBTRACT_BACK', 'N',
+                               '-RESAMPLE_DIR', FileOnDiskMixin.temp_path,
+                               '-VMEM_DIR', swarp_vmem_dir,
+                               # '-VMEM_DIR', '/tmp',
+                               '-VMEM_MAX', '1024',
+                               '-MEM_MAX', '1024',
+                               '-WRITE_XML', 'N']
+
+                    t0 = time.perf_counter()
+                    res = subprocess.run(command, capture_output=True, timeout=self.pars.swarp_timeout)
+                    t1 = time.perf_counter()
+                    SCLogger.debug(f"swarp of background took {t1 - t0:.2f} seconds")
+                    if res.returncode != 0:
+                        raise SubprocessFailure(res)
+
+                    bg.variance = read_fits_image(outbg, output='data')
+                    bg.counts = np.zeros_like(bg.variance)
+
+                warpedim.bg = bg
+
             # re-calculate the source list and PSF for the warped image
             extractor = Detector()
             extractor.pars.override(sources.provenance.parameters['sources'], ignore_addons=True)
@@ -463,11 +496,14 @@ class ImageAligner:
             tmptargetcat.unlink( missing_ok=True )
             tmpim.unlink( missing_ok=True )
             tmpflags.unlink( missing_ok=True )
+            tmpbg.unlink( missing_ok=True )
             outim.unlink( missing_ok=True )
             outwt.unlink( missing_ok=True )
             outfl.unlink( missing_ok=True )
+            outbg.unlink( missing_ok=True )
             outimhead.unlink( missing_ok=True )
             outflhead.unlink( missing_ok=True )
+            outbghead.unlink( missing_ok=True )
             for f in swarp_vmem_dir.iterdir():
                 f.unlink()
             swarp_vmem_dir.rmdir()
@@ -523,13 +559,30 @@ class ImageAligner:
             if source_image.bg is None:
                 warnings.warn("No background image found. Using original image data.")
                 warped_image.data = source_image.data
+                warped_image.bg = None  # this will be a problem later if you need to coadd the images!
             else:
                 warped_image.data = source_image.data_bg
+                # make a copy of the background object but with zero mean
+                bg = Background(
+                    value=0,
+                    noise=source_image.bg.noise,
+                    format=source_image.bg.format,
+                    method=source_image.bg.method,
+                    _bitflag=source_image.bg._bitflag,
+                    image=warped_image,
+                    provenance=source_image.bg.provenance,
+                    provenance_id=source_image.bg.provenance_id,
+                )
+                if bg.format == 'map':
+                    bg.counts = np.zeros_like(warped_image.data)
+                    bg.variance = source_image.bg.variance
+                warped_image.bg = bg
 
             warped_image.psf = source_image.psf
             warped_image.zp = source_image.zp
             warped_image.wcs = source_image.wcs
             # TODO: what about SourceList?
+            # TODO: should these objects be copies of the products, or references to the same objects?
         else:  # Do the warp
             if self.pars.method == 'swarp':
                 SCLogger.debug( 'Aligning with swarp' )

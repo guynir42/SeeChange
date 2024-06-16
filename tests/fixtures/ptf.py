@@ -330,9 +330,10 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
             filenames = f.read().splitlines()
         output_images = []
         for filename in filenames:
-            imfile, psffile = filename.split()
+            imfile, psffile, bgfile = filename.split()
             output_images.append(copy_from_cache(Image, cache_dir, imfile + '.image.fits'))
             output_images[-1].psf = copy_from_cache(PSF, cache_dir, psffile + '.fits')
+            output_images[-1].bg = copy_from_cache(Background, cache_dir, bgfile + '.h5')
             output_images[-1].zp = copy_from_cache(ZeroPoint, cache_dir, imfile + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')
@@ -352,22 +353,28 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
 
         filenames = []
         psf_paths = []
+        bg_paths = []
+        # there's an implicit call to Image._make_aligned_images() here
         for image in coadd_image.aligned_images:
             image.save()
             filepath = copy_to_cache(image, cache_dir)
             if image.psf.filepath is None:  # save only PSF objects that haven't been saved yet
                 image.psf.save(overwrite=True)
+            if image.bg.filepath is None:  # save only Background objects that haven't been saved yet
+                image.bg.save(overwrite=True)
             if not os.getenv( "LIMIT_CACHE_USAGE" ):
-               copy_to_cache(image.psf, cache_dir)
-               copy_to_cache(image.zp, cache_dir, filepath=filepath[:-len('.image.fits.json')]+'.zp.json')
+                copy_to_cache(image.psf, cache_dir)
+                copy_to_cache(image.bg, cache_dir)
+                copy_to_cache(image.zp, cache_dir, filepath=filepath[:-len('.image.fits.json')]+'.zp.json')
             filenames.append(image.filepath)
             psf_paths.append(image.psf.filepath)
+            bg_paths.append(image.bg.filepath)
 
         if not os.getenv( "LIMIT_CACHE_USAGE" ):
             os.makedirs(cache_dir, exist_ok=True)
             with open(os.path.join(cache_dir, 'manifest.txt'), 'w') as f:
-                for filename, psf_path in zip(filenames, psf_paths):
-                    f.write(f'{filename} {psf_path}\n')
+                for filename, psf_path, bg_path in zip(filenames, psf_paths, bg_paths):
+                    f.write(f'{filename} {psf_path} {bg_path}\n')
 
         output_images = coadd_image.aligned_images
 

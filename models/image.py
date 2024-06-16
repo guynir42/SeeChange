@@ -1103,7 +1103,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         # verify all products are loaded
         for im in self.upstream_images:
-            if im.sources is None or im.wcs is None or im.zp is None:
+            if im.sources is None or im.bg is None or im.wcs is None or im.zp is None:
                 raise RuntimeError('Some images are missing data products. Try running load_upstream_products().')
 
         aligned = []
