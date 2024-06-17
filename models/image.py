@@ -596,10 +596,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             self.psf.image_id = new_image.id
             self.psf.provenance_id = self.psf.provenance.id if self.psf.provenance is not None else None
             new_image.psf = self.psf.safe_merge(session=session)
-            # if new_image.psf._bitflag is None:  # I don't know why this isn't set to 0 using the default
-            #     new_image.psf._bitflag = 0
-            # if new_image.psf._upstream_bitflag is None:  # I don't know why this isn't set to 0 using the default
-            #     new_image.psf._upstream_bitflag = 0
 
         if self.bg is not None:
             self.bg.image = new_image
@@ -608,10 +604,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             new_image.bg = self.bg.safe_merge(session=session)
 
         # take care of the upstream images and their products
-        # if sa.inspect(self).detached:  # self can't load the images, but new_image has them
-        #     upstream_list = new_image.upstream_images
-        # else:
-        #     upstream_list = self.upstream_images  # can use the original images, before merging into new_image
         try:
             upstream_list = self.upstream_images  # can use the original images, before merging into new_image
         except DetachedInstanceError as e:
