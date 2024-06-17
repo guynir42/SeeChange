@@ -54,7 +54,7 @@ class ParsPipeline(Parameters):
         super().__init__()
 
         self.example_pipeline_parameter = self.add_par(
-            'example_pipeline_parameter', 1, int, 'an example pipeline parameter'
+            'example_pipeline_parameter', 1, int, 'an example pipeline parameter', critical=False
         )
 
         self.save_before_subtraction = self.add_par(
@@ -64,7 +64,8 @@ class ParsPipeline(Parameters):
             'Save intermediate images to the database, '
             'after doing extraction, background, and astro/photo calibration, '
             'if there is no reference, will not continue to doing subtraction'
-            'but will still save the products up to that point. '
+            'but will still save the products up to that point. ',
+            critical=False,
         )
 
         self._enforce_no_new_attrs = True  # lock against new parameters

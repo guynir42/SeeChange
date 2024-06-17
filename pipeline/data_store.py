@@ -1563,10 +1563,11 @@ class DataStore:
                 self.sub_image.ref_image.id = self.sub_image.ref_image_id
                 self.detections = self.sub_image.sources
 
-            session.commit()
-            self.products_committed += ', sub_image'
+                session.commit()
+                self.products_committed += ', sub_image'
 
             if self.detections is not None:
+                more_products = 'detections'
                 if self.cutouts is not None:
                     if self.measurements is not None:  # keep track of which cutouts goes to which measurements
                         for m in self.measurements:
@@ -1575,6 +1576,7 @@ class DataStore:
                     for cutout in self.cutouts:
                         cutout.sources = self.detections
                     self.cutouts = Cutouts.merge_list(self.cutouts, session)
+                    more_products += ', cutouts'
 
                 if self.measurements is not None:
                     for i, m in enumerate(self.measurements):
@@ -1583,9 +1585,10 @@ class DataStore:
                         self.measurements[i].associate_object(session)
                         self.measurements[i] = session.merge(self.measurements[i])
                         self.measurements[i].object.measurements.append(self.measurements[i])
+                    more_products += ', measurements'
 
-            session.commit()
-            self.products_committed += ', detections, cutouts, measurements'
+                session.commit()
+                self.products_committed += ', ' + more_products
 
     def delete_everything(self, session=None, commit=True):
         """Delete everything associated with this sub-image.

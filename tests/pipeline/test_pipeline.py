@@ -287,6 +287,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
 
     try:  # cleanup the file at the end
         p = Pipeline()
+        p.pars.save_before_subtraction = False
         exposure.badness = 'banding'  # add a bitflag to check for propagation
 
         # first run the pipeline and check for basic propagation of the single bitflag
@@ -296,6 +297,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         assert ds.image._upstream_bitflag == 2
         assert ds.sources._upstream_bitflag == 2
         assert ds.psf._upstream_bitflag == 2
+        assert ds.bg._upstream_bitflag == 2
         assert ds.wcs._upstream_bitflag == 2
         assert ds.zp._upstream_bitflag == 2
         assert ds.sub_image._upstream_bitflag == 2
@@ -306,6 +308,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
         # test part 2: Add a second bitflag partway through and check it propagates to downstreams
 
         # delete downstreams of ds.sources
+        ds.bg = None
         ds.wcs = None
         ds.zp = None
         ds.sub_image = None
@@ -547,6 +550,7 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
     obj_to_process_name = {
         'preprocessor': 'preprocessing',
         'extractor': 'detection',
+        'backgrounder': 'backgrounding',
         'astrometor': 'astro_cal',
         'photometor': 'photo_cal',
         'subtractor': 'subtraction',

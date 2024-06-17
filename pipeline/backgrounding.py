@@ -145,16 +145,16 @@ class Backgrounder:
                 ds.image.bkg_mean_estimate = float( bg.value )
                 ds.image.bkg_rms_estimate = float( bg.noise )
 
-            ds._upstream_bitflag = 0
-            ds._upstream_bitflag |= ds.image.bitflag
+            bg._upstream_bitflag = 0
+            bg._upstream_bitflag |= ds.image.bitflag
 
             sources = ds.get_sources(session=session)
             if sources is not None:
-                ds._upstream_bitflag |= sources.bitflag
+                bg._upstream_bitflag |= sources.bitflag
 
             psf = ds.get_psf(session=session)
             if psf is not None:
-                ds._upstream_bitflag |= psf.bitflag
+                bg._upstream_bitflag |= psf.bitflag
 
             ds.bg = bg
 
