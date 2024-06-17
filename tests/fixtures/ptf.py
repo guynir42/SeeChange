@@ -333,7 +333,7 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
             imfile, psffile, bgfile = filename.split()
             output_images.append(copy_from_cache(Image, cache_dir, imfile + '.image.fits'))
             output_images[-1].psf = copy_from_cache(PSF, cache_dir, psffile + '.fits')
-            output_images[-1].bg = copy_from_cache(Background, cache_dir, bgfile + '.h5')
+            output_images[-1].bg = copy_from_cache(Background, cache_dir, bgfile)
             output_images[-1].zp = copy_from_cache(ZeroPoint, cache_dir, imfile + '.zp')
     else:  # no cache available
         ptf_reference_images = request.getfixturevalue('ptf_reference_images')

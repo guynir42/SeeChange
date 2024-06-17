@@ -188,8 +188,7 @@ class Report(Base, AutoIDMixin):
         The keywords will be added to the list "progress_steps"
         and progress_bitflag for this report will be updated accordingly.
         """
-        if value in process_steps_inverse:
-            self.progress_steps_bitflag |= string_to_bitflag(value, process_steps_inverse)
+        self.progress_steps_bitflag |= string_to_bitflag(value, process_steps_inverse)
 
     products_exist_bitflag = sa.Column(
         sa.BIGINT,
@@ -331,7 +330,8 @@ class Report(Base, AutoIDMixin):
 
         if process_step is not None:
             # append the newest step to the progress bitflag
-            self.append_progress(process_step)
+            if process_step in process_steps_inverse:  # skip steps not in the dict
+                self.append_progress(process_step)
 
             # parse the warnings, if they exist
             if isinstance(ds.warnings_list, list):
