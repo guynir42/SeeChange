@@ -1,4 +1,3 @@
-import os
 import time
 
 import numpy as np
@@ -11,7 +10,7 @@ from pipeline.data_store import DataStore
 from models.background import Background
 
 from util.logger import SCLogger
-from util.util import parse_bool
+from util.util import parse_env
 
 
 class ParsBackgrounder(Parameters):
@@ -89,7 +88,7 @@ class Backgrounder:
 
         try:
             t_start = time.perf_counter()
-            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
+            if parse_env('SEECHANGE_TRACEMALLOC'):
                 import tracemalloc
                 tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
@@ -159,7 +158,7 @@ class Backgrounder:
             ds.bg = bg
 
             ds.runtimes['backgrounding'] = time.perf_counter() - t_start
-            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
+            if parse_env('SEECHANGE_TRACEMALLOC'):
                 import tracemalloc
                 ds.memory_usages['backgrounding'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
 

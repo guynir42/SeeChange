@@ -390,9 +390,16 @@ def parse_bool(text):
     """Check if a string of text that represents a boolean value is True or False."""
     if text is None:
         return False
+    if isinstance(text, bool):
+        return text
     elif text.lower() in ['true', 'yes', '1']:
         return True
     elif text.lower() in ['false', 'no', '0']:
         return False
     else:
         raise ValueError(f'Cannot parse boolean value from "{text}"')
+
+
+def parse_env(varname):
+    """Parse an environmental variable as a boolean."""
+    return parse_bool(os.getenv(varname))

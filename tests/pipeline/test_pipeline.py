@@ -201,6 +201,20 @@ def test_parameters( test_config ):
     assert check_override(overrides['measuring'], pipeline.measurer.pars)
 
 
+def test_running_without_reference(decam_exposure, decam_default_calibrators, pipeline_for_tests, archive):
+    p = pipeline_for_tests
+    p.pars.save_before_subtraction = True
+
+    ds = p.run(decam_exposure)
+
+    ds.reraise()
+
+    # make sure the data is saved
+    with SmartSession() as session:
+        im = session.scalars(sa.select(Image).where(Image.id == ds.image.id)).first()
+        assert im is not None
+
+
 def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, archive):
     """Test that the pipeline runs end-to-end."""
     exposure = decam_exposure
@@ -209,7 +223,6 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
     sec_id = ref.section_id
     try:  # cleanup the file at the end
         p = Pipeline()
-        p.pars.save_before_subtraction = False
         assert p.extractor.pars.threshold != 3.14
         assert p.detector.pars.threshold != 3.14
 
@@ -287,7 +300,6 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
 
     try:  # cleanup the file at the end
         p = Pipeline()
-        p.pars.save_before_subtraction = False
         exposure.badness = 'banding'  # add a bitflag to check for propagation
 
         # first run the pipeline and check for basic propagation of the single bitflag

@@ -1,4 +1,3 @@
-import os
 import datetime
 import time
 import warnings
@@ -24,7 +23,7 @@ from models.report import Report
 
 from util.config import Config
 from util.logger import SCLogger
-from util.util import parse_bool
+from util.util import parse_env
 
 # describes the pipeline objects that are used to produce each step of the pipeline
 # if multiple objects are used in one step, replace the string with a sub-dictionary,
@@ -65,6 +64,14 @@ class ParsPipeline(Parameters):
             'after doing extraction, background, and astro/photo calibration, '
             'if there is no reference, will not continue to doing subtraction'
             'but will still save the products up to that point. ',
+            critical=False,
+        )
+
+        self.save_at_finish = self.add_par(
+            'save_at_finish',
+            True,
+            bool,
+            'Save the final products to the database and disk',
             critical=False,
         )
 
@@ -198,7 +205,7 @@ class Pipeline:
         ds, session = DataStore.from_args(*args, **kwargs)
 
         if ds.exposure is None:
-            raise RuntimeError('Not sure if there is a way to run this pipeline method without an exposure!')
+            raise RuntimeError('Cannot run this pipeline method without an exposure!')
 
         try:  # must make sure the exposure is on the DB
             ds.exposure = ds.exposure.merge_concurrent(session=session)
@@ -271,7 +278,7 @@ class Pipeline:
         else:
             SCLogger.info(f"Pipeline starting with args {args}, kwargs {kwargs}")
 
-        if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
+        if parse_env('SEECHANGE_TRACEMALLOC'):
             # ref: https://docs.python.org/3/library/tracemalloc.html#record-the-current-and-peak-size-of-all-traced-memory-blocks
             import tracemalloc
             tracemalloc.start()  # trace the size of memory that is being used
@@ -341,7 +348,18 @@ class Pipeline:
             # measure deep learning models on the cutouts/measurements
             # TODO: add this...
 
-            # TODO: add a saving step at the end too?
+            if self.pars.save_at_finish:
+                t_start = time.perf_counter()
+                try:
+                    SCLogger.info(f"Saving final products for image id {ds.image.id}")
+                    ds.save_and_commit(session=session)
+                except Exception as e:
+                    ds.update_report('save final', session)
+                    SCLogger.error(f"Failed to save final products for image id {ds.image.id}")
+                    SCLogger.error(e)
+                    raise e
+
+                ds.runtimes['save_final'] = time.perf_counter() - t_start
 
             ds.finalize_report(session)
 
@@ -368,7 +386,7 @@ class Pipeline:
         exposure : Exposure
             The exposure to use to get the initial provenance.
             This provenance should be automatically created by the exposure.
-        reference: str, Provenance object or None
+        reference: str or Reference object or Provenance object or None
             Can be a string matching a valid reference set. This tells the pipeline which
             provenance to load for the reference.
             Instead, can provide either a Reference object with a Provenance
@@ -444,12 +462,6 @@ class Pipeline:
                         # get the first item of the dictionary and hope its pars object has siblings defined correctly:
                         obj_name = obj_name.get(list(obj_name.keys())[0])
                     parameters = getattr(self, obj_name).pars.get_critical_pars()
-
-                    # some preprocessing parameters (the "preprocessing_steps") don't come from the
-                    # config file, but instead come from the preprocessing itself.
-                    # TODO: fix this as part of issue #147
-                    # if step == 'preprocessing':
-                    #     parameters['preprocessing_steps'] = ['overscan', 'linearity', 'flat', 'fringe']
 
                     # figure out which provenances go into the upstreams for this step
                     up_steps = UPSTREAM_STEPS[step]

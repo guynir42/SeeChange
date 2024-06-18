@@ -1,4 +1,3 @@
-import os
 import time
 import numpy as np
 
@@ -11,9 +10,8 @@ from models.image import Image
 from improc.zogy import zogy_subtract, zogy_add_weights_flags
 from improc.inpainting import Inpainter
 from improc.alignment import ImageAligner
-from improc.tools import sigma_clipping
 
-from util.util import parse_bool
+from util.util import parse_env
 
 
 class ParsSubtractor(Parameters):
@@ -234,7 +232,7 @@ class Subtractor:
 
         try:
             t_start = time.perf_counter()
-            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
+            if parse_env('SEECHANGE_TRACEMALLOC'):
                 import tracemalloc
                 tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
@@ -318,7 +316,7 @@ class Subtractor:
             ds.sub_image = sub_image
 
             ds.runtimes['subtraction'] = time.perf_counter() - t_start
-            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
+            if parse_env('SEECHANGE_TRACEMALLOC'):
                 import tracemalloc
                 ds.memory_usages['subtraction'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
 

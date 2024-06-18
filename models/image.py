@@ -675,7 +675,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             self.ecllat = sc.barycentrictrueecliptic.lat.deg
             self.ecllon = sc.barycentrictrueecliptic.lon.deg
 
-
     @classmethod
     def from_exposure(cls, exposure, section_id):
         """
@@ -1893,6 +1892,59 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             downstreams += images
 
             return downstreams
+
+    @classmethod
+    def query_images(
+            cls,
+            ra=None,
+            dec=None,
+            filter=None,
+            min_mjd=None,
+            max_mjd=None,
+            min_dateobs=None,
+            max_dateobs=None,
+            min_exp_time=None,
+            max_exp_time=None,
+            max_seeing_fwhm=None,
+            min_seeing_fwhm=None,
+            max_limiting_mag=None,
+            min_limiting_mag=None,
+            max_airmass=None,
+            min_airmass=None,
+            sort_by='mjd',
+            sort_order='asc',
+            seeing_quality_factor=3.0,
+    ):
+        """Get a SQL alchemy statement object for Image objects, with some filters applied.
+
+        This is a convenience method to get a statement object that can be further filtered.
+        If no parameters are given, will happily return all images (be careful with this).
+        It is highly recommended to supply ra/dec to find all images overlapping with that point.
+
+        The images are sorted either by MJD or by image quality.
+        Quality is defined as sum of the limiting magnitude and the seeing,
+        multiplied by the negative "seeing_quality_factor" parameter:
+          <quality> = <limiting_mag> - <seeing_quality_factor> * <seeing FWHM>
+        This means that as the seeing FWHM is smaller, and the limiting magnitude
+        is bigger (fainter) the quality is higher.
+        Choose a higher seeing_quality_factor to give more weight to the seeing,
+        and less weight to the limiting magnitude.
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        stmt: SQL alchemy select statement
+            The statement to be executed to get the images.
+            Do session.scalars(stmt).all() to get the images.
+            Additional filtering can be done on the statement before executing it.
+        """
+        stmt = sa.select(Image)
+
+
+        return stmt
+
 
     def get_psf(self):
         """Load the PSF object for this image.

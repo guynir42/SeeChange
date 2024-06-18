@@ -1,4 +1,3 @@
-import os
 import time
 import warnings
 import numpy as np
@@ -15,7 +14,7 @@ from models.enums_and_bitflags import BitFlagConverter, BadnessConverter
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 
-from util.util import parse_session, parse_bool
+from util.util import parse_session, parse_env
 
 
 class ParsMeasurer(Parameters):
@@ -176,7 +175,7 @@ class Measurer:
 
         try:
             t_start = time.perf_counter()
-            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
+            if parse_env('SEECHANGE_TRACEMALLOC'):
                 import tracemalloc
                 tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
@@ -362,7 +361,7 @@ class Measurer:
                 ds.sub_image.measurements = saved_measurements
 
             ds.runtimes['measuring'] = time.perf_counter() - t_start
-            if parse_bool(os.getenv('SEECHANGE_TRACEMALLOC')):
+            if parse_env('SEECHANGE_TRACEMALLOC'):
                 import tracemalloc
                 ds.memory_usages['measuring'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
 

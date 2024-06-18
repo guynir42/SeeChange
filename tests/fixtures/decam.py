@@ -3,7 +3,6 @@ import os
 import wget
 import yaml
 import shutil
-import warnings
 
 import sqlalchemy as sa
 import numpy as np
@@ -17,7 +16,6 @@ from models.decam import DECam  # need this import to make sure DECam is added t
 from models.provenance import Provenance
 from models.exposure import Exposure
 from models.image import Image
-from models.source_list import SourceList
 from models.datafile import DataFile
 from models.reference import Reference
 
@@ -26,6 +24,7 @@ from improc.alignment import ImageAligner
 from util.retrydownload import retry_download
 from util.logger import SCLogger
 from util.cache import copy_to_cache, copy_list_to_cache, copy_from_cache, copy_list_from_cache
+from util.util import parse_env
 
 
 @pytest.fixture(scope='session')
@@ -55,7 +54,7 @@ def decam_cache_dir(cache_dir):
 def decam_default_calibrators(cache_dir, data_dir):
     try:
         # try to get the calibrators from the cache folder
-        if not os.getenv( "LIMIT_CACHE_USAGE" ):
+        if not parse_env( "LIMIT_CACHE_USAGE" ):
             if os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators')):
                 shutil.copytree(
                     os.path.join(cache_dir, 'DECam_default_calibrators'),
@@ -73,7 +72,7 @@ def decam_default_calibrators(cache_dir, data_dir):
         decam._get_default_calibrator( 60000, sec, calibtype='linearity' )
 
         # store the calibration files in the cache folder
-        if not os.getenv( "LIMIT_CACHE_USAGE" ):
+        if not parse_env( "LIMIT_CACHE_USAGE" ):
             if not os.path.isdir(os.path.join(cache_dir, 'DECam_default_calibrators')):
                 os.makedirs(os.path.join(cache_dir, 'DECam_default_calibrators'), exist_ok=True)
             for folder in os.listdir(os.path.join(data_dir, 'DECam_default_calibrators')):
@@ -188,7 +187,7 @@ def decam_filename(download_url, data_dir, decam_cache_dir):
     url = os.path.join(download_url, 'DECAM', base_name)
 
     if not os.path.isfile(filename):
-        if os.getenv( "LIMIT_CACHE_USAGE" ):
+        if parse_env( "LIMIT_CACHE_USAGE" ):
             wget.download( url=url, out=filename )
         else:
             cachedfilename = os.path.join(decam_cache_dir, base_name)
@@ -322,7 +321,7 @@ def decam_fits_image_filename(download_url, decam_cache_dir):
 
     yield filename
 
-    if os.getenv( "LIMIT_CACHE_USAGE" ):
+    if parse_env( "LIMIT_CACHE_USAGE" ):
         try:
             os.unlink( filepath )
         except FileNotFoundError:
@@ -341,7 +340,7 @@ def decam_fits_image_filename2(download_url, decam_cache_dir):
 
     yield filename
 
-    if os.getenv( "LIMIT_CACHE_USAGE" ):
+    if parse_env( "LIMIT_CACHE_USAGE" ):
         try:
             os.unlink( filepath )
         except FileNotFoundError:
@@ -374,7 +373,7 @@ def decam_ref_datastore( code_version, download_url, decam_cache_dir, data_dir, 
         if not ext.endswith('.yaml'):
             destination = os.path.join(data_dir, f'115/{filebase}{ext}')
             os.makedirs(os.path.dirname(destination), exist_ok=True)
-            if os.getenv( "LIMIT_CACHE_USAGE" ):
+            if parse_env( "LIMIT_CACHE_USAGE" ):
                 shutil.move( cache_path, destination )
             else:
                 shutil.copy2( cache_path, destination )
@@ -414,7 +413,7 @@ def decam_ref_datastore( code_version, download_url, decam_cache_dir, data_dir, 
         image.is_coadd = True
         image.save(verify_md5=False)  # make sure to upload to archive as well
 
-        if not os.getenv( "LIMIT_CACHE_USAGE" ):
+        if not parse_env( "LIMIT_CACHE_USAGE" ):
             copy_to_cache( image, decam_cache_dir )
 
         ds = datastore_factory(image, cache_dir=decam_cache_dir, cache_base_name=f'115/{filebase}')
