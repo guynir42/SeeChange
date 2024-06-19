@@ -390,7 +390,7 @@ def datastore_factory(data_dir, pipeline_factory):
             ############ preprocessing to create image ############
             if (   ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and
                    ( ds.image is None ) and ( cache_dir is not None ) and ( cache_base_name is not None )
-                ):
+            ):
                 # check if preprocessed image is in cache
                 cache_name = cache_base_name + '.image.fits.json'
                 cache_path = os.path.join(cache_dir, cache_name)
@@ -402,7 +402,7 @@ def datastore_factory(data_dir, pipeline_factory):
                         ds.image.exposure_id = ds.exposure_id
                     if ds.exposure is not None:
                         ds.image.exposure = ds.exposure
-                        ds.image.exposure_id = ds.exposure
+                        ds.image.exposure_id = ds.exposure.id
 
                     # Copy the original image from the cache if requested
                     if save_original_image:

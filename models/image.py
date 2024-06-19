@@ -2045,11 +2045,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 raise ValueError("Cannot filter by both maximal MJD and dateobs.")
             stmt = stmt.where(Image.mjd <= max_mjd)
         if min_dateobs is not None:
-            min_dateobs = parse_dateobs(min_dateobs)
-            stmt = stmt.where(Image.dateobs >= min_dateobs)
+            min_dateobs = parse_dateobs(min_dateobs, output='mjd')
+            stmt = stmt.where(Image.mjd >= min_dateobs)
         if max_dateobs is not None:
-            max_dateobs = parse_dateobs(max_dateobs)
-            stmt = stmt.where(Image.dateobs <= max_dateobs)
+            max_dateobs = parse_dateobs(max_dateobs, output='mjd')
+            stmt = stmt.where(Image.mjd <= max_dateobs)
 
         # filter by exposure time
         if min_exp_time is not None:

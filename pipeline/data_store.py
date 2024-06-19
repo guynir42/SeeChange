@@ -36,7 +36,7 @@ PROCESS_PRODUCTS = {
     'exposure': 'exposure',
     'preprocessing': 'image',
     'coaddition': 'image',
-    'extraction': ['sources', 'psf', 'background', 'wcs', 'zp'],
+    'extraction': ['sources', 'psf', 'bg', 'wcs', 'zp'],
     'reference': 'reference',
     'subtraction': 'sub_image',
     'detection': 'detections',
@@ -219,7 +219,7 @@ class DataStore:
                 self.image = val
 
         if self.image is not None:
-            for att in ['sources', 'psf', 'wcs', 'zp', 'detections', 'cutouts', 'measurements']:
+            for att in ['sources', 'psf', 'bg', 'wcs', 'zp', 'detections', 'cutouts', 'measurements']:
                 if getattr(self.image, att, None) is not None:
                     setattr(self, att, getattr(self.image, att))
 
@@ -1538,7 +1538,7 @@ class DataStore:
                 self.image = self.image.merge_all(session)
                 for att in ['sources', 'psf', 'bg', 'wcs', 'zp']:
                     setattr(self, att, None)  # avoid automatically appending to the image self's non-merged products
-                for att in ['exposure', 'sources', 'psf', 'wcs', 'zp']:
+                for att in ['exposure', 'sources', 'psf', 'bg', 'wcs', 'zp']:
                     if getattr(self.image, att, None) is not None:
                         setattr(self, att, getattr(self.image, att))
 
