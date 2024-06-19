@@ -270,99 +270,111 @@ class Pipeline:
         ds : DataStore
             The DataStore object that includes all the data products.
         """
-        ds, session = self.setup_datastore(*args, **kwargs)
-        if ds.image is not None:
-            SCLogger.info(f"Pipeline starting for image {ds.image.id} ({ds.image.filepath})")
-        elif ds.exposure is not None:
-            SCLogger.info(f"Pipeline starting for exposure {ds.exposure.id} ({ds.exposure}) section {ds.section_id}")
-        else:
-            SCLogger.info(f"Pipeline starting with args {args}, kwargs {kwargs}")
 
-        if parse_env('SEECHANGE_TRACEMALLOC'):
-            # ref: https://docs.python.org/3/library/tracemalloc.html#record-the-current-and-peak-size-of-all-traced-memory-blocks
-            import tracemalloc
-            tracemalloc.start()  # trace the size of memory that is being used
+        try:  # first make sure we get back a datastore, even an empty one
+            ds, session = self.setup_datastore(*args, **kwargs)
+        except Exception as e:
+            return DataStore.catch_failure_to_parse(e, *args)
 
-        with warnings.catch_warnings(record=True) as w:
-            ds.warnings_list = w  # appends warning to this list as it goes along
-            # run dark/flat preprocessing, cut out a specific section of the sensor
+        try:
+            if ds.image is not None:
+                SCLogger.info(f"Pipeline starting for image {ds.image.id} ({ds.image.filepath})")
+            elif ds.exposure is not None:
+                SCLogger.info(f"Pipeline starting for exposure {ds.exposure.id} ({ds.exposure}) section {ds.section_id}")
+            else:
+                SCLogger.info(f"Pipeline starting with args {args}, kwargs {kwargs}")
 
-            SCLogger.info(f"preprocessor")
-            ds = self.preprocessor.run(ds, session)
-            ds.update_report('preprocessing', session)
-            SCLogger.info(f"preprocessing complete: image id = {ds.image.id}, filepath={ds.image.filepath}")
+            if parse_env('SEECHANGE_TRACEMALLOC'):
+                # ref: https://docs.python.org/3/library/tracemalloc.html#record-the-current-and-peak-size-of-all-traced-memory-blocks
+                import tracemalloc
+                tracemalloc.start()  # trace the size of memory that is being used
 
-            # extract sources and make a SourceList and PSF from the image
-            SCLogger.info(f"extractor for image id {ds.image.id}")
-            ds = self.extractor.run(ds, session)
-            ds.update_report('extraction', session)
+            with warnings.catch_warnings(record=True) as w:
+                ds.warnings_list = w  # appends warning to this list as it goes along
+                # run dark/flat preprocessing, cut out a specific section of the sensor
 
-            # find the background for this image
-            SCLogger.info(f"backgrounder for image id {ds.image.id}")
-            ds = self.backgrounder.run(ds, session)
-            ds.update_report('extraction', session)
+                SCLogger.info(f"preprocessor")
+                ds = self.preprocessor.run(ds, session)
+                ds.update_report('preprocessing', session=None)
+                SCLogger.info(f"preprocessing complete: image id = {ds.image.id}, filepath={ds.image.filepath}")
 
-            # find astrometric solution, save WCS into Image object and FITS headers
-            SCLogger.info(f"astrometor for image id {ds.image.id}")
-            ds = self.astrometor.run(ds, session)
-            ds.update_report('extraction', session)
+                # extract sources and make a SourceList and PSF from the image
+                SCLogger.info(f"extractor for image id {ds.image.id}")
+                ds = self.extractor.run(ds, session)
+                ds.update_report('extraction', session=None)
 
-            # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
-            SCLogger.info(f"photometor for image id {ds.image.id}")
-            ds = self.photometor.run(ds, session)
-            ds.update_report('extraction', session)
+                # find the background for this image
+                SCLogger.info(f"backgrounder for image id {ds.image.id}")
+                ds = self.backgrounder.run(ds, session)
+                ds.update_report('extraction', session=None)
 
-            if self.pars.save_before_subtraction:
-                t_start = time.perf_counter()
-                try:
-                    SCLogger.info(f"Saving intermediate image for image id {ds.image.id}")
-                    ds.save_and_commit(session=session)
-                except Exception as e:
-                    ds.update_report('save intermediate', session)
-                    SCLogger.error(f"Failed to save intermediate image for image id {ds.image.id}")
-                    SCLogger.error(e)
-                    raise e
+                # find astrometric solution, save WCS into Image object and FITS headers
+                SCLogger.info(f"astrometor for image id {ds.image.id}")
+                ds = self.astrometor.run(ds, session)
+                ds.update_report('extraction', session=None)
 
-                ds.runtimes['save_intermediate'] = time.perf_counter() - t_start
+                # cross-match against photometric catalogs and get zero point, save into Image object and FITS headers
+                SCLogger.info(f"photometor for image id {ds.image.id}")
+                ds = self.photometor.run(ds, session)
+                ds.update_report('extraction', session=None)
 
-            # fetch reference images and subtract them, save subtracted Image objects to DB and disk
-            SCLogger.info(f"subtractor for image id {ds.image.id}")
-            ds = self.subtractor.run(ds, session)
-            ds.update_report('subtraction', session)
+                if self.pars.save_before_subtraction:
+                    t_start = time.perf_counter()
+                    try:
+                        SCLogger.info(f"Saving intermediate image for image id {ds.image.id}")
+                        ds.save_and_commit(session=session)
+                    except Exception as e:
+                        ds.update_report('save intermediate', session=None)
+                        SCLogger.error(f"Failed to save intermediate image for image id {ds.image.id}")
+                        SCLogger.error(e)
+                        raise e
 
-            # find sources, generate a source list for detections
-            SCLogger.info(f"detector for image id {ds.image.id}")
-            ds = self.detector.run(ds, session)
-            ds.update_report('detection', session)
+                    ds.runtimes['save_intermediate'] = time.perf_counter() - t_start
 
-            # make cutouts of all the sources in the "detections" source list
-            SCLogger.info(f"cutter for image id {ds.image.id}")
-            ds = self.cutter.run(ds, session)
-            ds.update_report('cutting', session)
+                # fetch reference images and subtract them, save subtracted Image objects to DB and disk
+                SCLogger.info(f"subtractor for image id {ds.image.id}")
+                ds = self.subtractor.run(ds, session)
+                ds.update_report('subtraction', session=None)
 
-            # extract photometry and analytical cuts
-            SCLogger.info(f"measurer for image id {ds.image.id}")
-            ds = self.measurer.run(ds, session)
-            ds.update_report('measuring', session)
+                # find sources, generate a source list for detections
+                SCLogger.info(f"detector for image id {ds.image.id}")
+                ds = self.detector.run(ds, session)
+                ds.update_report('detection', session=None)
 
-            # measure deep learning models on the cutouts/measurements
-            # TODO: add this...
+                # make cutouts of all the sources in the "detections" source list
+                SCLogger.info(f"cutter for image id {ds.image.id}")
+                ds = self.cutter.run(ds, session)
+                ds.update_report('cutting', session=None)
 
-            if self.pars.save_at_finish:
-                t_start = time.perf_counter()
-                try:
-                    SCLogger.info(f"Saving final products for image id {ds.image.id}")
-                    ds.save_and_commit(session=session)
-                except Exception as e:
-                    ds.update_report('save final', session)
-                    SCLogger.error(f"Failed to save final products for image id {ds.image.id}")
-                    SCLogger.error(e)
-                    raise e
+                # extract photometry and analytical cuts
+                SCLogger.info(f"measurer for image id {ds.image.id}")
+                ds = self.measurer.run(ds, session)
+                ds.update_report('measuring', session=None)
 
-                ds.runtimes['save_final'] = time.perf_counter() - t_start
+                # measure deep learning models on the cutouts/measurements
+                # TODO: add this...
 
-            ds.finalize_report(session)
+                if self.pars.save_at_finish:
+                    t_start = time.perf_counter()
+                    try:
+                        SCLogger.info(f"Saving final products for image id {ds.image.id}")
+                        ds.save_and_commit(session=session)
+                    except Exception as e:
+                        ds.update_report('save final', session)
+                        SCLogger.error(f"Failed to save final products for image id {ds.image.id}")
+                        SCLogger.error(e)
+                        raise e
 
+                    ds.runtimes['save_final'] = time.perf_counter() - t_start
+
+                ds.finalize_report(session)
+
+                return ds
+
+        except Exception as e:
+            ds.catch_exception(e)
+        finally:
+            # make sure the DataStore is returned in case the calling scope want to debug the pipeline run
             return ds
 
     def run_with_session(self):
@@ -470,7 +482,8 @@ class Pipeline:
                     upstreams = []
                     for upstream in up_steps:
                         if upstream == 'reference':
-                            upstreams += ref_prov.upstreams
+                            if ref_prov is not None:
+                                upstreams += ref_prov.upstreams
                         else:
                             upstreams.append(provs[upstream])
 

@@ -17,7 +17,9 @@ from astropy.io import fits
 import astropy.coordinates
 import astropy.units as u
 
-from util.util import read_fits_image, save_fits_image_file
+from util.util import read_fits_image, save_fits_image_file, parse_dateobs
+from util.radec import parse_ra_hms_to_deg, parse_dec_dms_to_deg
+
 
 from models.base import (
     Base,
@@ -1898,22 +1900,28 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             cls,
             ra=None,
             dec=None,
+            target=None,
+            section_id=None,
+            project=None,
             filter=None,
+            instrument=None,
             min_mjd=None,
             max_mjd=None,
             min_dateobs=None,
             max_dateobs=None,
             min_exp_time=None,
             max_exp_time=None,
-            max_seeing_fwhm=None,
             min_seeing_fwhm=None,
-            max_limiting_mag=None,
+            max_seeing_fwhm=None,
             min_limiting_mag=None,
-            max_airmass=None,
+            max_limiting_mag=None,
             min_airmass=None,
-            sort_by='mjd',
-            sort_order='asc',
+            max_airmass=None,
+            min_background=None,
+            max_background=None,
+            sort_by='latest',
             seeing_quality_factor=3.0,
+            provenance_id=None,
     ):
         """Get a SQL alchemy statement object for Image objects, with some filters applied.
 
@@ -1932,6 +1940,55 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         Parameters
         ----------
+        ra: float or str (optional)
+            The right ascension of the target in degrees or in HMS format.
+            Will find all images that contain this position.
+            If given, must also give dec.
+        dec: float or str (optional)
+            The declination of the target in degrees or in DMS format.
+            Will find all images that contain this position.
+            If given, must also give ra.
+        target: str (optional)
+            Find images that have this target name (e.g., field ID or Object name).
+        section_id: int (optional)
+            Find images with this section ID.
+        project: str (optional)
+            Find images from this project.
+        filter: str (optional)
+            Find images taken using this filter.
+        instrument: str (optional)
+            Find images taken using this instrument.
+        min_mjd: float (optional)
+            Find images taken after this MJD.
+        max_mjd: float (optional)
+            Find images taken before this MJD.
+        min_dateobs: str (optional)
+            Find images taken after this date (use ISOT format or a datetime object).
+        max_dateobs: str (optional)
+            Find images taken before this date (use ISOT format or a datetime object).
+        min_exp_time: float (optional)
+            Find images with exposure time longer than this (in seconds).
+        max_exp_time: float (optional)
+            Find images with exposure time shorter than this (in seconds).
+        min_seeing_fwhm: float (optional)
+            Find images with seeing FWHM larger than this (in arcsec).
+        max_seeing_fwhm: float (optional)
+            Find images with seeing FWHM smaller than this (in arcsec).
+        min_limiting_mag: float (optional)
+            Find images with limiting magnitude larger (fainter) than this.
+        max_limiting_mag: float (optional)
+            Find images with limiting magnitude smaller (brighter) than this.
+        min_airmass: float (optional)
+            Find images with airmass larger than this.
+        max_airmass: float (optional)
+            Find images with airmass smaller than this.
+        sort_by: str, default 'latest'
+            Sort the images by 'earliest', 'latest' or 'quality'.
+            The 'earliest' and 'latest' order by MJD, in ascending/descending order, respectively.
+            The 'quality' option will try to order the images by quality, as defined above,
+            with the highest quality images first.
+        seeing_quality_factor: float, default 3.0
+            The factor to multiply the seeing FWHM by in the quality calculation.
 
         Returns
         -------
@@ -1942,6 +1999,91 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         """
         stmt = sa.select(Image)
 
+        # filter by coordinates being contained in the image
+        if ra is not None and dec is not None:
+            if isinstance(ra, str):
+                ra = parse_ra_hms_to_deg(ra)
+            if isinstance(dec, str):
+                dec = parse_dec_dms_to_deg(dec)
+            stmt = stmt.where(Image.containing(ra, dec))
+        elif ra is not None or dec is not None:
+            raise ValueError("Both ra and dec must be provided to search by position.")
+
+        # filter by target (e.g., field ID, object name) and possibly section ID and/or project
+        if target is not None:
+            stmt = stmt.where(Image.target == target)
+        if section_id is not None:
+            stmt = stmt.where(Image.section_id == section_id)
+        if project is not None:
+            stmt = stmt.where(Image.project == project)
+
+        # filter by filter and instrument
+        if filter is not None:
+            stmt = stmt.where(Image.filter == filter)
+        if instrument is not None:
+            stmt = stmt.where(Image.instrument == instrument)
+
+        # filter by MJD or dateobs
+        if min_mjd is not None:
+            if min_dateobs is not None:
+                raise ValueError("Cannot filter by both minimal MJD and dateobs.")
+            stmt = stmt.where(Image.mjd >= min_mjd)
+        if max_mjd is not None:
+            if max_dateobs is not None:
+                raise ValueError("Cannot filter by both maximal MJD and dateobs.")
+            stmt = stmt.where(Image.mjd <= max_mjd)
+        if min_dateobs is not None:
+            min_dateobs = parse_dateobs(min_dateobs)
+            stmt = stmt.where(Image.dateobs >= min_dateobs)
+        if max_dateobs is not None:
+            max_dateobs = parse_dateobs(max_dateobs)
+            stmt = stmt.where(Image.dateobs <= max_dateobs)
+
+        # filter by exposure time
+        if min_exp_time is not None:
+            stmt = stmt.where(Image.exp_time >= min_exp_time)
+        if max_exp_time is not None:
+            stmt = stmt.where(Image.exp_time <= max_exp_time)
+
+        # filter by seeing FWHM
+        if min_seeing_fwhm is not None:
+            stmt = stmt.where(Image.fwhm_estimate >= min_seeing_fwhm)
+        if max_seeing_fwhm is not None:
+            stmt = stmt.where(Image.fwhm_estimate <= max_seeing_fwhm)
+
+        # filter by limiting magnitude
+        if max_limiting_mag is not None:
+            stmt = stmt.where(Image.lim_mag_estimate <= max_limiting_mag)
+        if min_limiting_mag is not None:
+            stmt = stmt.where(Image.lim_mag_estimate >= min_limiting_mag)
+
+        # filter by airmass
+        if max_airmass is not None:
+            stmt = stmt.where(Image.airmass <= max_airmass)
+        if min_airmass is not None:
+            stmt = stmt.where(Image.airmass >= min_airmass)
+
+        # filter by background
+        if max_background is not None:
+            stmt = stmt.where(Image.bkg_mean_estimate <= max_background)
+        if min_background is not None:
+            stmt = stmt.where(Image.bkg_mean_estimate >= min_background)
+
+        # filter by provenance
+        if provenance_id is not None:
+            stmt = stmt.where(Image.provenance_id == provenance_id)
+
+        # sort the images
+        if sort_by == 'earliest':
+            stmt = stmt.order_by(Image.mjd)
+        elif sort_by == 'latest':
+            stmt = stmt.order_by(sa.desc(Image.mjd))
+        elif sort_by == 'quality':
+            stmt = stmt.order_by(
+                sa.desc(Image.lim_mag_estimate - abs(seeing_quality_factor) * Image.fwhm_estimate)
+            )
+        else:
+            raise ValueError(f'Unknown sort_by parameter: {sort_by}. Use "earliest", "latest" or "quality".')
 
         return stmt
 

@@ -255,7 +255,8 @@ class DataStore:
     def reraise(self):
         """If an exception is logged to the datastore, raise it. Otherwise pass. """
         if self.exception is not None:
-            raise self.exception
+            e = self.read_exception()
+            raise e
 
     def __init__(self, *args, **kwargs):
         """

@@ -203,11 +203,11 @@ def test_parameters( test_config ):
 
 def test_running_without_reference(decam_exposure, decam_default_calibrators, pipeline_for_tests, archive):
     p = pipeline_for_tests
-    p.pars.save_before_subtraction = True
+    p.pars.save_before_subtraction = True  # need this so images get saved even though it crashes on "no reference"
 
-    ds = p.run(decam_exposure)
-
-    ds.reraise()
+    with pytest.raises(ValueError, match='No reference image found for image .*'):
+        ds = p.run(decam_exposure, 'N1')
+        ds.reraise()
 
     # make sure the data is saved
     with SmartSession() as session:
