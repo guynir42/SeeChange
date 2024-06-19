@@ -289,7 +289,6 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, p
         shutil.rmtree(os.path.join(archive.test_folder_path, '115'), ignore_errors=True)
 
 
-@pytest.mark.skip()  # just trying this out
 def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_calibrators, pipeline_for_tests, archive):
     """
     Test that adding a bitflag to the exposure propagates to all downstreams as they are created
@@ -399,7 +398,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
             session.merge(ds.exposure)
             session.commit()
 
-@pytest.mark.skip()  # just trying this out
+
 def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_default_calibrators, archive):
     """
     Test that get_upstreams() and get_downstreams() return the proper objects.
@@ -479,7 +478,7 @@ def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_de
         shutil.rmtree(os.path.join(os.path.dirname(exposure.get_fullpath()), '115'), ignore_errors=True)
         shutil.rmtree(os.path.join(archive.test_folder_path, '115'), ignore_errors=True)
 
-@pytest.mark.skip()  # just trying this out
+
 def test_datastore_delete_everything(decam_datastore):
     im = decam_datastore.image
     im_paths = im.get_fullpath(as_list=True)
@@ -527,7 +526,7 @@ def test_datastore_delete_everything(decam_datastore):
                 sa.select(Measurements).where(Measurements.id == measurements_list[0].id)
             ).first() is None
 
-@pytest.mark.skip()  # just trying this out
+
 def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, decam_reference):
     p = pipeline_for_tests
     provs = p.make_provenance_tree(decam_exposure)
@@ -556,7 +555,7 @@ def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, de
         assert abs(report.start_time - t_start) < datetime.timedelta(seconds=1)
         assert abs(report.finish_time - t_end) < datetime.timedelta(seconds=1)
 
-@pytest.mark.skip()  # just trying this out
+
 def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_tests):
     from pipeline.top_level import PROCESS_OBJECTS
     p = pipeline_for_tests
@@ -629,7 +628,7 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
                 assert report.error_type == 'RuntimeError'
                 assert 'Exception injected by pipeline parameters' in report.error_message
 
-@pytest.mark.skip()  # just trying this out
+
 def test_multiprocessing_make_provenances_and_exposure(decam_exposure, decam_reference, pipeline_for_tests):
     from multiprocessing import SimpleQueue, Process
     process_list = []
