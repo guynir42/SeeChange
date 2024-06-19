@@ -1983,6 +1983,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             Find images with airmass larger than this.
         max_airmass: float (optional)
             Find images with airmass smaller than this.
+        # TODO: we don't actually have an "airmass" column on Image
         min_background: float (optional)
             Find images with mean sky background level higher than this.
         max_background: float (optional)
