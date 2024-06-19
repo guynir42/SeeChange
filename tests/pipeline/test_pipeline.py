@@ -215,14 +215,14 @@ def test_running_without_reference(decam_exposure, decam_default_calibrators, pi
         assert im is not None
 
 
-def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, archive):
+def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, pipeline_for_tests, archive):
     """Test that the pipeline runs end-to-end."""
     exposure = decam_exposure
 
     ref = decam_reference
     sec_id = ref.section_id
     try:  # cleanup the file at the end
-        p = Pipeline()
+        p = pipeline_for_tests
         assert p.extractor.pars.threshold != 3.14
         assert p.detector.pars.threshold != 3.14
 
