@@ -983,7 +983,7 @@ class DataStore:
             intersection of image and refim.
 
         WARNING: Right now this assumes that the images are aligned N/S and
-        E/W. TODO: areas of general quadrilaterals and interssections of
+        E/W. TODO: areas of general quadrilaterals and intersections of
         general quadrilaterals.
 
         For the "image area", it uses

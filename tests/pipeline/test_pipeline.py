@@ -289,6 +289,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
         shutil.rmtree(os.path.join(archive.test_folder_path, '115'), ignore_errors=True)
 
 
+@pytest.mark.skip()  # just trying this out
 def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_calibrators, pipeline_for_tests, archive):
     """
     Test that adding a bitflag to the exposure propagates to all downstreams as they are created

@@ -170,8 +170,10 @@ class Reference(Base, AutoIDMixin):
         if this_object_session is not None:  # if just loaded, should usually have a session!
             self.load_upstream_products(this_object_session)
 
-    def make_provenance(self):
+    def make_provenance(self, parameters=None):
         """Make a provenance for this reference image. """
+        if parameters is None:
+            parameters = {}
         upstreams = [self.image.provenance]
         for att in ['image', 'sources', 'psf', 'bg', 'wcs', 'zp']:
             if getattr(self, att) is not None:
@@ -182,7 +184,7 @@ class Reference(Base, AutoIDMixin):
         self.provenance = Provenance(
             code_version=self.image.provenance.code_version,
             process='reference',
-            parameters={},  # do we need any parameters for a reference's provenance?
+            parameters=parameters,
             upstreams=upstreams,
         )
 
@@ -301,3 +303,7 @@ class Reference(Base, AutoIDMixin):
         new_ref.image = self.image.merge_all(session)
 
         return new_ref
+
+    @classmethod
+    def get_reference(cls, ra=None, dec=None, target=None, section_id=None, session=None):
+        pass

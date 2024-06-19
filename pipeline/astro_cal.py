@@ -310,16 +310,6 @@ class AstroCalibrator:
                 else:
                     raise ValueError( f'Unknown solution method {self.pars.solution_method}' )
 
-                # update the upstream bitflag
-                sources = ds.get_sources( session=session )
-                if sources is None:
-                    raise ValueError(
-                        f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}'
-                    )
-                if ds.wcs._upstream_bitflag is None:
-                    ds.wcs._upstream_bitflag = 0
-                ds.wcs._upstream_bitflag |= sources.bitflag
-
                 # If an astro cal wasn't previously run on this image,
                 # update the image's ra/dec and corners attributes based on this new wcs
                 if not image.astro_cal_done:
@@ -330,6 +320,22 @@ class AstroCalibrator:
                 if parse_env('SEECHANGE_TRACEMALLOC'):
                     import tracemalloc
                     ds.memory_usages['astro_cal'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
+
+            # update the bitflag with the upstreams
+            sources = ds.get_sources(session=session)
+            if sources is None:
+                raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
+            psf = ds.get_psf(session=session)
+            if psf is None:
+                raise ValueError(f'Cannot find a PSF corresponding to the datastore inputs: {ds.get_inputs()}')
+            bg = ds.get_background(session=session)
+            if bg is None:
+                raise ValueError(f'Cannot find a background corresponding to the datastore inputs: {ds.get_inputs()}')
+
+            ds.wcs._upstream_bitflag = 0
+            ds.wcs._upstream_bitflag |= sources.bitflag  # includes badness from Image as well
+            ds.wcs._upstream_bitflag |= psf.bitflag
+            ds.wcs._upstream_bitflag |= bg.bitflag
 
         except Exception as e:
             ds.catch_exception(e)

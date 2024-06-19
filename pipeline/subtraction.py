@@ -304,12 +304,14 @@ class Subtractor:
 
                     sub_image.subtraction_output = outdict  # save the full output for debugging
 
-            if sub_image._upstream_bitflag is None:
-                sub_image._upstream_bitflag = 0
-            sub_image._upstream_bitflag |= ds.sources.bitflag
+            sub_image._upstream_bitflag = 0
             sub_image._upstream_bitflag |= ds.image.bitflag
+            sub_image._upstream_bitflag |= ds.sources.bitflag
+            sub_image._upstream_bitflag |= ds.psf.bitflag
+            sub_image._upstream_bitflag |= ds.bg.bitflag
             sub_image._upstream_bitflag |= ds.wcs.bitflag
             sub_image._upstream_bitflag |= ds.zp.bitflag
+
             if 'ref_image' in locals():
                 sub_image._upstream_bitflag |= ref_image.bitflag
 

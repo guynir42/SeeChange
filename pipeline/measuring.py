@@ -184,22 +184,20 @@ class Measurer:
             # get the provenance for this step:
             prov = ds.get_provenance('measuring', self.pars.get_critical_pars(), session=session)
 
+            detections = ds.get_detections(session=session)
+            if detections is None:
+                raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
+
+            cutouts = ds.get_cutouts(session=session)
+            if cutouts is None:
+                raise ValueError(f'Cannot find cutouts corresponding to the datastore inputs: {ds.get_inputs()}')
+
             # try to find some measurements in memory or in the database:
             measurements_list = ds.get_measurements(prov, session=session)
 
             # note that if measurements_list is found, there will not be an all_measurements appended to datastore!
             if measurements_list is None or len(measurements_list) == 0:  # must create a new list of Measurements
                 self.has_recalculated = True
-                # use the latest source list in the data store,
-                # or load using the provenance given in the
-                # data store's upstream_provs, or just use
-                # the most recent provenance for "detection"
-                detections = ds.get_detections(session=session)
-
-                if detections is None:
-                    raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
-
-                cutouts = ds.get_cutouts(session=session)
 
                 # prepare the filter bank for this batch of cutouts
                 if self._filter_psf_fwhm is None or self._filter_psf_fwhm != cutouts[0].sources.image.get_psf().fwhm_pixels:
@@ -328,18 +326,6 @@ class Measurer:
 
                     # TODO: add additional disqualifiers
 
-                    m._upstream_bitflag = 0
-                    m._upstream_bitflag |= c.bitflag
-
-                    ignore_bits = 0
-                    for badness in self.pars.bad_flag_exclude:
-                        ignore_bits |= 2 ** BadnessConverter.convert(badness)
-
-                    m.disqualifier_scores['bad_flag'] = np.bitwise_and(
-                        np.array(m.bitflag).astype('uint64'),
-                        ~np.array(ignore_bits).astype('uint64'),
-                    )
-
                     # make sure disqualifier scores don't have any numpy types
                     for k, v in m.disqualifier_scores.items():
                         if isinstance(v, np.number):
@@ -349,6 +335,20 @@ class Measurer:
 
                 saved_measurements = []
                 for m in measurements_list:
+                    # regardless of wether we created these now, or loaded from DB,
+                    # the bitflag should be updated based on the most recent data
+                    m._upstream_bitflag = 0
+                    m._upstream_bitflag |= m.cutouts.bitflag
+
+                    ignore_bits = 0
+                    for badness in self.pars.bad_flag_exclude:
+                        ignore_bits |= 2 ** BadnessConverter.convert(badness)
+
+                    m.disqualifier_scores['bad_flag'] = int(np.bitwise_and(
+                        np.array(m.bitflag).astype('uint64'),
+                        ~np.array(ignore_bits).astype('uint64'),
+                    ))
+
                     threshold_comparison = self.compare_measurement_to_thresholds(m)
                     if threshold_comparison != "delete":  # all disqualifiers are below threshold
                         m.is_bad = threshold_comparison == "bad"

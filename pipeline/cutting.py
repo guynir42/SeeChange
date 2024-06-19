@@ -73,19 +73,15 @@ class Cutter:
 
             # try to find some measurements in memory or in the database:
             cutout_list = ds.get_cutouts(prov, session=session)
+            detections = ds.get_detections(session=session)
+
+            if detections is None:
+                raise ValueError(
+                    f'Cannot find a detections source list corresponding to the datastore inputs: {ds.get_inputs()}'
+                )
 
             if cutout_list is None or len(cutout_list) == 0:  # must create a new list of Cutouts
                 self.has_recalculated = True
-                # use the latest source list in the data store,
-                # or load using the provenance given in the
-                # data store's upstream_provs, or just use
-                # the most recent provenance for "detection"
-                detections = ds.get_detections(session=session)
-
-                if detections is None:
-                    raise ValueError(
-                        f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}'
-                    )
 
                 cutout_list = []
                 x = detections.x
@@ -130,9 +126,6 @@ class Cutter:
                     cutout.new_weight = new_stamps_weight[i]
                     cutout.new_flags = new_stamps_flags[i]
 
-                    cutout._upstream_bitflag = 0
-                    cutout._upstream_bitflag |= detections.bitflag
-
                     cutout_list.append(cutout)
 
             # add the resulting list to the data store
@@ -145,6 +138,10 @@ class Cutter:
                             f'Provenance mismatch for cutout {cutout.provenance.id[:6]} '
                             f'and preset provenance {prov.id[:6]}!'
                         )
+
+                # make sure to update the bitflag
+                cutout._upstream_bitflag = 0
+                cutout._upstream_bitflag |= detections.bitflag
 
             ds.cutouts = cutout_list
 

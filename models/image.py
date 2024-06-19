@@ -17,7 +17,7 @@ from astropy.io import fits
 import astropy.coordinates
 import astropy.units as u
 
-from util.util import read_fits_image, save_fits_image_file, parse_dateobs
+from util.util import read_fits_image, save_fits_image_file, parse_dateobs, listify
 from util.radec import parse_ra_hms_to_deg, parse_dec_dms_to_deg
 
 
@@ -1903,25 +1903,25 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             target=None,
             section_id=None,
             project=None,
-            filter=None,
             instrument=None,
+            filter=None,
             min_mjd=None,
             max_mjd=None,
             min_dateobs=None,
             max_dateobs=None,
             min_exp_time=None,
             max_exp_time=None,
-            min_seeing_fwhm=None,
-            max_seeing_fwhm=None,
-            min_limiting_mag=None,
-            max_limiting_mag=None,
+            min_seeing=None,
+            max_seeing=None,
+            min_limmag=None,
+            max_limmag=None,
             min_airmass=None,
             max_airmass=None,
             min_background=None,
             max_background=None,
             sort_by='latest',
             seeing_quality_factor=3.0,
-            provenance_id=None,
+            provenance_ids=None,
     ):
         """Get a SQL alchemy statement object for Image objects, with some filters applied.
 
@@ -1954,10 +1954,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             Find images with this section ID.
         project: str (optional)
             Find images from this project.
-        filter: str (optional)
-            Find images taken using this filter.
         instrument: str (optional)
             Find images taken using this instrument.
+        filter: str (optional)
+            Find images taken using this filter.
         min_mjd: float (optional)
             Find images taken after this MJD.
         max_mjd: float (optional)
@@ -1970,18 +1970,22 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             Find images with exposure time longer than this (in seconds).
         max_exp_time: float (optional)
             Find images with exposure time shorter than this (in seconds).
-        min_seeing_fwhm: float (optional)
+        min_seeing: float (optional)
             Find images with seeing FWHM larger than this (in arcsec).
-        max_seeing_fwhm: float (optional)
+        max_seeing: float (optional)
             Find images with seeing FWHM smaller than this (in arcsec).
-        min_limiting_mag: float (optional)
+        min_limmag: float (optional)
             Find images with limiting magnitude larger (fainter) than this.
-        max_limiting_mag: float (optional)
+        max_limmag: float (optional)
             Find images with limiting magnitude smaller (brighter) than this.
         min_airmass: float (optional)
             Find images with airmass larger than this.
         max_airmass: float (optional)
             Find images with airmass smaller than this.
+        min_background: float (optional)
+            Find images with mean sky background level higher than this.
+        max_background: float (optional)
+            Find images with mean sky background level lower than this.
         sort_by: str, default 'latest'
             Sort the images by 'earliest', 'latest' or 'quality'.
             The 'earliest' and 'latest' order by MJD, in ascending/descending order, respectively.
@@ -1989,6 +1993,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             with the highest quality images first.
         seeing_quality_factor: float, default 3.0
             The factor to multiply the seeing FWHM by in the quality calculation.
+        provenance_ids: str or list of strings
+            Find images with these provenance IDs.
 
         Returns
         -------
@@ -2046,16 +2052,16 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             stmt = stmt.where(Image.exp_time <= max_exp_time)
 
         # filter by seeing FWHM
-        if min_seeing_fwhm is not None:
-            stmt = stmt.where(Image.fwhm_estimate >= min_seeing_fwhm)
-        if max_seeing_fwhm is not None:
-            stmt = stmt.where(Image.fwhm_estimate <= max_seeing_fwhm)
+        if min_seeing is not None:
+            stmt = stmt.where(Image.fwhm_estimate >= min_seeing)
+        if max_seeing is not None:
+            stmt = stmt.where(Image.fwhm_estimate <= max_seeing)
 
         # filter by limiting magnitude
-        if max_limiting_mag is not None:
-            stmt = stmt.where(Image.lim_mag_estimate <= max_limiting_mag)
-        if min_limiting_mag is not None:
-            stmt = stmt.where(Image.lim_mag_estimate >= min_limiting_mag)
+        if max_limmag is not None:
+            stmt = stmt.where(Image.lim_mag_estimate <= max_limmag)
+        if min_limmag is not None:
+            stmt = stmt.where(Image.lim_mag_estimate >= min_limmag)
 
         # filter by airmass
         if max_airmass is not None:
@@ -2069,9 +2075,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         if min_background is not None:
             stmt = stmt.where(Image.bkg_mean_estimate >= min_background)
 
-        # filter by provenance
-        if provenance_id is not None:
-            stmt = stmt.where(Image.provenance_id == provenance_id)
+        # filter by provenances
+        provenance_ids = listify(provenance_ids)
+        if provenance_ids is not None:
+            stmt = stmt.where(Image.provenance_id.in_(provenance_ids))
 
         # sort the images
         if sort_by == 'earliest':

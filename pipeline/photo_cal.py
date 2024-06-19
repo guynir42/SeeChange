@@ -249,6 +249,19 @@ class PhotCalibrator:
             # get the provenance for this step:
             prov = ds.get_provenance('extraction', self.pars.get_critical_pars(), session=session)
 
+            image = ds.get_image(session=session)
+            if image is None:
+                raise ValueError('Cannot find the image corresponding to the datastore inputs')
+            sources = ds.get_sources(session=session)
+            if sources is None:
+                raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
+            psf = ds.get_psf(session=session)
+            if psf is None:
+                raise ValueError(f'Cannot find a psf corresponding to the datastore inputs: {ds.get_inputs()}')
+            wcs = ds.get_wcs(session=session)
+            if wcs is None:
+                raise ValueError(f'Cannot find a wcs for image {image.filepath}')
+
             # try to find the world coordinates in memory or in the database:
             zp = ds.get_zp(prov, session=session)
 
@@ -257,16 +270,6 @@ class PhotCalibrator:
                 if self.pars.cross_match_catalog != 'gaia_dr3':
                     raise NotImplementedError( f"Currently only know how to calibrate to gaia_dr3, not "
                                                f"{self.pars.cross_match_catalog}" )
-
-                image = ds.get_image(session=session)
-
-                sources = ds.get_sources(session=session)
-                if sources is None:
-                    raise ValueError(f'Cannot find a source list corresponding to the datastore inputs: {ds.get_inputs()}')
-
-                wcs = ds.get_wcs( session=session )
-                if wcs is None:
-                    raise ValueError( f'Cannot find a wcs for image {image.filepath}' )
 
                 catname = self.pars.cross_match_catalog
                 fetch_func = getattr(pipeline.catalog_tools, f'fetch_{catname}_excerpt')
@@ -295,11 +298,6 @@ class PhotCalibrator:
                 ds.zp = ZeroPoint( sources=ds.sources, provenance=prov, zp=zpval, dzp=dzpval,
                                    aper_cor_radii=sources.aper_rads, aper_cors=apercors )
 
-                if ds.zp._upstream_bitflag is None:
-                    ds.zp._upstream_bitflag = 0
-                ds.zp._upstream_bitflag |= sources.bitflag
-                ds.zp._upstream_bitflag |= wcs.bitflag
-
                 ds.image.zero_point_estimate = ds.zp.zp  # TODO: should we only write if the property is None?
                 # TODO: we should also add a limiting magnitude calculation here.
                 # TODO: I'm putting a stupid placeholder instead of actual limiting magnitude, please fix this!
@@ -309,6 +307,12 @@ class PhotCalibrator:
                 if parse_env('SEECHANGE_TRACEMALLOC'):
                     import tracemalloc
                     ds.memory_usages['photo_cal'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
+
+            # update the bitflag with the upstreams
+            ds.zp._upstream_bitflag = 0
+            ds.zp._upstream_bitflag |= sources.bitflag  # includes badness from Image as well
+            ds.zp._upstream_bitflag |= psf.bitflag
+            ds.zp._upstream_bitflag |= wcs.bitflag
 
         except Exception as e:
             ds.catch_exception(e)

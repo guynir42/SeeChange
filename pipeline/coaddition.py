@@ -585,14 +585,9 @@ class CoaddPipeline:
             raise ValueError('All unnamed arguments must be Image objects. ')
 
         if self.images is None:  # get the images from the DB
-            # TODO: this feels like it could be a useful tool, maybe need to move it to Image class? Issue 188
             # if no images were given, parse the named parameters
             ra = kwargs.get('ra', None)
-            if isinstance(ra, str):
-                ra = parse_ra_hms_to_deg(ra)
             dec = kwargs.get('dec', None)
-            if isinstance(dec, str):
-                dec = parse_dec_dms_to_deg(dec)
             target = kwargs.get('target', None)
             if target is None and (ra is None or dec is None):
                 raise ValueError('Must give either target or RA and Dec. ')
@@ -604,14 +599,10 @@ class CoaddPipeline:
             if start_time is None:
                 start_time = end_time - self.pars.date_range
 
-            if isinstance(end_time, str):
-                end_time = Time(end_time).mjd
-            if isinstance(start_time, str):
-                start_time = Time(start_time).mjd
-
             instrument = kwargs.get('instrument', None)
             filter = kwargs.get('filter', None)
             section_id = str(kwargs.get('section_id', None))
+
             provenance_ids = kwargs.get('provenance_ids', None)
             if provenance_ids is None:
                 prov = get_latest_provenance('preprocessing', session=session)
@@ -619,19 +610,17 @@ class CoaddPipeline:
             provenance_ids = listify(provenance_ids)
 
             with SmartSession(session) as dbsession:
-                stmt = sa.select(Image).where(
-                        Image.mjd >= start_time,
-                        Image.mjd <= end_time,
-                        Image.instrument == instrument,
-                        Image.filter == filter,
-                        Image.section_id == section_id,
-                        Image.provenance_id.in_(provenance_ids),
-                    )
-
-                if target is not None:
-                    stmt = stmt.where(Image.target == target)
-                else:
-                    stmt = stmt.where(Image.containing( ra, dec ))
+                stmt = Image.query_images(
+                    ra=ra,
+                    dec=dec,
+                    target=target,
+                    section_id=section_id,
+                    instrument=instrument,
+                    filter=filter,
+                    min_dateobs=start_time,
+                    max_dateobs=end_time,
+                    provenance_ids=provenance_ids
+                )
                 self.images = dbsession.scalars(stmt.order_by(Image.mjd.asc())).all()
 
         return session
