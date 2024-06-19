@@ -201,7 +201,7 @@ def test_parameters( test_config ):
     assert check_override(overrides['measuring'], pipeline.measurer.pars)
 
 
-def test_running_without_reference(decam_exposure, decam_default_calibrators, pipeline_for_tests, archive):
+def test_running_without_reference(decam_exposure, decam_default_calibrators, pipeline_for_tests):
     p = pipeline_for_tests
     p.pars.save_before_subtraction = True  # need this so images get saved even though it crashes on "no reference"
 
@@ -289,7 +289,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, a
         shutil.rmtree(os.path.join(archive.test_folder_path, '115'), ignore_errors=True)
 
 
-def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_calibrators, archive):
+def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_calibrators, pipeline_for_tests, archive):
     """
     Test that adding a bitflag to the exposure propagates to all downstreams as they are created
     Does not check measurements, as they do not have the HasBitflagBadness Mixin.
