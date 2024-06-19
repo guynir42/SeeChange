@@ -1345,7 +1345,7 @@ def test_image_multifile(sim_image_uncommitted, provenance_base, test_config):
         test_config.set_value('storage.images.single_file', single_fileness)
 
 
-@pytest.mark.skip(reason="This test is way too slow (see Issue #291")
+@pytest.mark.skip(reason="This test is way too slow (see Issue #291)")
 def test_image_products_are_deleted(ptf_datastore, data_dir, archive):
     ds = ptf_datastore  # shorthand
 
@@ -1387,7 +1387,8 @@ def test_image_products_are_deleted(ptf_datastore, data_dir, archive):
         assert not os.path.isfile(file)
 
 
-@pytest.mark.flaky(max_runs=3)
+@pytest.mark.skip(reason="This test regularly fails, even when flaky is used. See Issue #263")
+# @pytest.mark.flaky(max_runs=3)
 def test_free( decam_exposure, decam_raw_image, ptf_ref ):
     proc = psutil.Process()
     origmem = proc.memory_info()
