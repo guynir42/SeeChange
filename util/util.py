@@ -164,7 +164,7 @@ def parse_dateobs(dateobs=None, output='datetime'):
         The dateobs to parse.
     output: str
         Choose one of the output formats:
-        'datetime', 'Time', 'float', 'str'.
+        'datetime', 'Time', 'float', 'mjd', 'str'.
 
     Returns
     -------
@@ -191,7 +191,7 @@ def parse_dateobs(dateobs=None, output='datetime'):
         return dateobs.datetime
     elif output == 'Time':
         return dateobs
-    elif output == 'float':
+    elif output in ['float', 'mjd']:
         return dateobs.mjd
     elif output == 'str':
         return dateobs.isot
