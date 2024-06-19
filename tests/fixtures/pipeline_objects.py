@@ -402,17 +402,13 @@ def datastore_factory(data_dir, pipeline_factory):
                         ds.image.exposure_id = ds.exposure_id
                     if ds.exposure is not None:
                         ds.image.exposure = ds.exposure
+                        ds.image.exposure_id = ds.exposure
 
                     # Copy the original image from the cache if requested
                     if save_original_image:
                         ds.path_to_original_image = ds.image.get_fullpath()[0] + '.image.fits.original'
                         cache_path = os.path.join(cache_dir, ds.image.filepath + '.image.fits.original')
                         shutil.copy2( cache_path, ds.path_to_original_image )
-
-                    # add the preprocessing steps from instrument (TODO: remove this as part of Issue #142)
-                    # preprocessing_steps = ds.image.instrument_object.preprocessing_steps
-                    # prep_pars = p.preprocessor.pars.get_critical_pars()
-                    # prep_pars['preprocessing_steps'] = preprocessing_steps
 
                     upstreams = [ds.exposure.provenance] if ds.exposure is not None else []  # images without exposure
                     prov = Provenance(
@@ -475,23 +471,6 @@ def datastore_factory(data_dir, pipeline_factory):
                     if not parse_env( "LIMIT_CACHE_USAGE" ):
                         shutil.copy2( ds.image.get_fullpath()[0],
                                       os.path.join(cache_dir, ds.image.filepath + '.image.fits.original') )
-
-            # check if background was calculated
-            if ds.image.bkg_mean_estimate is None or ds.image.bkg_rms_estimate is None:
-                # Estimate the background rms with sep
-                boxsize = ds.image.instrument_object.background_box_size
-                filtsize = ds.image.instrument_object.background_filt_size
-
-                # Dysfunctionality alert: sep requires a *float* image for the mask
-                # IEEE 32-bit floats have 23 bits in the mantissa, so they should
-                # be able to precisely represent a 16-bit integer mask image
-                # In any event, sep.Background uses >0 as "bad"
-                fmask = np.array(ds.image.flags, dtype=np.float32)
-                backgrounder = sep.Background(ds.image.data, mask=fmask,
-                                              bw=boxsize, bh=boxsize, fw=filtsize, fh=filtsize)
-
-                ds.image.bkg_mean_estimate = backgrounder.globalback
-                ds.image.bkg_rms_estimate = backgrounder.globalrms
 
             # TODO: move the code below here up to above preprocessing, once we have reference sets
             try:  # check if this datastore can load a reference
@@ -733,6 +712,11 @@ def datastore_factory(data_dir, pipeline_factory):
                         warnings.warn(f'cache path {zp_cache_path} does not match output path {output_path}')
 
             ds.save_and_commit(session=session)
+
+            # make a new copy of the image to cache, including the estimates for lim_mag, fwhm, etc.
+            if not parse_env("LIMIT_CACHE_USAGE"):
+                output_path = copy_to_cache(ds.image, cache_dir)
+
             if ref is None:
                 return ds  # if no reference is found, simply return the datastore without the rest of the products
 

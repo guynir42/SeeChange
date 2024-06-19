@@ -656,7 +656,8 @@ class DataStore:
                     self.image = None
                 if self.exposure is not None and self.image.exposure_id != self.exposure.id:
                     self.image = None
-                if self.section is not None and str(self.image.section_id) != self.section.identifier:
+                if ( self.section is not None and self.image is not None and
+                        str(self.image.section_id) != self.section.identifier ):
                     self.image = None
                 if self.image is not None and provenance is not None and self.image.provenance.id != provenance.id:
                     self.image = None

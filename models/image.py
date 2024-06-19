@@ -1922,6 +1922,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             sort_by='latest',
             seeing_quality_factor=3.0,
             provenance_ids=None,
+            types=[1, 2, 3, 4],  # TODO: is there a smarter way to only get science images?
     ):
         """Get a SQL alchemy statement object for Image objects, with some filters applied.
 
@@ -1995,6 +1996,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             The factor to multiply the seeing FWHM by in the quality calculation.
         provenance_ids: str or list of strings
             Find images with these provenance IDs.
+        types: list of integers
+            List of integer converted types of images to search for.
+            This defaults to [1,2,3,4] which corresponds to the
+            science images, coadds and subtractions
+            (see enums_and_bitflags.ImageTypeConverter for more details).
 
         Returns
         -------
@@ -2079,6 +2085,11 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         provenance_ids = listify(provenance_ids)
         if provenance_ids is not None:
             stmt = stmt.where(Image.provenance_id.in_(provenance_ids))
+
+        # filter by image types
+        types = listify(types)
+        if types is not None:
+            stmt = stmt.where(Image._type.in_(types))
 
         # sort the images
         if sort_by == 'earliest':
