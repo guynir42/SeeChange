@@ -738,7 +738,7 @@ class DataStore:
         if self.sources is None:
             with SmartSession(session, self.session) as session:
                 image = self.get_image(session=session)
-                if image is not None:
+                if image is not None and provenance is not None:
                     self.sources = session.scalars(
                         sa.select(SourceList).where(
                             SourceList.image_id == image.id,

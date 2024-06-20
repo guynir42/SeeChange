@@ -1919,10 +1919,12 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             max_airmass=None,
             min_background=None,
             max_background=None,
-            sort_by='latest',
+            min_zero_point=None,
+            max_zero_point=None,
+            order_by='latest',
             seeing_quality_factor=3.0,
             provenance_ids=None,
-            types=[1, 2, 3, 4],  # TODO: is there a smarter way to only get science images?
+            type=[1, 2, 3, 4],  # TODO: is there a smarter way to only get science images?
     ):
         """Get a SQL alchemy statement object for Image objects, with some filters applied.
 
@@ -1949,16 +1951,21 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             The declination of the target in degrees or in DMS format.
             Will find all images that contain this position.
             If given, must also give ra.
-        target: str (optional)
+        target: str or list of strings (optional)
             Find images that have this target name (e.g., field ID or Object name).
-        section_id: int (optional)
+            If given as a list, will match all the target names in the list.
+        section_id: int/str or list of ints/strings (optional)
             Find images with this section ID.
-        project: str (optional)
+            If given as a list, will match all the section IDs in the list.
+        project: str or list of strings (optional)
             Find images from this project.
-        instrument: str (optional)
+            If given as a list, will match all the projects in the list.
+        instrument: str or list of str (optional)
             Find images taken using this instrument.
-        filter: str (optional)
+            Provide a list to match multiple instruments.
+        filter: str or list of str (optional)
             Find images taken using this filter.
+            Provide a list to match multiple filters.
         min_mjd: float (optional)
             Find images taken after this MJD.
         max_mjd: float (optional)
@@ -1985,10 +1992,14 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             Find images with airmass smaller than this.
         # TODO: we don't actually have an "airmass" column on Image
         min_background: float (optional)
-            Find images with mean sky background level higher than this.
+            Find images with background rms higher than this.
         max_background: float (optional)
-            Find images with mean sky background level lower than this.
-        sort_by: str, default 'latest'
+            Find images with background rms lower than this.
+        min_zero_point: float (optional)
+            Find images with zero point higher than this.
+        max_zero_point: float (optional)
+            Find images with zero point lower than this.
+        order_by: str, default 'latest'
             Sort the images by 'earliest', 'latest' or 'quality'.
             The 'earliest' and 'latest' order by MJD, in ascending/descending order, respectively.
             The 'quality' option will try to order the images by quality, as defined above,
@@ -1997,11 +2008,12 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             The factor to multiply the seeing FWHM by in the quality calculation.
         provenance_ids: str or list of strings
             Find images with these provenance IDs.
-        types: list of integers
+        type: integer or list of integers
             List of integer converted types of images to search for.
             This defaults to [1,2,3,4] which corresponds to the
             science images, coadds and subtractions
             (see enums_and_bitflags.ImageTypeConverter for more details).
+            Choose 1 to get only the regular (non-coadd, non-subtraction) images.
 
         Returns
         -------
@@ -2023,18 +2035,23 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             raise ValueError("Both ra and dec must be provided to search by position.")
 
         # filter by target (e.g., field ID, object name) and possibly section ID and/or project
-        if target is not None:
-            stmt = stmt.where(Image.target == target)
-        if section_id is not None:
-            stmt = stmt.where(Image.section_id == section_id)
-        if project is not None:
-            stmt = stmt.where(Image.project == project)
+        targets = listify(target)
+        if targets is not None:
+            stmt = stmt.where(Image.target.in_(targets))
+        section_ids = listify(section_id)
+        if section_ids is not None:
+            stmt = stmt.where(Image.section_id.in_(section_ids))
+        projects = listify(project)
+        if projects is not None:
+            stmt = stmt.where(Image.project.in_(projects))
 
         # filter by filter and instrument
-        if filter is not None:
-            stmt = stmt.where(Image.filter == filter)
-        if instrument is not None:
-            stmt = stmt.where(Image.instrument == instrument)
+        filters = listify(filter)
+        if filters is not None:
+            stmt = stmt.where(Image.filter.in_(filters))
+        instruments = listify(instrument)
+        if instruments is not None:
+            stmt = stmt.where(Image.instrument.in_(instruments))
 
         # filter by MJD or dateobs
         if min_mjd is not None:
@@ -2078,9 +2095,15 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         # filter by background
         if max_background is not None:
-            stmt = stmt.where(Image.bkg_mean_estimate <= max_background)
+            stmt = stmt.where(Image.bkg_rms_estimate <= max_background)
         if min_background is not None:
-            stmt = stmt.where(Image.bkg_mean_estimate >= min_background)
+            stmt = stmt.where(Image.bkg_rms_estimate >= min_background)
+
+        # filter by zero point
+        if max_zero_point is not None:
+            stmt = stmt.where(Image.zero_point_estimate <= max_zero_point)
+        if min_zero_point is not None:
+            stmt = stmt.where(Image.zero_point_estimate >= min_zero_point)
 
         # filter by provenances
         provenance_ids = listify(provenance_ids)
@@ -2088,24 +2111,23 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             stmt = stmt.where(Image.provenance_id.in_(provenance_ids))
 
         # filter by image types
-        types = listify(types)
+        types = listify(type)
         if types is not None:
             stmt = stmt.where(Image._type.in_(types))
 
         # sort the images
-        if sort_by == 'earliest':
+        if order_by == 'earliest':
             stmt = stmt.order_by(Image.mjd)
-        elif sort_by == 'latest':
+        elif order_by == 'latest':
             stmt = stmt.order_by(sa.desc(Image.mjd))
-        elif sort_by == 'quality':
+        elif order_by == 'quality':
             stmt = stmt.order_by(
                 sa.desc(Image.lim_mag_estimate - abs(seeing_quality_factor) * Image.fwhm_estimate)
             )
         else:
-            raise ValueError(f'Unknown sort_by parameter: {sort_by}. Use "earliest", "latest" or "quality".')
+            raise ValueError(f'Unknown order_by parameter: {order_by}. Use "earliest", "latest" or "quality".')
 
         return stmt
-
 
     def get_psf(self):
         """Load the PSF object for this image.

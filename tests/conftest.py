@@ -63,6 +63,15 @@ def pytest_sessionstart(session):
     FileOnDiskMixin.configure_paths()
     # SCLogger.setLevel( logging.INFO )
 
+    # get rid of any catalog excerpts from previous runs:
+    with SmartSession() as session:
+        catexps = session.scalars(sa.select(CatalogExcerpt)).all()
+        for catexp in catexps:
+            if os.path.isfile(catexp.get_fullpath()):
+                os.remove(catexp.get_fullpath())
+            session.delete(catexp)
+        session.commit()
+
 
 # This will be executed after the last test (session is the pytest session, not the SQLAlchemy session)
 def pytest_sessionfinish(session, exitstatus):

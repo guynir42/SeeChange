@@ -382,7 +382,8 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
     if 'output_images' in locals():
         for image in output_images:
             image.psf.delete_from_disk_and_database()
-            image.delete_from_disk_and_database()
+            image.bg.delete_from_disk_and_database()
+            image.delete_from_disk_and_database(remove_downstreams=True)
 
     if 'coadd_image' in locals():
         coadd_image.delete_from_disk_and_database()
@@ -394,10 +395,6 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
                 action='ignore',
                 message=r'.*DELETE statement on table .* expected to delete \d* row\(s\).*',
             )
-            # warnings.filterwarnings(
-            #     'ignore',
-            #     message=r".*Object of type .* not in session, .* operation along .* won't proceed.*"
-            # )
             for image in ptf_reference_images:
                 image = session.merge(image)
                 image.exposure.delete_from_disk_and_database(commit=False, session=session, remove_downstreams=True)

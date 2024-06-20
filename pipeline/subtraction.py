@@ -10,9 +10,9 @@ from models.image import Image
 from improc.zogy import zogy_subtract, zogy_add_weights_flags
 from improc.inpainting import Inpainter
 from improc.alignment import ImageAligner
+from improc.tools import sigma_clipping
 
 from util.util import parse_env
-
 
 class ParsSubtractor(Parameters):
     def __init__(self, **kwargs):
@@ -188,6 +188,9 @@ class Subtractor:
         output['outwt'] = outwt
         output['outfl'] = outfl
 
+        # convert flux based into magnitude based zero point
+        output['zero_point'] = 2.5 * np.log10(output['zero_point'])
+
         return output
 
     def _subtract_hotpants(self, new_image, ref_image):
@@ -303,6 +306,18 @@ class Subtractor:
                             sub_image.psffluxerr = outdict['alpha_err']
 
                     sub_image.subtraction_output = outdict  # save the full output for debugging
+
+                    # TODO: can we get better estimates from our subtraction outdict? Issue #312
+                    sub_image.fwhm_estimate = new_image.fwhm_estimate
+                    # if the subtraction does not provide an estimate of the ZP, use the one from the new image
+                    sub_image.zero_point_estimate = outdict.get('zero_point', new_image.zp.zp)
+                    sub_image.lim_mag_estimate = new_image.lim_mag_estimate
+
+                    # if the subtraction does not provide an estimate of the background, use sigma clipping
+                    if 'bkg_mean' not in outdict or 'bkg_rms' not in outdict:
+                        mu, sig = sigma_clipping(sub_image.data)
+                        sub_image.bkg_mean_estimate = outdict.get('bkg_mean', mu)
+                        sub_image.bkg_rms_estimate = outdict.get('bkg_rms', sig)
 
             sub_image._upstream_bitflag = 0
             sub_image._upstream_bitflag |= ds.image.bitflag

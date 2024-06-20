@@ -299,9 +299,8 @@ class PhotCalibrator:
                                    aper_cor_radii=sources.aper_rads, aper_cors=apercors )
 
                 ds.image.zero_point_estimate = ds.zp.zp  # TODO: should we only write if the property is None?
-                # TODO: we should also add a limiting magnitude calculation here.
                 # TODO: I'm putting a stupid placeholder instead of actual limiting magnitude, please fix this!
-                ds.image.lim_mag_estimate = ds.zp.zp - 7.0  # if only it were so simple...
+                ds.image.lim_mag_estimate = ds.zp.zp - 2.5 * np.log10(5.0 * ds.image.bkg_rms_estimate)
 
                 ds.runtimes['photo_cal'] = time.perf_counter() - t_start
                 if parse_env('SEECHANGE_TRACEMALLOC'):
