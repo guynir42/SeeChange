@@ -611,6 +611,7 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
                     match=f"Exception injected by pipeline parameters in process '{obj_to_process_name[obj]}'"
             ):
                 ds = p.run(decam_datastore)
+                ds.reraise()
 
             # fetch the report object
             with SmartSession() as session:
