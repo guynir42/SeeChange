@@ -9,7 +9,6 @@ import numpy as np
 
 import astropy.table
 import astropy.wcs.utils
-from astropy.io import fits
 
 from util import ldac
 from util.exceptions import SubprocessFailure
@@ -360,7 +359,7 @@ class ImageAligner:
                 warnings.warn("No background image found. Using original image data.")
                 data = image.data
             else:
-                data = image.data_bg
+                data = image.data_bgsub
 
             save_fits_image_file(tmpim, data, hdr, extname=None, single_file=False)
             save_fits_image_file(tmpflags, image.flags, hdr, extname=None, single_file=False)
@@ -561,7 +560,7 @@ class ImageAligner:
                 warped_image.data = source_image.data
                 warped_image.bg = None  # this will be a problem later if you need to coadd the images!
             else:
-                warped_image.data = source_image.data_bg
+                warped_image.data = source_image.data_bgsub
                 # make a copy of the background object but with zero mean
                 bg = Background(
                     value=0,

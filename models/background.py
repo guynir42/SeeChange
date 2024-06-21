@@ -64,10 +64,10 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         self._method = BackgroundMethodConverter.convert(value)
 
     image_id = sa.Column(
-        sa.ForeignKey('images.id', ondelete='CASCADE', name='psfs_image_id_fkey'),
+        sa.ForeignKey('images.id', ondelete='CASCADE', name='backgrounds_image_id_fkey'),
         nullable=False,
         index=True,
-        doc="ID of the image for which this is the PSF."
+        doc="ID of the image for which this is the background."
     )
 
     image = orm.relationship(
@@ -75,7 +75,7 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         cascade='save-update, merge, refresh-expire, expunge',
         passive_deletes=True,
         lazy='selectin',
-        doc="Image for which this is the PSF."
+        doc="Image for which this is the background."
     )
 
     value = sa.Column(
@@ -89,7 +89,7 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         sa.Float,
         index=True,
         nullable=False,
-        doc="Noise of the background (in units of counts), as a best representative value for the entire image."
+        doc="Noise RMS of the background (in units of counts), as a best representative value for the entire image."
     )
 
     provenance_id = sa.Column(
@@ -135,6 +135,10 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         This will either be a map that is loaded directly from file,
         or an interpolated map based on the polynomial or scalar value
         mapped onto the image shape.
+
+        This is a best-estimate of the sky counts, ignoring as best as
+        possible the sources in the sky, and looking only at the smoothed
+        background level.
         """
         if self._counts_data is None and self.filepath is not None:
             self.load()
@@ -151,6 +155,10 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         This will either be a map that is loaded directly from file,
         or an interpolated map based on the polynomial or scalar value
         mapped onto the image shape.
+
+        This is a best-estimate of the sky noise, ignoring as best as
+        possible the sources in the sky, and looking only at the smoothed
+        background variability.
         """
         if self._var_data is None and self.filepath is not None:
             self.load()
@@ -213,7 +221,9 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
         This saves an HDF5 file that contains a single group called "/background".
         It will have a few attributes, notably: "format", "value", "noise" and "image_shape".
 
-        If the format is "map", there are two datasets under this group: "background/mean" and "background/var".
+        If the format is "map", there are two datasets under this group: "background/counts" and "background/variance".
+        Counts represents the background counts at each location in the image, while the variance represents the noise
+        variability that comes from the sky, ignoring the sources (as much as possible).
 
         If the format is "polynomial", there are three datasets:
         "background/coeffs" and "background/x_degree" and "background/y_degree".
@@ -234,7 +244,7 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
              extensions.  If None, will call image.invent_filepath() to get a
              filestore-standard filename and directory.
 
-          Additional arguments are passed on to FileOnDiskMixin.save
+          Additional arguments are passed on to FileOnDiskMixin.save()
 
         """
         if self.format not in ['scalar', 'map', 'polynomial']:
@@ -391,7 +401,9 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                     )
                 ).all()
                 if len(sources) != 1:
-                    raise ValueError(f"Expected exactly one source list for PSF {self.id}, but found {len(sources)}")
+                    raise ValueError(
+                        f"Expected exactly one source list for Background {self.id}, but found {len(sources)}"
+                    )
 
                 output.append(sources[0])
 
@@ -399,7 +411,7 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                     sa.select(PSF).where(PSF.image_id == self.image_id, PSF.provenance_id == self.provenance_id)
                 ).all()
                 if len(psfs) != 1:
-                    raise ValueError(f"Expected exactly one PSF for PSF {self.id}, but found {len(psfs)}")
+                    raise ValueError(f"Expected exactly one PSF for Background {self.id}, but found {len(psfs)}")
 
                 output.append(psfs[0])
 
@@ -407,14 +419,14 @@ class Background(Base, AutoIDMixin, FileOnDiskMixin, HasBitFlagBadness):
                     sa.select(WorldCoordinates).where(WorldCoordinates.sources_id == sources.id)
                 ).all()
                 if len(wcs) != 1:
-                    raise ValueError(f"Expected exactly one wcs for PSF {self.id}, but found {len(wcs)}")
+                    raise ValueError(f"Expected exactly one wcs for Background {self.id}, but found {len(wcs)}")
 
                 output.append(wcs[0])
 
                 zp = session.scalars(sa.select(ZeroPoint).where(ZeroPoint.sources_id == sources.id)).all()
 
                 if len(zp) != 1:
-                    raise ValueError(f"Expected exactly one zp for PSF {self.id}, but found {len(zp)}")
+                    raise ValueError(f"Expected exactly one zp for Background {self.id}, but found {len(zp)}")
 
                 output.append(zp[0])
 

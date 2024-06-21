@@ -2016,7 +2016,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         self._nanscore = value
 
     @property
-    def data_bg(self):
+    def data_bgsub(self):
         """The image data, after subtracting the background. If no Background object is loaded, will raise. """
         if self.bg is None:
             raise ValueError("No background is loaded for this image.")
@@ -2026,7 +2026,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             return self.data - self.bg.counts
 
     @property
-    def nandata_bg(self):
+    def nandata_bgsub(self):
         """The image data, after subtracting the background and masking with NaNs wherever the flag is not zero. """
         if self.bg is None:
             raise ValueError("No background is loaded for this image.")
