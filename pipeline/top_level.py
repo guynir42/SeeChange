@@ -275,7 +275,6 @@ class Pipeline:
         ds : DataStore
             The DataStore object that includes all the data products.
         """
-
         try:  # first make sure we get back a datastore, even an empty one
             ds, session = self.setup_datastore(*args, **kwargs)
         except Exception as e:

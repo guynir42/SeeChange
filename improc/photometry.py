@@ -440,7 +440,7 @@ def calc_at_position(data, radius, annulus, xgrid, ygrid, cx, cy, local_bg=True,
     flux = np.nansum(masked_data)  # total flux, not per pixel!
     area = np.nansum(mask)  # save the number of pixels in the aperture
     denominator = flux
-    masked_data_bg = masked_data
+    masked_data_bgsub = masked_data
 
     # get an offset annulus to get a local background estimate
     if full or local_bg:
@@ -466,14 +466,14 @@ def calc_at_position(data, radius, annulus, xgrid, ygrid, cx, cy, local_bg=True,
 
         if local_bg:  # update these to use the local background
             denominator = (flux - background * area)
-            masked_data_bg = (data - background) * mask
+            masked_data_bgsub = (data - background) * mask
 
     if denominator == 0:  # this should only happen in pathological cases
         return flux, area, background, variance, n_pix_bg, norm, cx, cy, cxx, cyy, cxy, True
 
     if not fixed:  # update the centroids
-        cx = np.nansum(xgrid * masked_data_bg) / denominator
-        cy = np.nansum(ygrid * masked_data_bg) / denominator
+        cx = np.nansum(xgrid * masked_data_bgsub) / denominator
+        cy = np.nansum(ygrid * masked_data_bgsub) / denominator
 
         # check that we got reasonable values!
         if np.isnan(cx) or abs(cx) > data.shape[1] / 2 or np.isnan(cy) or abs(cy) > data.shape[0] / 2:
@@ -481,9 +481,9 @@ def calc_at_position(data, radius, annulus, xgrid, ygrid, cx, cy, local_bg=True,
 
     if full:
         # update the second moments
-        cxx = np.nansum((xgrid - cx) ** 2 * masked_data_bg) / denominator
-        cyy = np.nansum((ygrid - cy) ** 2 * masked_data_bg) / denominator
-        cxy = np.nansum((xgrid - cx) * (ygrid - cy) * masked_data_bg) / denominator
+        cxx = np.nansum((xgrid - cx) ** 2 * masked_data_bgsub) / denominator
+        cyy = np.nansum((ygrid - cy) ** 2 * masked_data_bgsub) / denominator
+        cxy = np.nansum((xgrid - cx) * (ygrid - cy) * masked_data_bgsub) / denominator
 
     n_pix_bg = annulus_map_sum
     return flux, area, background, variance, n_pix_bg, norm, cx, cy, cxx, cyy, cxy, False

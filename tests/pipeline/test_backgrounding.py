@@ -16,12 +16,12 @@ def test_measuring_background(decam_processed_image, backgrounder):
     assert sig == pytest.approx(ds.bg.noise, rel=0.2)  # this is really a very rough estimate
 
     # is the background subtracted image a good representation?
-    mu, sig = sigma_clipping(ds.image.nandata_bg)  # also checks that nandata_bg exists
+    mu, sig = sigma_clipping(ds.image.nandata_bgsub)  # also checks that nandata_bgsub exists
     assert mu == pytest.approx(0, abs=sig)
     assert sig < 10
 
     # most of the pixels are inside a 3 sigma range
-    assert np.sum(np.abs(ds.image.nandata_bg) < 3 * sig) > 0.9 * ds.image.nandata.size
+    assert np.sum(np.abs(ds.image.nandata_bgsub) < 3 * sig) > 0.9 * ds.image.nandata.size
 
     # this is not true of the original image
     assert np.sum(np.abs(ds.image.nandata) < 3 * sig) < 0.001 * ds.image.nandata.size
@@ -32,7 +32,7 @@ def test_measuring_background(decam_processed_image, backgrounder):
     assert ds.bg.method == 'zero'
     assert ds.bg.value == 0
     assert ds.bg.noise == 0
-    assert np.array_equal(ds.image.data, ds.image.data_bg)
+    assert np.array_equal(ds.image.data, ds.image.data_bgsub)
 
 
 def test_warnings_and_exceptions(decam_datastore, backgrounder):

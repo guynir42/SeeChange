@@ -35,7 +35,7 @@ def upgrade() -> None:
     sa.Column('_bitflag', sa.BIGINT(), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('_upstream_bitflag', sa.BIGINT(), nullable=False),
-    sa.ForeignKeyConstraint(['image_id'], ['images.id'], name='psfs_image_id_fkey', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['image_id'], ['images.id'], name='backgrounds_image_id_fkey', ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['provenance_id'], ['provenances.id'], name='backgrounds_provenance_id_fkey', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )

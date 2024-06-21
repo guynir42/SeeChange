@@ -95,7 +95,7 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
         aligned = new_image.aligned_images
         assert new_image.upstream_images == ptf_reference_images
         assert len(aligned) == len(ptf_reference_images)
-        assert np.array_equal(aligned[index].data, ptf_reference_images[index].data_bg)
+        assert np.array_equal(aligned[index].data, ptf_reference_images[index].data_bgsub)
         ref = ptf_reference_images[index]
 
         # check that images are aligned properly
@@ -119,7 +119,7 @@ def test_alignment_in_image( ptf_reference_images, code_version ):
             loaded_image = session.scalars(sa.select(Image).where(Image.id == new_image.id)).first()
             assert loaded_image is not None
             assert len(loaded_image.aligned_images) == len(ptf_reference_images)
-            assert np.array_equal(loaded_image.aligned_images[-1].data, ptf_reference_images[-1].data_bg)
+            assert np.array_equal(loaded_image.aligned_images[-1].data, ptf_reference_images[-1].data_bgsub)
 
             # check that images are aligned properly
             for image in loaded_image.aligned_images:

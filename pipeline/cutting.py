@@ -82,7 +82,6 @@ class Cutter:
 
             if cutout_list is None or len(cutout_list) == 0:  # must create a new list of Cutouts
                 self.has_recalculated = True
-
                 cutout_list = []
                 x = detections.x
                 y = detections.y

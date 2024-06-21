@@ -159,6 +159,7 @@ class Backgrounder:
             ds.bg = bg
 
             ds.runtimes['backgrounding'] = time.perf_counter() - t_start
+
             if parse_env('SEECHANGE_TRACEMALLOC'):
                 import tracemalloc
                 ds.memory_usages['backgrounding'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
