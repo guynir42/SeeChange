@@ -2262,6 +2262,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @property
     def nandata_bgsub(self):
+        """The image data, after subtracting the background and masking with NaNs wherever the flag is not zero. """
+        if self.bg is None:
+            raise ValueError("No background is loaded for this image.")
+        if self.bg.format == 'scalar':
+            return self.nandata - self.bg.value
+        else:
+            return self.nandata - self.bg.counts
 
     def show(self, **kwargs):
         """
