@@ -1,8 +1,6 @@
 import numpy as np
 from numpy.fft import fft2, ifft2, fftshift
 
-import sqlalchemy as sa
-
 from astropy.time import Time
 
 from sep import Background
@@ -18,7 +16,6 @@ from pipeline.backgrounding import Backgrounder
 from pipeline.astro_cal import AstroCalibrator
 from pipeline.photo_cal import PhotCalibrator
 from util.util import get_latest_provenance, parse_session
-from util.radec import parse_ra_hms_to_deg, parse_dec_dms_to_deg
 
 from improc.bitmask_tools import dilate_bitflag
 from improc.inpainting import Inpainter
@@ -630,8 +627,23 @@ class CoaddPipeline:
         if self.images is None or len(self.images) == 0:
             raise ValueError('No images found matching the given parameters. ')
 
+        # use the images and their source lists to get a list of provenances and code versions
+        coadd_upstreams = set()
+        code_versions = set()
+        # assumes each image given to the coaddition pipline has sources loaded
+        for im in self.images:
+            coadd_upstreams.add(im.provenance)
+            coadd_upstreams.add(im.sources.provenance)
+            code_versions.add(im.provenance.code_version)
+            code_versions.add(im.sources.provenance.code_version)
+
+        code_versions = list(code_versions)
+        code_versions.sort(key=lambda x: x.id)
+        code_version = code_versions[-1]  # choose the most recent ID if there are multiple code versions
+        coadd_upstreams = list(coadd_upstreams)
+
         self.datastore = DataStore()
-        self.datastore.prov_tree = self.make_provenance_tree(session=session)
+        self.datastore.prov_tree = self.make_provenance_tree(coadd_upstreams, code_version, session=session)
 
         # the self.aligned_images is None unless you explicitly pass in the pre-aligned images to save time
         self.datastore.image = self.coadder.run(self.images, self.aligned_images)
@@ -644,27 +656,15 @@ class CoaddPipeline:
 
         return self.datastore.image
 
-    def make_provenance_tree(self, session=None):
+    def make_provenance_tree(self, coadd_upstreams, code_version, session=None):
         """Make a (short) provenance tree to use when fetching the provenances of upstreams. """
         with SmartSession(session) as session:
-            coadd_upstreams = set()
-            code_versions = set()
-            # assumes each image given to the coaddition pipline has sources, psf, background, wcs, zp, all loaded
-            for im in self.images:
-                coadd_upstreams.add(im.provenance)
-                coadd_upstreams.add(im.sources.provenance)
-                code_versions.add(im.provenance.code_version)
-                code_versions.add(im.sources.provenance.code_version)
-
-            code_versions = list(code_versions)
-            code_versions.sort(key=lambda x: x.id)
-            code_version = code_versions[-1]  # choose the most recent ID if there are multiple code versions
 
             pars_dict = self.coadder.pars.get_critical_pars()
             coadd_prov = Provenance(
                 code_version=code_version,
                 process='coaddition',
-                upstreams=list(coadd_upstreams),
+                upstreams=coadd_upstreams,
                 parameters=pars_dict,
                 is_testing="test_parameter" in pars_dict,  # this is a flag for testing purposes
             )

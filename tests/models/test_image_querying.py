@@ -244,7 +244,7 @@ def im_qual(im, factor=3.0):
 
 
 def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_calibrators):
-    # TODO: need to fix some of these values (of limmag and quality) once we get actual limiting magnitude measurements
+    # TODO: need to fix some of these values (of lim_mag and quality) once we get actual limiting magnitude measurements
 
     with SmartSession() as session:
         stmt = Image.query_images()
@@ -421,18 +421,18 @@ def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_ca
 
         # filter by limiting magnitude
         value = 25.0
-        stmt = Image.query_images(min_limmag=value)
+        stmt = Image.query_images(min_lim_mag=value)
         results1 = session.scalars(stmt).all()
         assert all(im.lim_mag_estimate >= value for im in results1)
         assert len(results1) < total
 
-        stmt = Image.query_images(max_limmag=value)
+        stmt = Image.query_images(max_lim_mag=value)
         results2 = session.scalars(stmt).all()
         assert all(im.lim_mag_estimate <= value for im in results2)
         assert len(results2) < total
         assert len(results1) + len(results2) == total
 
-        stmt = Image.query_images(min_limmag=value, max_limmag=value)
+        stmt = Image.query_images(min_lim_mag=value, max_lim_mag=value)
         results3 = session.scalars(stmt).all()
         assert len(results3) == 0
 

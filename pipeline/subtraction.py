@@ -14,6 +14,7 @@ from improc.tools import sigma_clipping
 
 from util.util import parse_env
 
+
 class ParsSubtractor(Parameters):
     def __init__(self, **kwargs):
         super().__init__()
@@ -22,6 +23,13 @@ class ParsSubtractor(Parameters):
             'hotpants',
             str,
             'Which subtraction method to use. Possible values are: "hotpants", "zogy". '
+        )
+
+        self.refset = self.add_par(
+            'refset',
+            'default',
+            str,
+            'The name of the reference set to use for getting a reference image. '
         )
 
         self.alignment = self.add_par(

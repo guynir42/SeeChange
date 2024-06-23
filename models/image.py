@@ -519,7 +519,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
     @orm.reconstructor
     def init_on_load(self):
-        Base.init_on_load(self)
+        SeeChangeBase.init_on_load(self)
         FileOnDiskMixin.init_on_load(self)
         self.raw_data = None
         self._header = None
@@ -1913,8 +1913,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             max_exp_time=None,
             min_seeing=None,
             max_seeing=None,
-            min_limmag=None,
-            max_limmag=None,
+            min_lim_mag=None,
+            max_lim_mag=None,
             min_airmass=None,
             max_airmass=None,
             min_background=None,
@@ -1982,9 +1982,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             Find images with seeing FWHM larger than this (in arcsec).
         max_seeing: float (optional)
             Find images with seeing FWHM smaller than this (in arcsec).
-        min_limmag: float (optional)
+        min_lim_mag: float (optional)
             Find images with limiting magnitude larger (fainter) than this.
-        max_limmag: float (optional)
+        max_lim_mag: float (optional)
             Find images with limiting magnitude smaller (brighter) than this.
         min_airmass: float (optional)
             Find images with airmass larger than this.
@@ -2082,10 +2082,10 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             stmt = stmt.where(Image.fwhm_estimate <= max_seeing)
 
         # filter by limiting magnitude
-        if max_limmag is not None:
-            stmt = stmt.where(Image.lim_mag_estimate <= max_limmag)
-        if min_limmag is not None:
-            stmt = stmt.where(Image.lim_mag_estimate >= min_limmag)
+        if max_lim_mag is not None:
+            stmt = stmt.where(Image.lim_mag_estimate <= max_lim_mag)
+        if min_lim_mag is not None:
+            stmt = stmt.where(Image.lim_mag_estimate >= min_lim_mag)
 
         # filter by airmass
         if max_airmass is not None:

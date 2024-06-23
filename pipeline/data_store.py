@@ -1077,16 +1077,15 @@ class DataStore:
         that matches the other criteria.  Be careful with this.
 
         """
+        # TODO: replace this with reference sets
         with SmartSession(session, self.session) as session:
             image = self.get_image(session=session)
+            if image is None:
+                return None  # cannot find a reference without a new image to match
 
             if self.reference is not None:
                 ovfrac = self._overlap_frac( image, self.reference.image ) if minovfrac > 0. else 0.
                 if not (
-                        ( self.reference.validity_start is None or
-                          self.reference.validity_start <= image.observation_time ) and
-                        ( self.reference.validity_end is None or
-                          self.reference.validity_end >= image.observation_time ) and
                         ( ( not must_match_instrument ) or ( self.reference.image.instrument
                                                              == image.instrument ) ) and
                         ( ( not must_match_filter) or ( self.reference.filter == image.filter ) ) and
@@ -1100,10 +1099,6 @@ class DataStore:
             if self.reference is None:
                 q = ( session.query( Reference, Image )
                       .filter( Reference.image_id == Image.id )
-                      .filter( sa.or_( Reference.validity_start.is_(None),
-                                       Reference.validity_start <= image.observation_time ) )
-                      .filter( sa.or_( Reference.validity_end.is_(None),
-                                       Reference.validity_end >= image.observation_time ) )
                       .filter( Reference.is_bad.is_(False ) )
                      )
                 if minovfrac > 0.:
