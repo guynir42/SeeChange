@@ -22,4 +22,5 @@ archive:
 
 subtraction:
   method: zogy
+  refset: test_refset_ptf
 

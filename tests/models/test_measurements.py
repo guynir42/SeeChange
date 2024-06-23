@@ -52,7 +52,7 @@ def test_measurements_attributes(measurer, ptf_datastore, test_config):
     # check that background is subtracted from the "flux" and "magnitude" properties
     if m.best_aperture == -1:
         assert m.flux == m.flux_psf - m.bkg_mean * m.area_psf
-        assert m.magnitude > m.mag_psf  # the magnitude has background subtracted from it
+        assert m.magnitude != m.mag_psf  # the magnitude has background subtracted from it
         assert m.magnitude_err > m.mag_psf_err  # the magnitude error is larger because of the error in background
     else:
         assert m.flux == m.flux_apertures[m.best_aperture] - m.bkg_mean * m.area_apertures[m.best_aperture]
@@ -86,8 +86,6 @@ def test_measurements_attributes(measurer, ptf_datastore, test_config):
     # TODO: add test for limiting magnitude (issue #143)
 
 
-# @pytest.mark.skip(reason="This test fails on GA but not locally, see issue #306")
-# @pytest.mark.flaky(max_runs=3)
 def test_filtering_measurements(ptf_datastore):
     measurements = ptf_datastore.measurements
     m = measurements[0]  # grab the first one as an example

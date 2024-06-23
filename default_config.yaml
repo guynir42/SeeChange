@@ -186,8 +186,8 @@ coaddition:
       threshold: 3.0
       method: sextractor
     bg:  # override the regular background estimation parameters
-      method: zero
-      format: scalar
+      format: map
+      method: sep
     wcs:  # override the regular astrometric calibration parameters
       cross_match_catalog: gaia_dr3
       solution_method: scamp
@@ -259,8 +259,11 @@ reference:
         threshold: 3.0
         method: sextractor
       bg: # override the regular background estimation parameters and the coadd extraction parameters
-        method: zero
-        format: scalar
+        format: map
+        method: sep
+        poly_order: 1
+        sep_box_size: 128
+        sep_filt_size: 3
       wcs:  # override the regular astrometric calibration parameters and the coadd extraction parameters
         cross_match_catalog: gaia_dr3
         solution_method: scamp

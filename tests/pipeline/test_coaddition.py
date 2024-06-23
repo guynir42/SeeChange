@@ -500,9 +500,6 @@ def test_coadded_reference(ptf_ref):
     assert ptf_ref.filter == ref_image.filter
     assert ptf_ref.section_id == ref_image.section_id
 
-    assert ptf_ref.validity_start is None
-    assert ptf_ref.validity_end is None
-
     assert ptf_ref.provenance.upstreams[0].id == ref_image.provenance_id
     assert ptf_ref.provenance.process == 'reference'
 

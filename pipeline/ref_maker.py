@@ -31,7 +31,8 @@ class ParsRefMaker(Parameters):
             'default',
             str,
             'Name of the reference set. ',
-            critical=True,
+            critical=False,  # the name of the refset is not in the Reference provenance!
+            # this means multiple refsets can refer to the same Reference provenance
         )
 
         self.allow_append = self.add_par(
@@ -64,33 +65,32 @@ class ParsRefMaker(Parameters):
             critical=True,
         )
 
-        self.instrument = self.add_par(
-            'instrument',
+        self.instruments = self.add_par(
+            'instruments',
             None,
-            (None, str, list),
-            'Only use images from this instrument. If None, will not limit the instrument. '
+            (None, list),
+            'Only use images from these instruments. If None, will not limit the instruments. '
             'If given as a list, will use any of the instruments in the list. '
-            'Note that if "filter" is also given, it must match the number and order '
-            'of the instruments given here. ',
+            'This does not have a default value, but you MUST supply a list with at least one instrument '
+            'in order to get a reference provenance and create a reference set. ',
             critical=True,
         )
 
-        self.filter = self.add_par(
-            'filter',
+        self.filters = self.add_par(
+            'filters',
             None,
-            (None, str, list),
-            'Only use images with this filter. If None, will not limit the filter. '
+            (None, list),
+            'Only use images with these filters. If None, will not limit the filters. '
             'If given as a list, will use any of the filters in the list. '
-            'Note that if "instrument" is also given, it must match the number and order '
-            'of the filters given here. ',  # TODO: allow a option to have multiple filters per instrument (use dict?)
+            'For multiple instruments, can match any filter to any instrument. ',
             critical=True,
         )
 
-        self.project = self.add_par(
-            'project',
+        self.projects = self.add_par(
+            'projects',
             None,
-            (None, str, list),
-            'Only use images from this project. If None, will not limit the project. '
+            (None, list),
+            'Only use images from these projects. If None, will not limit the projects. '
             'If given as a list, will use any of the projects in the list. ',
             critical=True,
         )
@@ -188,6 +188,7 @@ class RefMaker:
         Those images need to already exist in the database before calling run().
         Pass kwargs into the pipeline object using kwargs['pipeline'].
         TODO: what about multiple instruments that go into the coaddition? we'd need multiple pipeline objects
+         in order to have difference parameter sets for preprocessing/extraction for each instrument.
         The maker also contains a coadd_pipeline object, that has two roles: one is to build the provenances of the
         coadd image and the products of that image (extraction on the coadd) and also it needs to actually
         do the work of coadding the chosen images.
@@ -230,10 +231,12 @@ class RefMaker:
         self.ref_set = None  # the RefSet object that was found / created
 
         # these attributes tell us the place in the sky where we want to look for objects (given to run())
+        # optionally it also specifies which filter we want the reference to be in
         self.ra = None  # in degrees
         self.dec = None  # in degrees
         self.target = None  # the name of the target / field ID / Object ID
         self.section_id = None  # a string with the section ID
+        self.filter = None  # a string with the (short) name of the filter
 
     def setup_provenances(self, session=None):
         """Make the provenances for the images and all their products, including the coadd image.
@@ -242,14 +245,13 @@ class RefMaker:
         and to look for images and associated products (like SourceLists) when
         building the reference.
         """
-        instruments = listify(self.pars.instrument)
-        if instruments is None or len(instruments) == 0:
+        if self.pars.instruments is None or len(self.pars.instruments) == 0:
             raise ValueError('No instruments given to RefMaker!')
 
         self.im_provs = []
         self.ex_provs = []
 
-        for inst in instruments:
+        for inst in self.pars.instruments:
             # TODO: this assumes references are built up from regular images,
             #  each Image using a single Exposure. If in some weird future we'd
             #  like to build a reference from coadded images, this will fail.
@@ -296,12 +298,16 @@ class RefMaker:
         """Figure out if the input parameters are given as coordinates or as target + section ID pairs.
 
         Possible combinations:
-        - float + float: interpreted as RA/Dec in degrees
+        - float + float + string: interpreted as RA/Dec in degrees
         - str + str: try to interpret as sexagesimal (RA as hours, Dec as degrees)
                      if it fails, will interpret as target + section ID
-        # TODO: can we identify a reference with only a target/field ID without a section ID?
+        # TODO: can we identify a reference with only a target/field ID without a section ID? Issue #320
+        In addition to the first two arguments, can also supply a filter name as a string
+        and can provide a session object as an argument (in any position) to be used and kept open
+        for the entire run. If not given a session, will open a new one and close it when done using it internally.
+
         Alternatively, can provide named arguments with the same combinations for either
-        (ra, dec) or (target, section_id).
+        (ra, dec) or (target, section_id) and filter.
 
         Returns
         -------
@@ -316,6 +322,12 @@ class RefMaker:
         self.section_id = None
 
         args, kwargs, session = parse_session(*args, **kwargs)  # first pick out any sessions
+
+        if len(args) == 3:
+            if not isinstance(args[2], str):
+                raise ValueError('Third argument must be a string, the filter name!')
+            self.filter = args[2]
+            args = args[:2]  # remove the last one
 
         if len(args) == 2:
             if isinstance(args[0], (float, int, np.number)) and isinstance(args[1], (float, int, np.number)):
@@ -342,18 +354,23 @@ class RefMaker:
                 self.section_id = kwargs.pop('section_id')
             else:
                 raise ValueError('Cannot find ra/dec or target/section_id in any of the inputs! ')
+
+            if 'filter' in kwargs:
+                self.filter = kwargs.pop('filter')
+
         else:
             raise ValueError('Invalid number of arguments given to RefMaker.parse_arguments()')
 
         return session
 
     def run(self, *args, **kwargs):
-        """Check if a reference exists for the given coordinates/field ID, and make it if it is missing.
+        """Check if a reference exists for the given coordinates/field ID, and filter, and make it if it is missing.
 
         Will check if a RefSet exists with the same provenance and name, and if it doesn't, will create a new
         RefSet with these properties, to keep track of the reference provenances.
 
         Arguments specifying where in the sky to look for / create the reference are parsed by parse_arguments().
+        Same is true for the filter choice.
         The remaining policy regarding which images to pick, and what provenance to use to find references,
         is defined by the parameters object of self and of self.pipeline.
 
@@ -423,6 +440,7 @@ class RefMaker:
                 dec=self.dec,
                 target=self.target,
                 section_id=self.section_id,
+                filter=self.filter,
                 provenance_ids=self.ref_prov.id,
                 session=dbsession,
             )
@@ -430,18 +448,11 @@ class RefMaker:
             if ref:  # found a reference, can skip the next part of the code!
                 return ref
 
-            # no reference found, need to build one
-            # first get all the images that could be used to build the reference
-            instruments = self.pars.instrument
-            if isinstance(instruments, str) or instruments is None:  # don't use listify, as it will not do [None]
-                instruments = [instruments]
-            filters = self.pars.filter
-            if isinstance(filters, str) or filters is None:  # don't use listify, as it will not do [None]
-                filters = [filters]
+            ############### no reference found, need to build one! ################
 
-            images = []  # can get images from different instrument+filter combinations
-            # TODO: what about multiple filters per instrument?
-            for inst, filt in zip(instruments, filters):
+            # first get all the images that could be used to build the reference
+            images = []  # can get images from different instruments
+            for inst in self.pars.instrument:
                 prov = [p for p in self.im_provs if p.upstreams[0].parameters['instrument'] == inst]
                 if len(prov) == 0:
                     raise RuntimeError(f'Cannot find a provenance for instrument "{inst}" in im_provs!')
@@ -450,12 +461,12 @@ class RefMaker:
                 prov = prov[0]
 
                 query_pars = dict(
+                    instrument=inst,
                     ra=self.ra,  # can be None!
                     dec=self.dec,  # can be None!
                     target=self.target,  # can be None!
                     section_id=self.section_id,  # can be None!
-                    instrument=inst,  # can be None!
-                    filter=filt,  # can be None!
+                    filter=self.pars.filters,  # can be None!
                     project=self.pars.project,  # can be None!
                     seeing_quality_factor=self.pars.seeing_quality_factor,
                     provenance_ids=prov.id,

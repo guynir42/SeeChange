@@ -451,13 +451,14 @@ def decam_ref_datastore( code_version, download_url, decam_cache_dir, data_dir, 
 
 
 @pytest.fixture
-def decam_reference(decam_ref_datastore):
+def decam_reference(decam_ref_datastore, refmaker_factory):
+    maker = refmaker_factory('test_refset_decam', 'DECam')
     ds = decam_ref_datastore
     with SmartSession() as session:
         prov = Provenance(
             code_version=ds.image.provenance.code_version,
             process='reference',
-            parameters={'test_parameter': 'test_value'},
+            parameters=maker.pars.get_critical_pars(),
             upstreams=[
                 ds.image.provenance,
                 ds.sources.provenance,

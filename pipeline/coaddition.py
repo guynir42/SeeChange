@@ -683,3 +683,19 @@ class CoaddPipeline:
 
         return {'coaddition': coadd_prov, 'extraction': extract_prov}
 
+    def override_parameters(self, **kwargs):
+        """Override the parameters of this pipeline and its sub objects. """
+        from pipeline.top_level import PROCESS_OBJECTS
+
+        for key, value in kwargs.items():
+            if key in PROCESS_OBJECTS:
+                if isinstance(PROCESS_OBJECTS[key], dict):
+                    for sub_key, sub_value in PROCESS_OBJECTS[key].items():
+                        if sub_key in value:
+                            getattr(self, sub_value).pars.override(value[sub_key])
+                elif isinstance(PROCESS_OBJECTS[key], str):
+                    getattr(self, PROCESS_OBJECTS[key]).pars.override(value)
+            elif key == 'coaddition':
+                self.coadder.pars.override(value)
+            else:
+                self.pars.override({key: value})

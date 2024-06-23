@@ -297,11 +297,13 @@ class Reference(Base, AutoIDMixin):
             dec=None,
             target=None,
             section_id=None,
+            filter=None,
             skip_bad=True,
             provenance_ids=None,
             session=None
     ):
-        """Find all references in the specified part of the sky, that match one of the given provenances.
+        """Find all references in the specified part of the sky, with the given filter.
+        Can also match specific provenances and will (by default) not return bad references.
 
         Parameters
         ----------
@@ -318,6 +320,8 @@ class Reference(Base, AutoIDMixin):
         section_id: string, optional
             Section ID of the reference image.
             If given, must also provide the target.
+        filter: string, optional
+            Filter of the reference image.
         provenance_ids: list of strings, optional
             List of provenance IDs to match.
             The references must have a provenance with one of these IDs.
@@ -348,6 +352,9 @@ class Reference(Base, AutoIDMixin):
 
         if ra is None and target is None:  # the above also implies the dec and section_id are also missing
             raise ValueError("Must provide either ra and dec, or target and section_id.")
+
+        if filter is not None:
+            stmt = stmt.where(cls.filter == filter)
 
         if skip_bad:
             stmt = stmt.where(cls.is_bad.is_(False))

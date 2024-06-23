@@ -404,14 +404,15 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
 
 @pytest.fixture
 def ptf_ref(
+        refmaker_factory,
         ptf_reference_images,
         ptf_aligned_images,
-        coadd_pipeline_for_tests,
         ptf_cache_dir,
         data_dir,
         code_version
 ):
-    pipe = coadd_pipeline_for_tests
+    refmaker = refmaker_factory('test_ref_ptf', 'PTF')
+    pipe = refmaker.coadd_pipeline
 
     # build up the provenance tree
     with SmartSession() as session:
@@ -509,7 +510,7 @@ def ptf_ref(
         coadd_image = coadd_image.merge_all(session)
 
         ref = Reference(image=coadd_image)
-        ref.make_provenance()
+        ref.make_provenance(parameters=refmaker.pars.get_critical_pars())
         ref.provenance.parameters['test_parameter'] = 'test_value'
         ref.provenance.is_testing = True
         ref.provenance.update_id()
@@ -524,6 +525,35 @@ def ptf_ref(
         coadd_image.delete_from_disk_and_database(commit=True, session=session, remove_downstreams=True)
         ref_in_db = session.scalars(sa.select(Reference).where(Reference.id == ref.id)).first()
         assert ref_in_db is None  # should have been deleted by cascade when image is deleted
+
+
+@pytest.fixture(scope='session')
+def ptf_refset(
+        ptf_ref,
+        refmaker,
+        ptf_cache_dir,
+):
+    refmaker.pars.name = 'test_refset_ptf'
+    refmaker.pars.min_number = 4  # don't need many images for testing
+    refmaker.pars.max_number = 4
+
+    ref = refmaker.run(ra=188, dec=4.5)  # this should find the ptf_ref and make a refset with it
+
+    assert ref.image.from_db
+    assert ref.provenance_id == ptf_ref.provenance_id
+
+    yield refmaker.refset
+
+    # delete all the references and the refset
+    with SmartSession() as session:
+        for prov_id in refmaker.provenances:
+            refs = session.scalars(sa.select(Reference).where(Reference.provenance_id == prov_id)).all()
+            for ref in refs:
+                session.delete(ref)
+
+        session.delete(refmaker.refset)
+
+        session.commit()
 
 
 @pytest.fixture

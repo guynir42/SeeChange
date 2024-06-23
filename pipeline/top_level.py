@@ -164,7 +164,7 @@ class Pipeline:
                 if isinstance(PROCESS_OBJECTS[key], dict):
                     for sub_key, sub_value in PROCESS_OBJECTS[key].items():
                         if sub_key in value:
-                            getattr(self, PROCESS_OBJECTS[key][sub_value]).pars.override(value[sub_key])
+                            getattr(self, sub_value).pars.override(value[sub_key])
                 elif isinstance(PROCESS_OBJECTS[key], str):
                     getattr(self, PROCESS_OBJECTS[key]).pars.override(value)
             else:

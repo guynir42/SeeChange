@@ -32,6 +32,7 @@ from pipeline.subtraction import Subtractor
 from pipeline.cutting import Cutter
 from pipeline.measuring import Measurer
 from pipeline.top_level import Pipeline
+from pipeline.ref_maker import RefMaker
 
 from util.logger import SCLogger
 from util.cache import copy_to_cache, copy_list_to_cache, copy_from_cache, copy_list_from_cache
@@ -336,6 +337,26 @@ def coadd_pipeline_factory(
 @pytest.fixture
 def coadd_pipeline_for_tests(coadd_pipeline_factory):
     return coadd_pipeline_factory()
+
+
+@pytest.fixture(scope='session')
+def refmaker_factory(test_config, pipeline_factory, coadd_pipeline_factory):
+
+    def make_refmaker(name, instrument):
+        maker = RefMaker(maker={'name': name, 'instruments': [instrument]})
+        maker.pars._enforce_no_new_attrs = False
+        maker.pars.test_parameter = maker.pars.add_par(
+            'test_parameter', 'test_value', str, 'parameter to define unique tests', critical=True
+        )
+        maker.pars._enforce_no_new_attrs = True
+        maker.pipeline = pipeline_factory()
+        maker.pipeline.override_parameters(**test_config.value('reference.pipeline'))
+        maker.coadd_pipeline = coadd_pipeline_factory()
+        maker.coadd_pipeline.override_parameters(**test_config.value('reference.coaddition'))
+
+        return maker
+
+    return make_refmaker
 
 
 @pytest.fixture(scope='session')
@@ -707,6 +728,7 @@ def datastore_factory(data_dir, pipeline_factory):
                 if (   ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and
                        ( cache_dir is not None ) and ( cache_base_name is not None )
                 ):
+                    cache_name = cache_base_name + '.zp.json'
                     output_path = copy_to_cache(ds.zp, cache_dir, cache_name)
                     if output_path != zp_cache_path:
                         warnings.warn(f'cache path {zp_cache_path} does not match output path {output_path}')
