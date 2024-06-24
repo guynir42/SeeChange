@@ -6,7 +6,7 @@ import sqlalchemy as sa
 from astropy.time import Time
 
 from models.base import SmartSession
-from models.image import Image
+from models.image import Image, image_upstreams_association_table
 
 from tests.fixtures.simulated import ImageCleanup
 
@@ -281,8 +281,14 @@ def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_ca
         stmt = Image.query_images(type=[2, 3, 4])
         results2 = session.scalars(stmt).all()
         assert all(im._type in [2, 3, 4] for im in results2)
+        assert all(im.type in ['ComSci', 'Diff', 'ComDiff'] for im in results2)
         assert len(results2) < total
         assert len(results1) + len(results2) == total
+
+        # use the names of the types instead of integers, or a mixture of ints and strings
+        stmt = Image.query_images(type=['ComSci', 'Diff', 4])
+        results3 = session.scalars(stmt).all()
+        assert results2 == results3
 
         # filter by MJD and observation date
         value = 55000.0
@@ -575,3 +581,94 @@ def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_ca
         assert diff.lim_mag_estimate == new.lim_mag_estimate
         assert diff.fwhm_estimate == new.fwhm_estimate
         assert im_qual(diff) == im_qual(new)
+
+
+def test_image_get_downstream(ptf_ref, ptf_supernova_images, ptf_subtraction1):
+    with SmartSession() as session:
+        # how many image to image associations are on the DB right now?
+        num_associations = session.execute(
+            sa.select(sa.func.count()).select_from(image_upstreams_association_table)
+        ).scalar()
+
+        assert num_associations > len(ptf_ref.image.upstream_images)
+
+        prov = ptf_ref.image.provenance
+        assert prov.process == 'coaddition'
+        images = ptf_ref.image.upstream_images
+        assert len(images) > 1
+
+        loaded_image = Image.get_image_from_upstreams(images, prov.id)
+
+        assert loaded_image.id == ptf_ref.image.id
+        assert loaded_image.id != ptf_subtraction1.id
+        assert loaded_image.id != ptf_subtraction1.new_image.id
+
+    new_image = None
+    new_image2 = None
+    new_image3 = None
+    try:
+        # make a new image with a new provenance
+        new_image = Image.copy_image(ptf_ref.image)
+        prov = ptf_ref.provenance
+        prov.process = 'copy'
+        new_image.provenance = prov
+        new_image.upstream_images = ptf_ref.image.upstream_images
+        new_image.save()
+
+        with SmartSession() as session:
+            new_image = session.merge(new_image)
+            session.commit()
+            assert new_image.id is not None
+            assert new_image.id != ptf_ref.image.id
+
+            loaded_image = Image.get_image_from_upstreams(images, prov.id)
+            assert loaded_image.id == new_image.id
+
+        # use the original provenance but take down an image from the upstreams
+        prov = ptf_ref.image.provenance
+        images = ptf_ref.image.upstream_images[1:]
+
+        new_image2 = Image.copy_image(ptf_ref.image)
+        new_image2.provenance = prov
+        new_image2.upstream_images = images
+        new_image2.save()
+
+        with SmartSession() as session:
+            new_image2 = session.merge(new_image2)
+            session.commit()
+            assert new_image2.id is not None
+            assert new_image2.id != ptf_ref.image.id
+            assert new_image2.id != new_image.id
+
+            loaded_image = Image.get_image_from_upstreams(images, prov.id)
+            assert loaded_image.id != ptf_ref.image.id
+            assert loaded_image.id != new_image.id
+
+        # use the original provenance but add images to the upstreams
+        prov = ptf_ref.image.provenance
+        images = ptf_ref.image.upstream_images + ptf_supernova_images
+
+        new_image3 = Image.copy_image(ptf_ref.image)
+        new_image3.provenance = prov
+        new_image3.upstream_images = images
+        new_image3.save()
+
+        with SmartSession() as session:
+            new_image3 = session.merge(new_image3)
+            session.commit()
+            assert new_image3.id is not None
+            assert new_image3.id != ptf_ref.image.id
+            assert new_image3.id != new_image.id
+            assert new_image3.id != new_image2.id
+
+            loaded_image = Image.get_image_from_upstreams(images, prov.id)
+            assert loaded_image.id == new_image3.id
+
+    finally:
+        if new_image is not None:
+            new_image.delete_from_disk_and_database()
+        if new_image2 is not None:
+            new_image2.delete_from_disk_and_database()
+        if new_image3 is not None:
+            new_image3.delete_from_disk_and_database()
+

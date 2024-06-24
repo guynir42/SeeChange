@@ -111,7 +111,7 @@ class ParsImageAligner(Parameters):
             critical=False,
         )
 
-        self.enforce_no_new_attrs = True
+        self._enforce_no_new_attrs = True
         self.override( kwargs )
 
     def get_process_name(self):

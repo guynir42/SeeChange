@@ -106,14 +106,14 @@ extraction:
   wcs:  # this part of the extraction parameters is for finding the world coordinates system (astrometric calibration)
     cross_match_catalog: gaia_dr3
     solution_method: scamp
-    max_catalog_mag: [20.0]
-    mag_range_catalog: 4.0
+    max_catalog_mag: [22.0]
+    mag_range_catalog: 6.0
     min_catalog_stars: 50
     max_sources_to_use: [2000, 1000, 500, 200]
   zp:  # this part of the extraction parameters is for finding the zero point (photometric calibration)
     cross_match_catalog: gaia_dr3
-    max_catalog_mag: [20.0]
-    mag_range_catalog: 4.0
+    max_catalog_mag: [22.0]
+    mag_range_catalog: 6.0
     min_catalog_stars: 50
 
 # how to do the subtractions
@@ -225,7 +225,7 @@ reference:
     min_number: 7  # only create a reference if this many images can be found
     max_number: 30  # do not add more than this number of images to the reference
     seeing_quality_factor: 3.0  # linear coefficient for adding lim_mag and seeing to get the "image quality"
-
+    save_new_refs: true  # should the new references be saved to disk and committed to the database?
   pipeline:  # The following are used to override the regular "extraction" parameters
     extraction:
       sources:  # override the regular source and psf extraction parameters

@@ -1,9 +1,27 @@
+import time
+
 import pytest
 import uuid
 
+import sqlalchemy as sa
+
 from pipeline.ref_maker import RefMaker
 
+from models.base import SmartSession
 from models.reference import Reference
+
+
+def add_test_parameters(maker):
+    """Utility function to add "test_parameter" to all the underlying objects. """
+    for name in ['preprocessor', 'extractor', 'backgrounder', 'astrometor', 'photometor', 'coadder']:
+        for pipe in ['pipeline', 'coadd_pipeline']:
+            obj = getattr(getattr(maker, pipe), name, None)
+            if obj is not None:
+                obj.pars._enforce_no_new_attrs = False
+                obj.pars.test_parameter = obj.pars.add_par(
+                    'test_parameter', 'test_value', str, 'A parameter showing this is part of a test', critical=True,
+                )
+                obj.pars._enforce_no_new_attrs = True
 
 
 def test_finding_references(ptf_ref):
@@ -44,7 +62,9 @@ def test_finding_references(ptf_ref):
 
 def test_making_refsets():
     name = uuid.uuid4().hex
-    maker = RefMaker(maker={'name': name, 'instrument': 'PTF'})
+    maker = RefMaker(maker={'name': name, 'instruments': ['PTF']})
+    min_number = maker.pars.min_number
+    max_number = maker.pars.max_number
 
     assert maker.im_provs is None
     assert maker.ex_provs is None
@@ -52,6 +72,140 @@ def test_making_refsets():
     assert maker.coadd_ex_prov is None
     assert maker.ref_upstream_hash is None
 
-    new_ref = maker.run(ra=0, dec=0)
+    new_ref = maker.run(ra=0, dec=0, filter='R')
     assert new_ref is None
+
+    refset = maker.ref_set
+    assert refset is not None
+    up_hash1 = refset.upstream_hash
+    assert isinstance(up_hash1, str)
+    assert len(up_hash1) == 20
+    assert len(refset.provenances) == 1
+    assert refset.provenances[0].parameters['min_number'] == min_number
+    assert refset.provenances[0].parameters['max_number'] == max_number
+    assert 'name' not in refset.provenances[0].parameters  # not a critical parameter!
+    assert 'description' not in refset.provenances[0].parameters  # not a critical parameter!
+
+    # now make a change to the maker's parameters (not the data production parameters)
+    maker.pars.min_number = min_number + 5
+    maker.pars.allow_append = False  # this should prevent us from appending to the existing refset
+
+    with pytest.raises(
+            RuntimeError, match='Found a RefSet with the name .*, but it has a different provenance!'
+    ):
+        new_ref = maker.run(ra=0, dec=0, filter='R')
+
+    maker.pars.allow_append = True  # now it should be ok
+    new_ref = maker.run(ra=0, dec=0, filter='R')
+    assert new_ref is None  # still can't find images there
+
+    refset = maker.ref_set
+    up_hash2 = refset.upstream_hash
+    assert up_hash1 == up_hash2  # the underlying data MUST be the same
+    assert len(refset.provenances) == 2
+    assert refset.provenances[0].parameters['min_number'] == min_number
+    assert refset.provenances[1].parameters['min_number'] == min_number + 5
+    assert refset.provenances[0].parameters['max_number'] == max_number
+    assert refset.provenances[1].parameters['max_number'] == max_number
+
+    # now try to make a new refset with a different name
+    name2 = uuid.uuid4().hex
+    maker.name = name2
+    new_ref = maker.run(ra=0, dec=0, filter='R')
+    assert new_ref is None  # still can't find images there
+
+    refset2 = maker.ref_set
+    len(refset.provenances) == 1
+    refset2.provenances[0].id == refset.provenances[1].id  # these refsets share the same provenance!
+
+    # now try to append with different data parameters:
+    maker.pipeline.extractor.pars['threshold'] = 3.14
+
+    with pytest.raises(
+            RuntimeError, match='Found a RefSet with the name .*, but it has a different upstream_hash!'
+    ):
+        new_ref = maker.run(ra=0, dec=0, filter='R')
+
+
+def test_making_references(ptf_reference_images):
+    name = uuid.uuid4().hex
+    ref = None
+    ref5 = None
+
+    try:
+        maker = RefMaker(maker={'name': name, 'instruments': ['PTF'], 'min_number': 4, 'max_number': 10})
+        add_test_parameters(maker)  # make sure we have a test parameter on everything
+
+        t0 = time.perf_counter()
+        ref = maker.run(ra=188, dec=4.5, filter='R')
+        first_time = time.perf_counter() - t0
+        first_refset = maker.ref_set
+        first_image = ref.image
+        assert ref is not None
+
+        # check that this ref is saved to the DB
+        with SmartSession() as session:
+            loaded_ref = session.scalars(sa.select(Reference).where(Reference.id == ref.id)).first()
+            assert loaded_ref is not None
+
+        # now try to make a new ref with the same parameters
+        t0 = time.perf_counter()
+        ref2 = maker.run(ra=188, dec=4.5, filter='R')
+        second_time = time.perf_counter() - t0
+        second_refset = maker.ref_set
+        second_image = ref2.image
+        assert second_time < first_time * 0.01  # should be much faster, we are reloading the reference set
+        assert ref2 == ref
+        assert second_refset == first_refset
+        assert second_image.id == first_image.id
+
+        # now try to make a new ref set with a new name
+        maker.pars.name = uuid.uuid4().hex
+        t0 = time.perf_counter()
+        ref3 = maker.run(ra=188, dec=4.5, filter='R')
+        third_time = time.perf_counter() - t0
+        third_refset = maker.ref_set
+        third_image = ref3.image
+        assert third_time < first_time * 0.01  # should be faster, we are loading the same reference
+        assert third_refset != first_refset
+        assert ref3 == ref
+        assert third_image.id == first_image.id
+
+        # append to the same refset but with different reference parameters (image loading parameters)
+        maker.pars.max_images += 1
+        t0 = time.perf_counter()
+        ref4 = maker.run(ra=188, dec=4.5, filter='R')
+        fourth_time = time.perf_counter() - t0
+        fourth_refset = maker.ref_set
+        fourth_image = ref4.image
+        assert fourth_time < first_time * 0.01  # should be faster, we can still re-use the underlying coadd image
+        assert fourth_refset != first_refset
+        assert ref4 != ref
+        assert fourth_image.id != first_image.id
+
+        # now make the coadd image again with a different parameter for the data production
+        maker.coadd_pipeline.pars.flag_fwhm_factor *= 1.2
+        maker.pars.name = uuid.uuid4().hex  # MUST give a new name, otherwise it will not allow the new data parameters
+        t0 = time.perf_counter()
+        ref5 = maker.run(ra=188, dec=4.5, filter='R')
+        fifth_time = time.perf_counter() - t0
+        fifth_refset = maker.ref_set
+        fifth_image = ref5.image
+        assert fifth_time == pytest.approx(first_time, rel=0.2)  # should take about the same time
+        assert ref5 != ref
+        assert fifth_refset != first_refset
+        assert fifth_image.id != first_image.id
+
+    finally:  # cleanup
+        if ref is not None and ref.image is not None:
+            ref.image.delete_from_disk_and_database(remove_downstreams=True)
+
+        # we don't have to delete ref2, ref3, ref4, because they depend on the same coadd image, and cascade should
+        # destroy them as soon as the coadd is removed
+
+        if ref5 is not None and ref5.image is not None:
+            ref5.image.delete_from_disk_and_database(remove_downstreams=True)
+
+
+
 

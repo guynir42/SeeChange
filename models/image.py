@@ -6,6 +6,7 @@ import numpy as np
 
 import sqlalchemy as sa
 from sqlalchemy import orm
+
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.exc import DetachedInstanceError
@@ -31,6 +32,7 @@ from models.base import (
     FourCorners,
     HasBitFlagBadness,
 )
+from models.provenance import Provenance
 from models.exposure import Exposure
 from models.instrument import get_instrument_instance
 from models.enums_and_bitflags import (
@@ -559,9 +561,9 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         if self.sources is not None:
             self.sources.image = new_image
-            self.sources.image_id = new_image.id
             self.sources.provenance_id = self.sources.provenance.id if self.sources.provenance is not None else None
-            new_image.sources = self.sources.merge_all(session=session)
+            new_sources = self.sources.merge_all(session=session)
+            new_image.sources = new_sources
 
             if new_image.sources.wcs is not None:
                 new_image.wcs = new_image.sources.wcs
@@ -1571,6 +1573,79 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
                 for alim in self._aligned_images:
                     alim.free( free_derived_products=free_derived_products, only_free=only_free )
 
+    def load_products(self, provenances, session=None, must_find_all=True):
+        """Load the products associated with this image, using a list of provenances.
+
+        Parameters
+        ----------
+        provenances: single Provenance or list of Provenance objects
+            A list to go over, that can contain any number of Provenance objects.
+            Will search the database for matching objects to each provenance in turn,
+            and will assign them into "self" if found.
+            Note that it will keep the first successfully loaded product on the provenance list.
+            Will overwrite any existing products on the Image.
+            Will ignore provenances that do not match any of the products
+            (e.g., provenances for a different processing step).
+        session: SQLAlchemy session, optional
+            The session to use for the database queries.
+            If not provided, will open a session internally
+            and close it when the function exits.
+
+        """
+        from models.source_list import SourceList
+        from models.psf import PSF
+        from models.background import Background
+        from models.world_coordinates import WorldCoordinates
+        from models.zero_point import ZeroPoint
+
+        if self.id is None:
+            raise ValueError('Cannot load products for an image without an ID!')
+
+        provenances = listify(provenances)
+        if not provenances:
+            raise ValueError('Need at least one provenance to load products! ')
+
+        sources = psf = bg = wcs = zp = None
+        with SmartSession(session) as session:
+            for p in provenances:
+                if sources is None:
+                    sources = session.scalars(
+                        sa.select(SourceList).where(SourceList.image_id == self.id, SourceList.provenance_id == p.id)
+                    ).first()
+                if psf is None:
+                    psf = session.scalars(
+                        sa.select(PSF).where(PSF.image_id == self.id, PSF.provenance_id == p.id)
+                    ).first()
+                if bg is None:
+                    bg = session.scalars(
+                        sa.select(Background).where(Background.image_id == self.id, Background.provenance_id == p.id)
+                    ).first()
+
+                if sources is not None:
+                    if wcs is None:
+                        wcs = session.scalars(
+                            sa.select(WorldCoordinates).where(
+                                WorldCoordinates.sources_id == sources.id, WorldCoordinates.provenance_id == p.id
+                            )
+                        ).first()
+                    if zp is None:
+                        zp = session.scalars(
+                            sa.select(ZeroPoint).where(
+                                ZeroPoint.sources_id == sources.id, ZeroPoint.provenance_id == p.id
+                            )
+                        ).first()
+
+            if sources is not None:
+                self.sources = sources
+            if psf is not None:
+                self.psf = psf
+            if bg is not None:
+                self.bg = bg
+            if wcs is not None:
+                self.wcs = wcs
+            if zp is not None:
+                self.zp = zp
+
     def get_upstream_provenances(self):
         """Collect the provenances for all upstream objects.
 
@@ -1895,9 +1970,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
             return downstreams
 
-    @classmethod
+    @staticmethod
     def query_images(
-            cls,
             ra=None,
             dec=None,
             target=None,
@@ -2008,7 +2082,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             The factor to multiply the seeing FWHM by in the quality calculation.
         provenance_ids: str or list of strings
             Find images with these provenance IDs.
-        type: integer or list of integers
+        type: integer or string or list of integers or strings, default [1,2,3,4]
             List of integer converted types of images to search for.
             This defaults to [1,2,3,4] which corresponds to the
             science images, coadds and subtractions
@@ -2113,7 +2187,8 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         # filter by image types
         types = listify(type)
         if types is not None:
-            stmt = stmt.where(Image._type.in_(types))
+            int_types = [ImageTypeConverter.to_int(t) for t in types]
+            stmt = stmt.where(Image._type.in_(int_types))
 
         # sort the images
         if order_by == 'earliest':
@@ -2128,6 +2203,33 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             raise ValueError(f'Unknown order_by parameter: {order_by}. Use "earliest", "latest" or "quality".')
 
         return stmt
+
+    @staticmethod
+    def get_image_from_upstreams(images, prov_id=None, session=None):
+        """Finds the combined image that was made from exactly the list of images (with a given provenance). """
+        with SmartSession(session) as session:
+            association = image_upstreams_association_table
+            
+            stmt = sa.select(Image).join(
+                association, Image.id == association.c.downstream_id
+            ).group_by(Image.id).having(
+                sa.func.count(association.c.upstream_id) == len(images)
+            )
+
+            if prov_id is not None:  # pick only those with the right provenance id
+                if isinstance(prov_id, Provenance):
+                    prov_id = prov_id.id
+                stmt = stmt.where(Image.provenance_id == prov_id)
+
+            output = session.scalars(stmt).all()
+            if len(output) > 1:
+                raise ValueError(
+                    f"More than one combined image found with provenance ID {prov_id} and upstreams {images}."
+                )
+            elif len(output) == 0:
+                return None
+
+            return output[0]  # should usually return one Image or None
 
     def get_psf(self):
         """Load the PSF object for this image.

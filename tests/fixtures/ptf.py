@@ -559,7 +559,7 @@ def ptf_refset(
 @pytest.fixture
 def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, ptf_cache_dir):
 
-    cache_path = os.path.join(ptf_cache_dir, '187/PTF_20100216_075004_11_R_Diff_VXUBFA_u-7ogkop.image.fits.json')
+    cache_path = os.path.join(ptf_cache_dir, '187/PTF_20100216_075004_11_R_Diff_7XJURH_u-iig7a2.image.fits.json')
 
     if ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and ( os.path.isfile(cache_path) ):  # try to load this from cache
         im = copy_from_cache(Image, ptf_cache_dir, cache_path)

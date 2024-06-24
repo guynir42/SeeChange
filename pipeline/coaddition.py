@@ -71,7 +71,7 @@ class ParsCoadd(Parameters):
             critical=True,
         )
 
-        self.enforce_no_new_attrs = True
+        self._enforce_no_new_attrs = True
         self.override( kwargs )
 
     def get_process_name(self):
@@ -645,8 +645,16 @@ class CoaddPipeline:
         self.datastore = DataStore()
         self.datastore.prov_tree = self.make_provenance_tree(coadd_upstreams, code_version, session=session)
 
-        # the self.aligned_images is None unless you explicitly pass in the pre-aligned images to save time
-        self.datastore.image = self.coadder.run(self.images, self.aligned_images)
+        # check if this exact coadd image already exists in the DB
+        with SmartSession(session) as dbsession:
+            coadd_prov = self.datastore.prov_tree['coaddition']
+            coadd_image = Image.get_image_from_upstreams(self.images, coadd_prov, session=dbsession)
+
+        if coadd_image is not None:
+            self.datastore.image = coadd_image
+        else:
+            # the self.aligned_images is None unless you explicitly pass in the pre-aligned images to save time
+            self.datastore.image = self.coadder.run(self.images, self.aligned_images)
 
         # TODO: add the warnings/exception capturing, runtime/memory tracking (and Report making) as in top_level.py
         self.datastore = self.extractor.run(self.datastore)

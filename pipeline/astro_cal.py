@@ -122,7 +122,7 @@ class ParsAstroCalibrator(Parameters):
             300,
             int,
             'Timeout in seconds for scamp to run',
-            critical=True
+            critical=False
         )
 
         self._enforce_no_new_attrs = True

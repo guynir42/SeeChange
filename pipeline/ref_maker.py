@@ -35,6 +35,14 @@ class ParsRefMaker(Parameters):
             # this means multiple refsets can refer to the same Reference provenance
         )
 
+        self.description = self.add_par(
+            'description',
+            '',
+            str,
+            'Description of the reference set. ',
+            critical=False,
+        )
+
         self.allow_append = self.add_par(
             'allow_append',
             True,
@@ -132,11 +140,12 @@ class ParsRefMaker(Parameters):
             critical=True,
         )
 
-        self.commit_new_refs = self.add_par(
-            'commit_new_refs',
-            False,
+        self.save_new_refs = self.add_par(
+            'save_new_refs',
+            True,
             bool,
-            'If True, will commit the newly created reference to the database. If False, will only return it. ',
+            'If True, will save the coadd image and commit it and the newly created reference to the database. '
+            'If False, will only return it. ',
             critical=False,
         )
 
@@ -402,6 +411,7 @@ class RefMaker:
                     try:
                         self.ref_set = RefSet(
                             name=self.pars.name,
+                            description=self.pars.description,
                             upstream_hash=self.ref_upstream_hash,
                         )
                         dbsession.add(self.ref_set)
@@ -446,6 +456,13 @@ class RefMaker:
             )
 
             if ref:  # found a reference, can skip the next part of the code!
+                if len(ref) > 1:
+                    raise RuntimeError(
+                        f'Found multiple references with the same provenance {self.ref_prov.id} and location!'
+                    )
+                if len(ref) == 0:
+                    return None
+
                 return ref
 
             ############### no reference found, need to build one! ################
@@ -495,16 +512,35 @@ class RefMaker:
                 images = sorted(images, key=lambda x: x.quality, reverse=True)
                 images = images[:self.pars.max_number]
 
-        # make the reference (note that we are out of the session block, to release it while we coadd)
-        images = sorted(images, key=lambda x: x.mjd)  # sort the images in chronological order for coaddition
+            # make the reference (note that we are out of the session block, to release it while we coadd)
+            images = sorted(images, key=lambda x: x.mjd)  # sort the images in chronological order for coaddition
+
+            # load the extraction products of these images using the ex_provs
+            for im in images:
+                im.load_products(self.ex_provs, session=dbsession)
+                if im.sources is None or im.psf is None or im.bg is None or im.wcs is None or im.zp is None:
+                    raise RuntimeError(
+                        f'Image {im.id} is missing products for coaddition! '
+                        f'Make sure to produce products using the provenances in ex_provs: '
+                        f'{self.ex_provs}'
+                    )
+
+        # release the session when making the coadd image
 
         coadd_image = self.coadd_pipeline.run(images)
 
         ref = Reference(image=coadd_image, provenance=self.ref_prov)
 
-        if self.pars.commit_new_refs:
+        if self.pars.save_new_refs:
             with SmartSession(session) as dbsession:
-                dbsession.add(ref)
+                ref.image.save(overwrite=True)
+                ref.image.sources.save(overwrite=True)
+                ref.image.psf.save(overwrite=True)
+                ref.image.bg.save(overwrite=True)
+                ref.image.wcs.save(overwrite=True)
+                # zp is not a FileOnDiskMixin!
+
+                ref = ref.merge_all(dbsession)
                 dbsession.commit()
 
         return ref
