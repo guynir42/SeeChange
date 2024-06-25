@@ -265,17 +265,21 @@ class RefMaker:
             #  each Image using a single Exposure. If in some weird future we'd
             #  like to build a reference from coadded images, this will fail.
             load_exposure = Exposure.make_provenance(inst)
+            pars = self.pipeline.preprocessor.pars.get_critical_pars()
             preprocessing = Provenance(
                 process='preprocessing',
                 code_version=load_exposure.code_version,  # TODO: allow loading versions for each process
-                parameters=self.pipeline.preprocessor.pars.get_critical_pars(),
+                parameters=pars,
                 upstreams=[load_exposure],
+                is_testing='test_parameter' in pars,
             )
+            pars = self.pipeline.extractor.pars.get_critical_pars()  # includes parameters of siblings
             extraction = Provenance(
                 process='extraction',
                 code_version=preprocessing.code_version,  # TODO: allow loading versions for each process
-                parameters=self.pipeline.extractor.pars.get_critical_pars(),  # includes parameters of siblings
+                parameters=pars,
                 upstreams=[preprocessing],
+                is_testing='test_parameter' in pars,
             )
 
             # the exposure provenance is not included in the reference provenance's upstreams
@@ -288,11 +292,13 @@ class RefMaker:
         self.coadd_im_prov = coadd_provs['coaddition']
         self.coadd_ex_prov = coadd_provs['extraction']
 
+        pars = self.pars.get_critical_pars()
         self.ref_prov = Provenance(
             process=self.pars.get_process_name(),
             code_version=self.coadd_im_prov.code_version,  # TODO: allow loading versions for each process
-            parameters=self.pars.get_critical_pars(),
+            parameters=pars,
             upstreams=[self.coadd_im_prov, self.coadd_ex_prov],
+            is_testing='test_parameter' in pars,
         )
 
         # this hash uniquely identifies all the preprocessing and extraction hashes in this provenance's upstreams
@@ -387,11 +393,7 @@ class RefMaker:
 
             # now load or create a RefSet
             for i in range(5):  # a concurrent merge sort of loop
-                self.ref_set = dbsession.scalars(
-                    sa.select(RefSet).where(
-                        RefSet.name == self.pars.name,
-                    )
-                ).first()
+                self.ref_set = dbsession.scalars(sa.select(RefSet).where(RefSet.name == self.pars.name)).first()
 
                 if self.ref_set is not None:
                     break

@@ -19,8 +19,10 @@ def test_subtraction_data_products(ptf_ref, ptf_supernova_images, subtractor):
     # run the subtraction like you'd do in the real pipeline (calls get_reference and get_subtraction internally)
     subtractor.pars.test_parameter = uuid.uuid4().hex
     subtractor.pars.method = 'naive'
+    subtractor.pars.refset = 'test_refset_ptf'
     assert subtractor.pars.alignment['to_index'] == 'new'  # make sure alignment is configured to new, not latest image
     ds = subtractor.run(image1)
+    ds.reraise()  # make sure there are no exceptions from run()
 
     # check that we don't lazy load a subtracted image, but recalculate it
     assert subtractor.has_recalculated
@@ -50,8 +52,10 @@ def test_subtraction_ptf_zogy(ptf_ref, ptf_supernova_images, subtractor):
     # run the subtraction like you'd do in the real pipeline (calls get_reference and get_subtraction internally)
     subtractor.pars.test_parameter = uuid.uuid4().hex
     subtractor.pars.method = 'zogy'  # this is the default, but it might not always be
+    subtractor.pars.refset = 'test_refset_ptf'
     assert subtractor.pars.alignment['to_index'] == 'new'  # make sure alignment is configured to new, not latest image
     ds = subtractor.run(image1)
+    ds.reraise()  # make sure there are no exceptions from run()
 
     assert ds.sub_image is not None
     assert ds.sub_image.data is not None
@@ -78,6 +82,7 @@ def test_subtraction_ptf_zogy(ptf_ref, ptf_supernova_images, subtractor):
 
 def test_warnings_and_exceptions(decam_datastore, decam_reference, subtractor, decam_default_calibrators):
     subtractor.pars.inject_warnings = 1
+    subtractor.pars.refset = 'test_refset_decam'
 
     with pytest.warns(UserWarning) as record:
         subtractor.run(decam_datastore)

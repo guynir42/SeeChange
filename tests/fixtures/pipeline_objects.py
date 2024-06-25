@@ -278,6 +278,7 @@ def pipeline_for_tests(pipeline_factory):
 def coadd_pipeline_factory(
         coadder_factory,
         extractor_factory,
+        backgrounder_factory,
         astrometor_factory,
         photometor_factory,
         test_config,
@@ -286,6 +287,7 @@ def coadd_pipeline_factory(
         p = CoaddPipeline(**test_config.value('pipeline'))
         p.coadder = coadder_factory()
         p.extractor = extractor_factory()
+        p.backgrounder = backgrounder_factory()
         p.astrometor = astrometor_factory()
         p.photometor = photometor_factory()
 
