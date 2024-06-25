@@ -173,7 +173,7 @@ def ptf_datastore(datastore_factory, ptf_exposure, ptf_ref, ptf_cache_dir, ptf_b
         11,
         cache_dir=ptf_cache_dir,
         cache_base_name='187/PTF_20110429_040004_11_R_Sci_BNKEKA',
-        overrides={'extraction': {'threshold': 5}},
+        overrides={'extraction': {'threshold': 5}, 'subtraction': {'refset': 'test_refset_ptf'}},
         bad_pixel_map=ptf_bad_pixel_map,
     )
     yield ds
@@ -527,31 +527,53 @@ def ptf_ref(
         assert ref_in_db is None  # should have been deleted by cascade when image is deleted
 
 
+@pytest.fixture
+def ptf_ref_trimmed(ptf_ref):
+    with SmartSession() as session:
+        trimmed_image = Image.copy_image(ptf_ref.image)
+        trimmed_image.ra_corner_10 -= 0.2
+        trimmed_image.ra_corner_11 -= 0.2
+        trimmed_image.filepath = ptf_ref.image.filepath + '_trimmed'
+        trimmed_image.provenance = ptf_ref.image.provenance
+        trimmed_image.md5sum = uuid.uuid4()  # spoof this so we don't have to save to archive
+
+        new_ref = Reference()
+        new_ref.image = trimmed_image
+        pars = ptf_ref.provenance.parameters.copy()
+        pars['test_parameter'] = uuid.uuid4().hex
+        prov = Provenance(
+            process='referencing',
+            parameters=pars,
+            upstreams=ptf_ref.provenance.upstreams,
+            code_version=ptf_ref.provenance.code_version,
+            is_testing=True,
+        )
+        new_ref.provenance = prov
+        new_ref = session.merge(new_ref)
+        session.commit()
+
+    yield new_ref
+
+    new_ref.image.delete_from_disk_and_database()
+
+
 @pytest.fixture(scope='session')
-def ptf_refset(
-        ptf_ref,
-        refmaker,
-        ptf_cache_dir,
-):
-    refmaker.pars.name = 'test_refset_ptf'
-    refmaker.pars.min_number = 4  # don't need many images for testing
-    refmaker.pars.max_number = 4
+def ptf_refset(refmaker_factory):
+    refmaker = refmaker_factory('test_refset_ptf', 'PTF')
+    refmaker.pars.save_new_refs = True
 
-    ref = refmaker.run(ra=188, dec=4.5)  # this should find the ptf_ref and make a refset with it
+    refmaker.make_refset()  # this makes a refset without making any references
 
-    assert ref.image.from_db
-    assert ref.provenance_id == ptf_ref.provenance_id
-
-    yield refmaker.refset
+    yield refmaker.ref_set
 
     # delete all the references and the refset
     with SmartSession() as session:
-        for prov_id in refmaker.provenances:
-            refs = session.scalars(sa.select(Reference).where(Reference.provenance_id == prov_id)).all()
+        for prov in refmaker.ref_set.provenances:
+            refs = session.scalars(sa.select(Reference).where(Reference.provenance_id == prov.id)).all()
             for ref in refs:
                 session.delete(ref)
 
-        session.delete(refmaker.refset)
+        session.delete(refmaker.ref_set)
 
         session.commit()
 

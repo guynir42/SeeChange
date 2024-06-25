@@ -372,28 +372,16 @@ class RefMaker:
 
         return session
 
-    def run(self, *args, **kwargs):
-        """Check if a reference exists for the given coordinates/field ID, and filter, and make it if it is missing.
+    def make_refset(self, session=None):
+        """Create or load an existing RefSet with the required name.
 
-        Will check if a RefSet exists with the same provenance and name, and if it doesn't, will create a new
-        RefSet with these properties, to keep track of the reference provenances.
-
-        Arguments specifying where in the sky to look for / create the reference are parsed by parse_arguments().
-        Same is true for the filter choice.
-        The remaining policy regarding which images to pick, and what provenance to use to find references,
-        is defined by the parameters object of self and of self.pipeline.
-
-        If one of the inputs is a session, will use that in the entire process.
-        Otherwise, will open internal sessions and close them whenever they are not needed.
-
-        Will return a Reference, or None in case it doesn't exist and cannot be created
-        (e.g., because there are not enough images that pass the criteria).
+        Will also make all the required provenances (using the config) and
+        possibly append the reference provenance to the list of provenances
+        on the RefSet.
         """
-        session = self.parse_arguments(*args, **kwargs)
-
-        self.setup_provenances(session=session)
-
         with SmartSession(session) as dbsession:
+            self.setup_provenances(session=dbsession)
+
             # first merge the reference provenance
             self.ref_prov = self.ref_prov.merge_concurrent(session=dbsession, commit=True)
 
@@ -444,7 +432,29 @@ class RefMaker:
                         f'Use "allow_append" parameter to add new provenances to this RefSet. '
                     )
 
-            # now look for the reference at the given location in the sky (via ra/dec or target/section_id)
+    def run(self, *args, **kwargs):
+        """Check if a reference exists for the given coordinates/field ID, and filter, and make it if it is missing.
+
+        Will check if a RefSet exists with the same provenance and name, and if it doesn't, will create a new
+        RefSet with these properties, to keep track of the reference provenances.
+
+        Arguments specifying where in the sky to look for / create the reference are parsed by parse_arguments().
+        Same is true for the filter choice.
+        The remaining policy regarding which images to pick, and what provenance to use to find references,
+        is defined by the parameters object of self and of self.pipeline.
+
+        If one of the inputs is a session, will use that in the entire process.
+        Otherwise, will open internal sessions and close them whenever they are not needed.
+
+        Will return a Reference, or None in case it doesn't exist and cannot be created
+        (e.g., because there are not enough images that pass the criteria).
+        """
+        session = self.parse_arguments(*args, **kwargs)
+
+        with SmartSession(session) as dbsession:
+            self.make_refset(session=dbsession)
+
+            # look for the reference at the given location in the sky (via ra/dec or target/section_id)
             ref = Reference.get_references(
                 ra=self.ra,
                 dec=self.dec,

@@ -170,7 +170,7 @@ class Reference(Base, AutoIDMixin):
 
         self.provenance = Provenance(
             code_version=self.image.provenance.code_version,
-            process='reference',
+            process='referencing',
             parameters=parameters,
             upstreams=upstreams,
         )
@@ -364,7 +364,7 @@ class Reference(Base, AutoIDMixin):
         provenance_ids = listify(provenance_ids)
 
         if provenance_ids is not None:
-            for i, prov in provenance_ids:
+            for i, prov in enumerate(provenance_ids):
                 if isinstance(prov, Provenance):
                     provenance_ids[i] = prov.id
                 elif not isinstance(prov, str):

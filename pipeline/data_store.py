@@ -3,7 +3,7 @@ import math
 import datetime
 import sqlalchemy as sa
 
-from util.util import parse_session
+from util.util import parse_session, listify
 from util.logger import SCLogger
 
 from models.base import SmartSession, FileOnDiskMixin, FourCorners
@@ -978,7 +978,7 @@ class DataStore:
             (i.e, it is possible to take the reference matching the first provenance
             and never load the others).
             If not given, will try to get the provenances from the prov_tree attribute.
-            If those are not given, or if no qualify reference is found, will return None.
+            If those are not given, or if no qualifying reference is found, will return None.
         min_overlap: float, default 0.85
             Area of overlap region must be at least this fraction of the
             area of the search image for the reference to be good.
@@ -1020,6 +1020,9 @@ class DataStore:
 
         if provenances is None:  # try to get it from the prov_tree
             provenances = self._get_provenance_for_an_upstream('reference')
+
+        provenances = listify(provenances)
+
         if provenances is None:
             self.reference = None  # cannot get a reference without any associated provenances
 
@@ -1072,12 +1075,13 @@ class DataStore:
             for ref in references:
                 if min_overlap is not None and min_overlap > 0:
                     ovfrac = FourCorners.get_overlap_frac(image, ref.image)
+                    print(f'ref.id= {ref.id}, ovfrac= {ovfrac}')
                     if ovfrac > min_overlap:
                         self.reference = ref
-                        break
+                        # break
 
-            if self.reference is None:
-                raise ValueError('No matching reference found for this image!')
+            # if self.reference is None:
+            #     raise ValueError('No matching reference found for this image!')
 
         return self.reference
 

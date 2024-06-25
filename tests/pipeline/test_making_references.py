@@ -11,6 +11,7 @@ from pipeline.ref_maker import RefMaker
 
 from models.base import SmartSession
 from models.reference import Reference
+from models.refset import RefSet
 
 
 def add_test_parameters(maker):
@@ -210,5 +211,32 @@ def test_making_references(ptf_reference_images):
             ref5.image.delete_from_disk_and_database(remove_downstreams=True)
 
 
-def test_datastore_get_reference(ptf_datastore):
-    pass
+@pytest.mark.skip()  # still working on this test
+def test_datastore_get_reference(ptf_datastore, ptf_ref, ptf_ref_trimmed):
+    with SmartSession() as session:
+        refset = session.scalars(sa.select(RefSet).where(RefSet.name == 'test_refset_ptf')).first()
+        assert refset is not None
+        assert len(refset.provenances) == 1
+        assert refset.provenances[0].id == ptf_ref.provenance_id
+
+        # append the newer reference to the refset
+        ptf_ref_trimmed = session.merge(ptf_ref_trimmed)
+        refset.provenances.append(ptf_ref_trimmed.provenance)
+        session.commit()
+
+    ref = ptf_datastore.get_reference(provenances=refset.provenances)
+
+    assert ref is not None
+    assert ref.id == ptf_ref.id
+
+    # now trim the image that needs matching
+    # ptf_datastore.image.ra_corner_00 += 0.2
+    # ptf_datastore.image.ra_corner_01 += 0.2
+    ptf_datastore.image.ra_corner_10 -= 0.2
+    ptf_datastore.image.ra_corner_11 -= 0.2
+
+    ref = ptf_datastore.get_reference(provenances=refset.provenances)
+
+    assert ref is not None
+    assert ref.id == ptf_ref_trimmed.id
+

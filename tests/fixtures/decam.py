@@ -457,7 +457,7 @@ def decam_reference(decam_ref_datastore, refmaker_factory):
     with SmartSession() as session:
         prov = Provenance(
             code_version=ds.image.provenance.code_version,
-            process='reference',
+            process='referencing',
             parameters=maker.pars.get_critical_pars(),
             upstreams=[
                 ds.image.provenance,
@@ -470,8 +470,6 @@ def decam_reference(decam_ref_datastore, refmaker_factory):
         ref = Reference()
         ref.image = ds.image
         ref.provenance = prov
-        ref.validity_start = Time(55000, format='mjd', scale='tai').isot
-        ref.validity_end = Time(65000, format='mjd', scale='tai').isot
         ref.section_id = ds.image.section_id
         ref.filter = ds.image.filter
         ref.target = ds.image.target
@@ -490,6 +488,29 @@ def decam_reference(decam_ref_datastore, refmaker_factory):
             if sa.inspect(ref).persistent:
                 session.delete(ref.provenance)  # should also delete the reference image
             session.commit()
+
+
+@pytest.fixture(scope='session')
+def decam_refset(refmaker_factory):
+    refmaker = refmaker_factory('test_refset_decam', 'DECam')
+    refmaker.pars.min_number = 5  # don't need many images for testing
+    refmaker.pars.max_number = 5
+    refmaker.pars.save_new_refs = True
+
+    refmaker.make_refset()
+
+    yield refmaker.ref_set
+
+    # delete all the references and the refset
+    with SmartSession() as session:
+        for prov in refmaker.ref_set.provenances:
+            refs = session.scalars(sa.select(Reference).where(Reference.provenance_id == prov.id)).all()
+            for ref in refs:
+                session.delete(ref)
+
+        session.delete(refmaker.ref_set)
+
+        session.commit()
 
 
 @pytest.fixture

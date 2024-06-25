@@ -34,6 +34,7 @@ pytest_plugins = [
     'tests.fixtures.ztf',
     'tests.fixtures.ptf',
     'tests.fixtures.pipeline_objects',
+    'tests.fixtures.datastore_factory',
 ]
 
 ARCHIVE_PATH = None
