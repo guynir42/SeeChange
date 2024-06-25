@@ -1075,10 +1075,13 @@ class DataStore:
             for ref in references:
                 if min_overlap is not None and min_overlap > 0:
                     ovfrac = FourCorners.get_overlap_frac(image, ref.image)
-                    print(f'ref.id= {ref.id}, ovfrac= {ovfrac}')
-                    if ovfrac > min_overlap:
+                    # print(
+                    #     f'ref.id= {ref.id}, ra_left= {ref.image.ra_corner_00:.2f}, '
+                    #     f'ra_right= {ref.image.ra_corner_11:.2f}, ovfrac= {ovfrac}'
+                    # )
+                    if ovfrac >= min_overlap:
                         self.reference = ref
-                        # break
+                        break
 
             # if self.reference is None:
             #     raise ValueError('No matching reference found for this image!')

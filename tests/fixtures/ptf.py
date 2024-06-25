@@ -528,17 +528,19 @@ def ptf_ref(
 
 
 @pytest.fixture
-def ptf_ref_trimmed(ptf_ref):
+def ptf_ref_offset(ptf_ref):
     with SmartSession() as session:
-        trimmed_image = Image.copy_image(ptf_ref.image)
-        trimmed_image.ra_corner_10 -= 0.2
-        trimmed_image.ra_corner_11 -= 0.2
-        trimmed_image.filepath = ptf_ref.image.filepath + '_trimmed'
-        trimmed_image.provenance = ptf_ref.image.provenance
-        trimmed_image.md5sum = uuid.uuid4()  # spoof this so we don't have to save to archive
+        offset_image = Image.copy_image(ptf_ref.image)
+        offset_image.ra_corner_00 -= 0.5
+        offset_image.ra_corner_01 -= 0.5
+        offset_image.ra_corner_10 -= 0.5
+        offset_image.ra_corner_11 -= 0.5
+        offset_image.filepath = ptf_ref.image.filepath + '_offset'
+        offset_image.provenance = ptf_ref.image.provenance
+        offset_image.md5sum = uuid.uuid4()  # spoof this so we don't have to save to archive
 
         new_ref = Reference()
-        new_ref.image = trimmed_image
+        new_ref.image = offset_image
         pars = ptf_ref.provenance.parameters.copy()
         pars['test_parameter'] = uuid.uuid4().hex
         prov = Provenance(

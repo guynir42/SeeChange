@@ -211,8 +211,7 @@ def test_making_references(ptf_reference_images):
             ref5.image.delete_from_disk_and_database(remove_downstreams=True)
 
 
-@pytest.mark.skip()  # still working on this test
-def test_datastore_get_reference(ptf_datastore, ptf_ref, ptf_ref_trimmed):
+def test_datastore_get_reference(ptf_datastore, ptf_ref, ptf_ref_offset):
     with SmartSession() as session:
         refset = session.scalars(sa.select(RefSet).where(RefSet.name == 'test_refset_ptf')).first()
         assert refset is not None
@@ -220,23 +219,23 @@ def test_datastore_get_reference(ptf_datastore, ptf_ref, ptf_ref_trimmed):
         assert refset.provenances[0].id == ptf_ref.provenance_id
 
         # append the newer reference to the refset
-        ptf_ref_trimmed = session.merge(ptf_ref_trimmed)
-        refset.provenances.append(ptf_ref_trimmed.provenance)
+        ptf_ref_offset = session.merge(ptf_ref_offset)
+        refset.provenances.append(ptf_ref_offset.provenance)
         session.commit()
 
-    ref = ptf_datastore.get_reference(provenances=refset.provenances)
+        ref = ptf_datastore.get_reference(provenances=refset.provenances, session=session)
 
-    assert ref is not None
-    assert ref.id == ptf_ref.id
+        assert ref is not None
+        assert ref.id == ptf_ref.id
 
-    # now trim the image that needs matching
-    # ptf_datastore.image.ra_corner_00 += 0.2
-    # ptf_datastore.image.ra_corner_01 += 0.2
-    ptf_datastore.image.ra_corner_10 -= 0.2
-    ptf_datastore.image.ra_corner_11 -= 0.2
+        # now offset the image that needs matching
+        ptf_datastore.image.ra_corner_00 -= 0.5
+        ptf_datastore.image.ra_corner_01 -= 0.5
+        ptf_datastore.image.ra_corner_10 -= 0.5
+        ptf_datastore.image.ra_corner_11 -= 0.5
 
-    ref = ptf_datastore.get_reference(provenances=refset.provenances)
+        ref = ptf_datastore.get_reference(provenances=refset.provenances, session=session)
 
-    assert ref is not None
-    assert ref.id == ptf_ref_trimmed.id
+        assert ref is not None
+        assert ref.id == ptf_ref_offset.id
 
