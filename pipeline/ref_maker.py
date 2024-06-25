@@ -456,15 +456,14 @@ class RefMaker:
             )
 
             if ref:  # found a reference, can skip the next part of the code!
-                if len(ref) > 1:
+                if len(ref) == 0:
+                    return None
+                elif len(ref) == 1:
+                    return ref[0]
+                else:
                     raise RuntimeError(
                         f'Found multiple references with the same provenance {self.ref_prov.id} and location!'
                     )
-                if len(ref) == 0:
-                    return None
-
-                return ref
-
             ############### no reference found, need to build one! ################
 
             # first get all the images that could be used to build the reference

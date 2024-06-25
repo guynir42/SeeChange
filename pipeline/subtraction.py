@@ -1,11 +1,14 @@
 import time
 import numpy as np
 
+import sqlalchemy as sa
+
 from pipeline.parameters import Parameters
 from pipeline.data_store import DataStore
 
 from models.base import SmartSession
 from models.image import Image
+from models.refset import RefSet
 
 from improc.zogy import zogy_subtract, zogy_add_weights_flags
 from improc.inpainting import Inpainter
@@ -27,8 +30,8 @@ class ParsSubtractor(Parameters):
 
         self.refset = self.add_par(
             'refset',
-            'default',
-            str,
+            None,
+            (None, str),
             'The name of the reference set to use for getting a reference image. '
         )
 
@@ -251,8 +254,16 @@ class Subtractor:
 
             # get the provenance for this step:
             with SmartSession(session) as session:
-                # look for a reference that has to do with the current image
-                ref = ds.get_reference(session=session)
+                # look for a reference that has to do with the current image and refset
+                if self.pars.refset is None:
+                    raise ValueError('No reference set given for subtraction')
+                refset = session.scalars(sa.select(RefSet).where(RefSet.name == self.pars.refset)).first()
+                if refset is None:
+                    raise ValueError(f'Cannot find a reference set with name {self.pars.refset}')
+
+                # TODO: we can add additional parameters of get_reference() that come from
+                #  the subtraction config, such as skip_bad, match_filter, ignore_target_and_section, min_overlap
+                ref = ds.get_reference(refset.provenances, session=session)
                 if ref is None:
                     raise ValueError(
                         f'Cannot find a reference image corresponding to the datastore inputs: {ds.get_inputs()}'

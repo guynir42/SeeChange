@@ -119,7 +119,10 @@ extraction:
 # how to do the subtractions
 subtraction:
   method: zogy
-  refset: best_references
+  # set refset to null to only make references (no subtraction will happen).
+  # to start running subtractions, first make a ref set and use the name of that
+  # in this field.
+  refset: null
   alignment:
     method: swarp
     to_index: new

@@ -1,3 +1,4 @@
+
 import sqlalchemy as sa
 from sqlalchemy import orm
 
@@ -322,7 +323,8 @@ class Reference(Base, AutoIDMixin):
             If given, must also provide the target.
         filter: string, optional
             Filter of the reference image.
-        provenance_ids: list of strings, optional
+            If not given, will return references with any filter.
+        provenance_ids: list of strings or Provenance objects, optional
             List of provenance IDs to match.
             The references must have a provenance with one of these IDs.
             If not given, will load all matching references with any provenance.
@@ -338,7 +340,7 @@ class Reference(Base, AutoIDMixin):
                 raise ValueError('Cannot provide target/section_id and also ra/dec! ')
             stmt = sa.select(cls).where(
                 cls.target == target,
-                cls.section_id == section_id,
+                cls.section_id == str(section_id),
             )
         elif target is not None or section_id is not None:
             raise ValueError("Must provide both target and section_id, or neither.")
@@ -360,9 +362,17 @@ class Reference(Base, AutoIDMixin):
             stmt = stmt.where(cls.is_bad.is_(False))
 
         provenance_ids = listify(provenance_ids)
+
         if provenance_ids is not None:
+            for i, prov in provenance_ids:
+                if isinstance(prov, Provenance):
+                    provenance_ids[i] = prov.id
+                elif not isinstance(prov, str):
+                    raise ValueError(f"Provenance ID must be a string or a Provenance object, not {type(prov)}.")
+
             stmt = stmt.where(cls.provenance_id.in_(provenance_ids))
 
         with SmartSession(session) as session:
             return session.scalars(stmt).all()
+
 

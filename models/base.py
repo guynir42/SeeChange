@@ -1617,6 +1617,54 @@ class FourCorners:
             sess.execute( sa.text( "DROP TABLE temp_find_containing" ) )
             return objs
 
+    @classmethod
+    def get_overlap_frac(cls, obj1, obj2):
+        """Calculate the overlap fraction between two objects that have four corners.
+
+        Returns
+        -------
+        overlap_frac: float
+            The fraction of obj1's area that is covered by the intersection of the objects
+
+        WARNING: Right now this assumes that the images are aligned N/S and E/W.
+        TODO: areas of general quadrilaterals and intersections of general quadrilaterals.
+
+        For the "image area", it uses
+            max(image E ra) - min(image W ra) ) * ( max(image N dec) - min( imageS dec)
+        (where "image E ra" refers to the corners of the image that are
+        on the eastern side, i.e. ra_corner_10 and ra_corner_11).  This
+        will in general overestimate the image area, though the
+        overestimate will be small if the image is very close to
+        oriented square to the sky.
+
+        For the "overlap area", it uses
+          ( min( image E ra, ref E ra ) - max( image W ra, ref W ra ) *
+            min( image N dec, ref N dec ) - max( image S dec, ref S dec ) )
+        This will in general underestimate the overlap area, though the
+        underestimate will be small if both the image and reference
+        are oriented close to square to the sky.
+
+        (RA ranges in all cases are scaled by cos(dec).)
+
+        """
+        dimra = (((obj1.ra_corner_10 + obj1.ra_corner_11) / 2. -
+                  (obj1.ra_corner_00 + obj1.ra_corner_01) / 2.
+                  ) / np.cos(obj1.dec * np.pi / 180.))
+        dimdec = ((obj1.dec_corner_01 + obj1.dec_corner_11) / 2. -
+                  (obj1.dec_corner_00 + obj1.dec_corner_10) / 2.)
+        r0 = max(obj2.ra_corner_00, obj2.ra_corner_01,
+                 obj1.ra_corner_00, obj1.ra_corner_01)
+        r1 = min(obj2.ra_corner_10, obj2.ra_corner_10,
+                 obj1.ra_corner_10, obj1.ra_corner_10)
+        d0 = max(obj2.dec_corner_00, obj2.dec_corner_10,
+                 obj1.dec_corner_00, obj1.dec_corner_10)
+        d1 = min(obj2.dec_corner_01, obj2.dec_corner_11,
+                 obj1.dec_corner_01, obj1.dec_corner_11)
+        dra = (r1 - r0) / np.cos((d1 + d0) / 2. * np.pi / 180.)
+        ddec = d1 - d0
+
+        return (dra * ddec) / (dimra * dimdec)
+
 
 class HasBitFlagBadness:
     """A mixin class that adds a bitflag marking why this object is bad. """

@@ -432,45 +432,35 @@ class Pipeline:
 
         with SmartSession(session) as session:
             # start by getting the exposure and reference
-            # TODO: need a better way to find the relevant reference PROVENANCE for this exposure
-            #  i.e., we do not look for a valid reference and get its provenance, instead,
-            #  we look for a provenance based on our policy (that can be defined in the subtraction parameters)
-            #  and find a specific provenance id that matches our policy.
-            #  If we later find that no reference with that provenance exists that overlaps our images,
-            #  that will be recorded as an error in the report.
-            #  One way to do this would be to add a RefSet table that has a name (e.g., "standard") and
-            #  a validity time range (which will be removed from Reference), maybe also the instrument.
-            #  That would allow us to use a combination of name+obs_time to find a specific RefSet,
-            #  which has a single reference provenance ID. If you want a custom reference,
-            #  add a new RefSet with a new name.
-            #  This also means that the reference making pipeline MUST use a single set of policies
-            #  to create all the references for a given RefSet... we need to make sure we can actually
-            #  make that happen consistently (e.g., if you change parameters or start mixing instruments
-            #  when you make the references it will create multiple provenances for the same RefSet).
-            if isinstance(reference, str):
-                raise NotImplementedError('See issue #287')
-            elif isinstance(reference, Reference):
-                ref_prov = reference.provenance
-            elif isinstance(reference, Provenance):
-                ref_prov = reference
-            elif reference is None:  # use the latest provenance that has to do with references
-                ref_prov = session.scalars(
-                    sa.select(Provenance).where(
-                        Provenance.process == 'reference'
-                    ).order_by(Provenance.created_at.desc())
-                ).first()
-
             exp_prov = session.merge(exposure.provenance)  # also merges the code_version
             provs = {'exposure': exp_prov}
             code_version = exp_prov.code_version
             is_testing = exp_prov.is_testing
 
-            for step in PROCESS_OBJECTS:
-                if step in overrides:
+            ref_provs = None  # allow multiple reference provenances for each refset
+            ref_set_name = self.subtractor.pars.refset
+            # If refset is None, we will just fail to produce a subtraction, but everything else works...
+            # Note that the upstreams for the subtraction provenance will be wrong, because we don't have
+            # any reference provenances to link to. But this is what you get when putting refset=None.
+            # Just know that the "output provenance" (e.g., of the Measurements) will never actually exist,
+            # even though you can use it to make the Report provenance (just so you have something to refer to).
+            if ref_set_name is not None:
+
+                ref_set = session.scalars(sa.select(Reference).where(Reference.name == ref_set_name)).first()
+                if ref_set is None:
+                    raise ValueError(f'No reference set with name {ref_set_name} found in the database!')
+
+                ref_provs = ref_set.provenances
+                if ref_provs is None or len(ref_provs) == 0:
+                    raise ValueError(f'No provenances found for reference set {ref_set_name}!')
+
+            provs['reference'] = ref_provs  # notice that this is a list, not a single provenance!
+            for step in PROCESS_OBJECTS:  # produce the provenance for this step
+                if step in overrides:  # accept override from user input
                     provs[step] = overrides[step]
-                else:
-                    obj_name = PROCESS_OBJECTS[step]
-                    if isinstance(obj_name, dict):
+                else:  # load the parameters from the objects on the pipeline
+                    obj_name = PROCESS_OBJECTS[step]  # translate the step to the object name
+                    if isinstance(obj_name, dict):  # sub-objects, e.g., extraction.sources, extraction.wcs, etc.
                         # get the first item of the dictionary and hope its pars object has siblings defined correctly:
                         obj_name = obj_name.get(list(obj_name.keys())[0])
                     parameters = getattr(self, obj_name).pars.get_critical_pars()
@@ -479,19 +469,24 @@ class Pipeline:
                     up_steps = UPSTREAM_STEPS[step]
                     if isinstance(up_steps, str):
                         up_steps = [up_steps]
-                    upstreams = []
+                    upstream_provs = []
                     for upstream in up_steps:
-                        if upstream == 'reference':
-                            if ref_prov is not None:
-                                upstreams += ref_prov.upstreams
-                        else:
-                            upstreams.append(provs[upstream])
+                        if upstream == 'reference':  # this is an externally supplied provenance upstream
+                            if ref_provs is not None:
+                                # we never put the Reference object's provenance into the upstreams of the subtraction
+                                # instead, put the provenances of the coadd image and its extraction products
+                                # this is so the subtraction provenance has the (preprocessing+extraction) provenance
+                                # for each one of its upstream_images (in this case, ref+new).
+                                # by construction all references on the refset SHOULD have the same upstreams
+                                upstream_provs += ref_provs[0].upstreams
+                        else:  # just grab the provenance of what is upstream of this step from the existing tree
+                            upstream_provs.append(provs[upstream])
 
                     provs[step] = Provenance(
                         code_version=code_version,
                         process=step,
                         parameters=parameters,
-                        upstreams=upstreams,
+                        upstreams=upstream_provs,
                         is_testing=is_testing,
                     )
 

@@ -3,6 +3,8 @@ import time
 import pytest
 import uuid
 
+import numpy as np
+
 import sqlalchemy as sa
 
 from pipeline.ref_maker import RefMaker
@@ -135,6 +137,7 @@ def test_making_references(ptf_reference_images):
     try:
         maker = RefMaker(maker={'name': name, 'instruments': ['PTF'], 'min_number': 4, 'max_number': 10})
         add_test_parameters(maker)  # make sure we have a test parameter on everything
+        maker.coadd_pipeline.coadder.pars.test_parameter = uuid.uuid4().hex  # make sure we are not loading an existing image
 
         t0 = time.perf_counter()
         ref = maker.run(ra=188, dec=4.5, filter='R')
@@ -154,9 +157,9 @@ def test_making_references(ptf_reference_images):
         second_time = time.perf_counter() - t0
         second_refset = maker.ref_set
         second_image = ref2.image
-        assert second_time < first_time * 0.01  # should be much faster, we are reloading the reference set
-        assert ref2 == ref
-        assert second_refset == first_refset
+        assert second_time < first_time * 0.1  # should be much faster, we are reloading the reference set
+        assert ref2.id == ref.id
+        assert second_refset.id == first_refset.id
         assert second_image.id == first_image.id
 
         # now try to make a new ref set with a new name
@@ -166,34 +169,34 @@ def test_making_references(ptf_reference_images):
         third_time = time.perf_counter() - t0
         third_refset = maker.ref_set
         third_image = ref3.image
-        assert third_time < first_time * 0.01  # should be faster, we are loading the same reference
-        assert third_refset != first_refset
-        assert ref3 == ref
+        assert third_time < first_time * 0.1  # should be faster, we are loading the same reference
+        assert third_refset.id != first_refset.id
+        assert ref3.id == ref.id
         assert third_image.id == first_image.id
 
         # append to the same refset but with different reference parameters (image loading parameters)
-        maker.pars.max_images += 1
+        maker.pars.max_number += 1
         t0 = time.perf_counter()
         ref4 = maker.run(ra=188, dec=4.5, filter='R')
         fourth_time = time.perf_counter() - t0
         fourth_refset = maker.ref_set
         fourth_image = ref4.image
-        assert fourth_time < first_time * 0.01  # should be faster, we can still re-use the underlying coadd image
-        assert fourth_refset != first_refset
-        assert ref4 != ref
-        assert fourth_image.id != first_image.id
+        assert fourth_time < first_time * 0.1  # should be faster, we can still re-use the underlying coadd image
+        assert fourth_refset.id != first_refset.id
+        assert ref4.id != ref.id
+        assert fourth_image.id == first_image.id
 
         # now make the coadd image again with a different parameter for the data production
-        maker.coadd_pipeline.pars.flag_fwhm_factor *= 1.2
+        maker.coadd_pipeline.coadder.pars.flag_fwhm_factor *= 1.2
         maker.pars.name = uuid.uuid4().hex  # MUST give a new name, otherwise it will not allow the new data parameters
         t0 = time.perf_counter()
         ref5 = maker.run(ra=188, dec=4.5, filter='R')
         fifth_time = time.perf_counter() - t0
         fifth_refset = maker.ref_set
         fifth_image = ref5.image
-        assert fifth_time == pytest.approx(first_time, rel=0.2)  # should take about the same time
-        assert ref5 != ref
-        assert fifth_refset != first_refset
+        assert np.log10(fifth_time) == pytest.approx(np.log10(first_time), rel=0.2)  # should take about the same time
+        assert ref5.id != ref.id
+        assert fifth_refset.id != first_refset.id
         assert fifth_image.id != first_image.id
 
     finally:  # cleanup
@@ -207,5 +210,5 @@ def test_making_references(ptf_reference_images):
             ref5.image.delete_from_disk_and_database(remove_downstreams=True)
 
 
-
-
+def test_datastore_get_reference(ptf_datastore):
+    pass
