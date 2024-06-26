@@ -845,7 +845,6 @@ def test_image_products_are_deleted(ptf_datastore, data_dir, archive):
 
 
 @pytest.mark.skip(reason="This test regularly fails, even when flaky is used. See Issue #263")
-# @pytest.mark.flaky(max_runs=3)
 def test_free( decam_exposure, decam_raw_image, ptf_ref ):
     proc = psutil.Process()
     origmem = proc.memory_info()

@@ -345,8 +345,8 @@ def test_save_psf( ztf_datastore_uncommitted, provenance_base, provenance_extra 
             if 'im' in locals():
                 im.delete_from_disk_and_database(session=session)
 
+
 @pytest.mark.skip(reason="This test regularly fails, even when flaky is used. See Issue #263")
-# @pytest.mark.flaky(max_runs=3)
 def test_free( decam_datastore ):
     ds = decam_datastore
     ds.get_psf()

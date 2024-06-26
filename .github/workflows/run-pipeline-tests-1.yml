@@ -65,6 +65,6 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          
+
           shopt -s nullglob
           TEST_SUBFOLDER=$(ls tests/pipeline/test_{a..o}*.py) docker compose run runtests
