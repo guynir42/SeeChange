@@ -843,6 +843,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             'preproc_bitflag',
             'astro_cal_done',
             'sky_sub_done',
+            'airmass',
             'fwhm_estimate',
             'zero_point_estimate',
             'lim_mag_estimate',
@@ -1051,7 +1052,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
 
         # get some more attributes from the new image
         for att in ['section_id', 'instrument', 'telescope', 'project', 'target',
-                    'exp_time', 'mjd', 'end_mjd', 'info', 'header',
+                    'exp_time', 'airmass', 'mjd', 'end_mjd', 'info', 'header',
                     'gallon', 'gallat', 'ecllon', 'ecllat', 'ra', 'dec',
                     'ra_corner_00', 'ra_corner_01', 'ra_corner_10', 'ra_corner_11',
                     'dec_corner_00', 'dec_corner_01', 'dec_corner_10', 'dec_corner_11' ]:

@@ -33,10 +33,6 @@ from models.provenance import Provenance
 from models.enums_and_bitflags import (
     ImageFormatConverter,
     ImageTypeConverter,
-    image_badness_inverse,
-    data_badness_dict,
-    string_to_bitflag,
-    bitflag_to_string,
 )
 
 # columns key names that must be loaded from the header for each Exposure
@@ -50,6 +46,7 @@ EXPOSURE_COLUMN_NAMES = [
     'filter',
     'telescope',
     'instrument'
+    'airmass',
 ]
 
 # these are header keywords that are not stored as columns of the Exposure table,
@@ -255,6 +252,8 @@ class Exposure(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, HasBitFlagB
     exp_time = sa.Column(sa.REAL, nullable=False, index=True, doc="Exposure time in seconds. ")
 
     filter = sa.Column(sa.Text, nullable=True, index=True, doc="Name of the filter used to make this exposure. ")
+
+    airmass = sa.Column(sa.REAL, nullable=True, index=True, doc="Airmass taken from the header of the exposure. ")
 
     @property
     def filter_short(self):

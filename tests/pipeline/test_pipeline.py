@@ -203,6 +203,7 @@ def test_parameters( test_config ):
 
 def test_running_without_reference(decam_exposure, decam_default_calibrators, pipeline_for_tests):
     p = pipeline_for_tests
+    p.subtractor.pars.refset = 'test_refset_decam'  # pointing out this ref set doesn't mean we have an actual reference
     p.pars.save_before_subtraction = True  # need this so images get saved even though it crashes on "no reference"
 
     with pytest.raises(ValueError, match='No reference image found for image .*'):
@@ -223,6 +224,7 @@ def test_data_flow(decam_exposure, decam_reference, decam_default_calibrators, p
     sec_id = ref.section_id
     try:  # cleanup the file at the end
         p = pipeline_for_tests
+        p.subtractor.pars.refset = 'test_refset_decam'
         assert p.extractor.pars.threshold != 3.14
         assert p.detector.pars.threshold != 3.14
 
@@ -300,6 +302,7 @@ def test_bitflag_propagation(decam_exposure, decam_reference, decam_default_cali
 
     try:  # cleanup the file at the end
         p = Pipeline()
+        p.subtractor.pars.refset = 'test_refset_decam'
         p.pars.save_before_subtraction = False
         exposure.badness = 'banding'  # add a bitflag to check for propagation
 
@@ -410,6 +413,7 @@ def test_get_upstreams_and_downstreams(decam_exposure, decam_reference, decam_de
 
     try:  # cleanup the file at the end
         p = Pipeline()
+        p.subtractor.pars.refset = 'test_refset_decam'
         ds = p.run(exposure, sec_id)
 
         # commit to DB using this session
@@ -530,6 +534,8 @@ def test_datastore_delete_everything(decam_datastore):
 
 def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, decam_reference):
     p = pipeline_for_tests
+    p.subtractor.pars.refset = 'test_refset_decam'
+
     provs = p.make_provenance_tree(decam_exposure)
     assert isinstance(provs, dict)
 
@@ -560,6 +566,8 @@ def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, de
 def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_tests):
     from pipeline.top_level import PROCESS_OBJECTS
     p = pipeline_for_tests
+    p.subtractor.pars.refset = 'test_refset_decam'
+
     obj_to_process_name = {
         'preprocessor': 'preprocessing',
         'extractor': 'detection',
@@ -634,7 +642,7 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
 def test_multiprocessing_make_provenances_and_exposure(decam_exposure, decam_reference, pipeline_for_tests):
     from multiprocessing import SimpleQueue, Process
     process_list = []
-
+    pipeline_for_tests.subtractor.pars.refset = 'test_refset_decam'
     def make_provenances(exposure, pipeline, queue):
         provs = pipeline.make_provenance_tree(exposure)
         queue.put(provs)
