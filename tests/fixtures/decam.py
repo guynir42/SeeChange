@@ -260,7 +260,8 @@ def decam_datastore(
         'N1',
         cache_dir=decam_cache_dir,
         cache_base_name='115/c4d_20221104_074232_N1_g_Sci_NBXRIO',
-        save_original_image=True
+        overrides={'subtraction': {'refset': 'test_refset_decam'}},
+        save_original_image=True,
     )
     # This save is redundant, as the datastore_factory calls save_and_commit
     # However, I leave this here because it is a good test that calling it twice
@@ -480,6 +481,7 @@ def decam_refset(refmaker_factory):
 
     # delete all the references and the refset
     with SmartSession() as session:
+        refmaker.ref_set = session.merge(refmaker.ref_set)
         for prov in refmaker.ref_set.provenances:
             refs = session.scalars(sa.select(Reference).where(Reference.provenance_id == prov.id)).all()
             for ref in refs:

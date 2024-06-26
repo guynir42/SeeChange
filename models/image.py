@@ -399,6 +399,13 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
         doc='Has the sky been subtracted from this image. '
     )
 
+    airmass = sa.Column(
+        sa.REAL,
+        nullable=True,
+        index=True,
+        doc='Airmass of the observation. '
+    )
+
     fwhm_estimate = sa.Column(
         sa.REAL,
         nullable=True,
@@ -2064,7 +2071,6 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             Find images with airmass larger than this.
         max_airmass: float (optional)
             Find images with airmass smaller than this.
-        # TODO: we don't actually have an "airmass" column on Image
         min_background: float (optional)
             Find images with background rms higher than this.
         max_background: float (optional)

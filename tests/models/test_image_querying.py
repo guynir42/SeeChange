@@ -492,13 +492,20 @@ def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_ca
         results3 = session.scalars(stmt).all()
         assert len(results3) == len(results2)  # all those under 31s are those with exactly 30s
 
-        # TODO: this fails because images don't have an "airmass" column
-        # stmt = Image.query_images(max_airmass=1.5)
+        stmt = Image.query_images(max_airmass=1.5)
+        results1 = session.scalars(stmt).all()
+        assert all(im.airmass <= 1.5 for im in results1)
+        assert len(results1) < total
+
+        stmt = Image.query_images(min_airmass=1.5)
+        results2 = session.scalars(stmt).all()
+        assert all(im.airmass >= 1.5 for im in results2)
+        assert len(results2) < total
+        assert len(results1) + len(results2) == total
 
         # order the results by quality (lim_mag - 3 * fwhm)
         # note that we cannot filter by quality, it is not a meaningful number
         # on its own, only as a way to compare images and find which is better.
-
         # sort all the images by quality and get the best one
         stmt = Image.query_images(order_by='quality')
         best = session.scalars(stmt).first()
