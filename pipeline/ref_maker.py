@@ -407,7 +407,8 @@ class RefMaker:
                         dbsession.add(self.ref_set)
                         dbsession.commit()
                     except IntegrityError as e:
-                        if 'duplicate key value violates unique constraint "pk_provenances"' in str(e):
+                        # there was a violation on unique constraint on the "name" column:
+                        if 'duplicate key value violates unique constraint "ix_refsets_name' in str(e):
                             session.rollback()
                             time.sleep(0.1 * 2 ** i)  # exponential sleep
                         else:
