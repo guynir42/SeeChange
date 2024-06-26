@@ -192,6 +192,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
                 prov = session.merge(prov)
                 session.commit()
 
+                # try to get the source list from cache
                 cache_name = f'{cache_base_name}.sources_{prov.id[:6]}.fits.json'
                 sources_cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(sources_cache_path):
@@ -348,40 +349,37 @@ def datastore_factory(data_dir, pipeline_factory, request):
                 ds = p.extractor.run(ds, session)
 
                 ds.sources.save(overwrite=True)
-                if cache_dir is not None and cache_base_name is not None:
+                if cache_dir is not None and cache_base_name is not None and not parse_env("LIMIT_CACHE_USAGE"):
                     output_path = copy_to_cache(ds.sources, cache_dir)
-                    if cache_dir is not None and cache_base_name is not None and output_path != sources_cache_path:
+                    if output_path != sources_cache_path:
                         warnings.warn(f'cache path {sources_cache_path} does not match output path {output_path}')
 
                 ds.psf.save(overwrite=True)
-                if cache_dir is not None and cache_base_name is not None:
+                if cache_dir is not None and cache_base_name is not None and not parse_env("LIMIT_CACHE_USAGE"):
                     output_path = copy_to_cache(ds.psf, cache_dir)
-                    if cache_dir is not None and cache_base_name is not None and output_path != psf_cache_path:
+                    if output_path != psf_cache_path:
                         warnings.warn(f'cache path {psf_cache_path} does not match output path {output_path}')
 
                 SCLogger.debug('Running background estimation')
                 ds = p.backgrounder.run(ds, session)
 
                 ds.bg.save(overwrite=True)
-                if cache_dir is not None and cache_base_name is not None:
+                if cache_dir is not None and cache_base_name is not None and not parse_env("LIMIT_CACHE_USAGE"):
                     output_path = copy_to_cache(ds.bg, cache_dir)
-                    if cache_dir is not None and cache_base_name is not None and output_path != bg_cache_path:
+                    if output_path != bg_cache_path:
                         warnings.warn(f'cache path {bg_cache_path} does not match output path {output_path}')
 
                 SCLogger.debug('Running astrometric calibration')
                 ds = p.astrometor.run(ds, session)
                 ds.wcs.save(overwrite=True)
-                if ((cache_dir is not None) and (cache_base_name is not None) and
-                        (not parse_env("LIMIT_CACHE_USAGE"))):
+                if cache_dir is not None and cache_base_name is not None and not parse_env("LIMIT_CACHE_USAGE"):
                     output_path = copy_to_cache(ds.wcs, cache_dir)
                     if output_path != wcs_cache_path:
                         warnings.warn(f'cache path {wcs_cache_path} does not match output path {output_path}')
 
                 SCLogger.debug('Running photometric calibration')
                 ds = p.photometor.run(ds, session)
-                if (   ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and
-                       ( cache_dir is not None ) and ( cache_base_name is not None )
-                ):
+                if cache_dir is not None and cache_base_name is not None and not parse_env("LIMIT_CACHE_USAGE"):
                     cache_name = cache_base_name + '.zp.json'
                     output_path = copy_to_cache(ds.zp, cache_dir, cache_name)
                     if output_path != zp_cache_path:
@@ -419,7 +417,8 @@ def datastore_factory(data_dir, pipeline_factory, request):
                 sub_im.provenance = prov
                 cache_sub_name = sub_im.invent_filepath()
                 cache_name = cache_sub_name + '.image.fits.json'
-                if os.path.isfile(os.path.join(cache_dir, cache_name)):
+                sub_cache_name = os.path.join(cache_dir, cache_name)
+                if os.path.isfile(sub_cache_name):
                     SCLogger.debug('loading subtraction image from cache. ')
                     ds.sub_image = copy_from_cache(Image, cache_dir, cache_name)
 
@@ -506,12 +505,14 @@ def datastore_factory(data_dir, pipeline_factory, request):
             if ds.sub_image is None:  # no hit in the cache
                 ds = p.subtractor.run(ds, session)
                 ds.sub_image.save(verify_md5=False)  # make sure it is also saved to archive
-                if not parse_env( "LIMIT_CACHE_USAGE" ):
-                    copy_to_cache(ds.sub_image, cache_dir)
+                if cache_dir is not None and cache_base_name is not None and not parse_env("LIMIT_CACHE_USAGE"):
+                    output_path = copy_to_cache(ds.sub_image, cache_dir)
+                    if output_path != zp_cache_path:
+                        warnings.warn(f'cache path {sub_cache_name} does not match output path {output_path}')
 
             # make sure that the aligned images get into the cache, too
             if (
-                    ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and
+                    cache_dir is not None and cache_base_name is not None and not parse_env("LIMIT_CACHE_USAGE") and
                     'cache_name_ref' in locals() and
                     os.path.isfile(os.path.join(cache_dir, cache_name_ref)) and
                     'cache_name_new' in locals() and

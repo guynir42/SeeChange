@@ -45,7 +45,7 @@ EXPOSURE_COLUMN_NAMES = [
     'exp_time',
     'filter',
     'telescope',
-    'instrument'
+    'instrument',
     'airmass',
 ]
 

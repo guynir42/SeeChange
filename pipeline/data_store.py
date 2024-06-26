@@ -1,5 +1,4 @@
 import warnings
-import math
 import datetime
 import sqlalchemy as sa
 
@@ -24,7 +23,7 @@ UPSTREAM_STEPS = {
     'exposure': [],  # no upstreams
     'preprocessing': ['exposure'],
     'extraction': ['preprocessing'],
-    'subtraction': ['reference', 'preprocessing', 'extraction'],
+    'subtraction': ['referencing', 'preprocessing', 'extraction'],
     'detection': ['subtraction'],
     'cutting': ['detection'],
     'measuring': ['cutting'],
@@ -37,7 +36,7 @@ PROCESS_PRODUCTS = {
     'preprocessing': 'image',
     'coaddition': 'image',
     'extraction': ['sources', 'psf', 'bg', 'wcs', 'zp'],
-    'reference': 'reference',
+    'referencing': 'reference',
     'subtraction': 'sub_image',
     'detection': 'detections',
     'cutting': 'cutouts',
@@ -522,8 +521,8 @@ class DataStore:
             if len(upstreams) != len(UPSTREAM_STEPS[process]):
                 raise ValueError(f'Could not find all upstream provenances for process {process}.')
 
-            for u in upstreams:  # check if "reference" is in the list, if so, replace it with its upstreams
-                if u.process == 'reference':
+            for u in upstreams:  # check if "referencing" is in the list, if so, replace it with its upstreams
+                if u.process == 'referencing':
                     upstreams.remove(u)
                     for up in u.upstreams:
                         upstreams.append(up)
@@ -1019,7 +1018,7 @@ class DataStore:
             return None  # cannot find a reference without a new image to match
 
         if provenances is None:  # try to get it from the prov_tree
-            provenances = self._get_provenance_for_an_upstream('reference')
+            provenances = self._get_provenance_for_an_upstream('referencing')
 
         provenances = listify(provenances)
 

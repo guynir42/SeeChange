@@ -184,13 +184,13 @@ class RefMaker:
 
         The object will load the config file and use the following hierarchy to set the parameters:
         - first loads up the regular pipeline parameters, namely those for preprocessing and extraction.
-        - override those with the parameters given by the "reference" dictionary in the config file.
+        - override those with the parameters given by the "referencing" dictionary in the config file.
         - override those with kwargs['pipeline'] that can have "preprocessing" or "extraction" keys.
         - parameters for the coaddition step, and the extraction done on the coadd image are taken from "coaddition"
-        - those are overriden by the "reference.coaddition" dictionary in the config file
+        - those are overriden by the "referencing.coaddition" dictionary in the config file
         - those are overriden by the kwargs['coaddition'] dictionary, if it exists.
         - the parameters to the reference maker its (e.g., how to choose images) are given from the
-          config['reference.maker'] dictionary and are overriden by the kwargs['maker'] dictionary.
+          config['referencing.maker'] dictionary and are overriden by the kwargs['maker'] dictionary.
 
         The maker contains a pipeline object, that doesn't do any work, but is instantiated so it can build up the
         provenances of the images and their products, that go into the coaddition.
@@ -204,7 +204,7 @@ class RefMaker:
         Pass kwargs into this object using kwargs['coaddition'].
         The choice of which images are loaded into the reference coadd is determined by the parameters object of the
         maker itself (and the provenances of the images and their products).
-        To set these parameters, use the "references.maker" dictionary in the config, or pass them in kwargs['maker'].
+        To set these parameters, use the "referencing.maker" dictionary in the config, or pass them in kwargs['maker'].
         """
         # first break off some pieces of the kwargs dict
         maker_overrides = kwargs.pop('maker', {})  # to set the parameters of the reference maker itself
@@ -218,15 +218,15 @@ class RefMaker:
         config = Config.get()
 
         # initialize an object to get the provenances of the regular images and their products
-        pipe_dict = config.value('reference.pipeline', {})  # this is the reference pipeline override
+        pipe_dict = config.value('referencing.pipeline', {})  # this is the reference pipeline override
         pipe_dict.update(pipe_overrides)
         self.pipeline = Pipeline(**pipe_dict)  # internally loads regular pipeline config, overrides with pipe_dict
 
-        coadd_dict = config.value('reference.coaddition', {})  # allow overrides from config's reference.coaddition
+        coadd_dict = config.value('referencing.coaddition', {})  # allow overrides from config's referencing.coaddition
         coadd_dict.update(coadd_overrides)  # allow overrides from kwargs['coaddition']
         self.coadd_pipeline = CoaddPipeline(**coadd_dict)  # coaddition parameters, overrides with coadd_dict
 
-        maker_dict = config.value('reference.maker')
+        maker_dict = config.value('referencing.maker')
         maker_dict.update(maker_overrides)  # user can provide override arguments in kwargs
         self.pars = ParsRefMaker(**maker_dict)  # initialize without the pipeline/coaddition parameters
 

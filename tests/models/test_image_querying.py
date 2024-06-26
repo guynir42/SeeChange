@@ -251,24 +251,25 @@ def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_ca
         results = session.scalars(stmt).all()
         total = len(results)
 
-        from pprint import pprint
-        pprint(results)
-
-        print(f'MJD: {[im.mjd for im in results]}')
-        print(f'date: {[im.observation_time for im in results]}')
-        print(f'RA: {[im.ra for im in results]}')
-        print(f'DEC: {[im.dec for im in results]}')
-        print(f'target: {[im.target for im in results]}')
-        print(f'section_id: {[im.section_id for im in results]}')
-        print(f'project: {[im.project for im in results]}')
-        print(f'Instrument: {[im.instrument for im in results]}')
-        print(f'Filter: {[im.filter for im in results]}')
-        print(f'FWHM: {[im.fwhm_estimate for im in results]}')
-        print(f'LIMMAG: {[im.lim_mag_estimate for im in results]}')
-        print(f'B/G: {[im.bkg_rms_estimate for im in results]}')
-        print(f'ZP: {[im.zero_point_estimate for im in results]}')
-        print(f'EXPTIME: {[im.exp_time for im in results]}')
-        print(f'QUAL: {[im_qual(im) for im in results]}')
+        # from pprint import pprint
+        # pprint(results)
+        #
+        # print(f'MJD: {[im.mjd for im in results]}')
+        # print(f'date: {[im.observation_time for im in results]}')
+        # print(f'RA: {[im.ra for im in results]}')
+        # print(f'DEC: {[im.dec for im in results]}')
+        # print(f'target: {[im.target for im in results]}')
+        # print(f'section_id: {[im.section_id for im in results]}')
+        # print(f'project: {[im.project for im in results]}')
+        # print(f'Instrument: {[im.instrument for im in results]}')
+        # print(f'Filter: {[im.filter for im in results]}')
+        # print(f'FWHM: {[im.fwhm_estimate for im in results]}')
+        # print(f'LIMMAG: {[im.lim_mag_estimate for im in results]}')
+        # print(f'B/G: {[im.bkg_rms_estimate for im in results]}')
+        # print(f'ZP: {[im.zero_point_estimate for im in results]}')
+        # print(f'EXPTIME: {[im.exp_time for im in results]}')
+        # print(f'AIRMASS: {[im.airmass for im in results]}')
+        # print(f'QUAL: {[im_qual(im) for im in results]}')
 
         # get only the science images
         stmt = Image.query_images(type=1)
@@ -492,16 +493,19 @@ def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_ca
         results3 = session.scalars(stmt).all()
         assert len(results3) == len(results2)  # all those under 31s are those with exactly 30s
 
-        stmt = Image.query_images(max_airmass=1.5)
+        # query based on airmass
+        value = 1.15
+        total_with_airmass = len([im for im in results if im.airmass is not None])
+        stmt = Image.query_images(max_airmass=value)
         results1 = session.scalars(stmt).all()
-        assert all(im.airmass <= 1.5 for im in results1)
-        assert len(results1) < total
+        assert all(im.airmass <= value for im in results1)
+        assert len(results1) < total_with_airmass
 
-        stmt = Image.query_images(min_airmass=1.5)
+        stmt = Image.query_images(min_airmass=value)
         results2 = session.scalars(stmt).all()
-        assert all(im.airmass >= 1.5 for im in results2)
-        assert len(results2) < total
-        assert len(results1) + len(results2) == total
+        assert all(im.airmass >= value for im in results2)
+        assert len(results2) < total_with_airmass
+        assert len(results1) + len(results2) == total_with_airmass
 
         # order the results by quality (lim_mag - 3 * fwhm)
         # note that we cannot filter by quality, it is not a meaningful number

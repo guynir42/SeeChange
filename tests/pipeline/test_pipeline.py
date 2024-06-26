@@ -201,12 +201,12 @@ def test_parameters( test_config ):
     assert check_override(overrides['measuring'], pipeline.measurer.pars)
 
 
-def test_running_without_reference(decam_exposure, decam_default_calibrators, pipeline_for_tests):
+def test_running_without_reference(decam_exposure, decam_refset, decam_default_calibrators, pipeline_for_tests):
     p = pipeline_for_tests
     p.subtractor.pars.refset = 'test_refset_decam'  # pointing out this ref set doesn't mean we have an actual reference
     p.pars.save_before_subtraction = True  # need this so images get saved even though it crashes on "no reference"
 
-    with pytest.raises(ValueError, match='No reference image found for image .*'):
+    with pytest.raises(ValueError, match='Cannot find a reference image corresponding to.*'):
         ds = p.run(decam_exposure, 'N1')
         ds.reraise()
 
@@ -532,7 +532,7 @@ def test_datastore_delete_everything(decam_datastore):
             ).first() is None
 
 
-def test_provenance_tree(pipeline_for_tests, decam_exposure, decam_datastore, decam_reference):
+def test_provenance_tree(pipeline_for_tests, decam_refset, decam_exposure, decam_datastore, decam_reference):
     p = pipeline_for_tests
     p.subtractor.pars.refset = 'test_refset_decam'
 

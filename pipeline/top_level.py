@@ -385,7 +385,7 @@ class Pipeline:
         with SmartSession() as session:
             self.run(session=session)
 
-    def make_provenance_tree(self, exposure, reference=None, overrides=None, session=None, commit=True):
+    def make_provenance_tree(self, exposure, overrides=None, session=None, commit=True):
         """Use the current configuration of the pipeline and all the objects it has
         to generate the provenances for all the processing steps.
         This will conclude with the reporting step, which simply has an upstreams
@@ -397,15 +397,6 @@ class Pipeline:
         exposure : Exposure
             The exposure to use to get the initial provenance.
             This provenance should be automatically created by the exposure.
-        reference: str or Reference object or Provenance object or None
-            Can be a string matching a valid reference set. This tells the pipeline which
-            provenance to load for the reference.
-            Instead, can provide either a Reference object with a Provenance
-            or the Provenance object of a reference directly.
-            If not given, will simply load the most recently created reference provenance.
-            # TODO: when we implement reference sets, we will probably not allow this input directly to
-            #  this function anymore. Instead, you will need to define the reference set in the config,
-            #  under the subtraction parameters.
         overrides: dict, optional
             A dictionary of provenances to override any of the steps in the pipeline.
             For example, set overrides={'preprocessing': prov} to use a specific provenance
@@ -453,7 +444,7 @@ class Pipeline:
                 if ref_provs is None or len(ref_provs) == 0:
                     raise ValueError(f'No provenances found for reference set {ref_set_name}!')
 
-            provs['reference'] = ref_provs  # notice that this is a list, not a single provenance!
+            provs['referencing'] = ref_provs  # notice that this is a list, not a single provenance!
             for step in PROCESS_OBJECTS:  # produce the provenance for this step
                 if step in overrides:  # accept override from user input
                     provs[step] = overrides[step]
@@ -470,7 +461,7 @@ class Pipeline:
                         up_steps = [up_steps]
                     upstream_provs = []
                     for upstream in up_steps:
-                        if upstream == 'reference':  # this is an externally supplied provenance upstream
+                        if upstream == 'referencing':  # this is an externally supplied provenance upstream
                             if ref_provs is not None:
                                 # we never put the Reference object's provenance into the upstreams of the subtraction
                                 # instead, put the provenances of the coadd image and its extraction products

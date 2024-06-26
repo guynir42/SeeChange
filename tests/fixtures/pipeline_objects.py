@@ -324,9 +324,9 @@ def refmaker_factory(test_config, pipeline_factory, coadd_pipeline_factory):
         )
         maker.pars._enforce_no_new_attrs = True
         maker.pipeline = pipeline_factory()
-        maker.pipeline.override_parameters(**test_config.value('reference.pipeline'))
+        maker.pipeline.override_parameters(**test_config.value('referencing.pipeline'))
         maker.coadd_pipeline = coadd_pipeline_factory()
-        maker.coadd_pipeline.override_parameters(**test_config.value('reference.coaddition'))
+        maker.coadd_pipeline.override_parameters(**test_config.value('referencing.coaddition'))
 
         return maker
 

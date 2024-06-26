@@ -583,19 +583,29 @@ def ptf_refset(refmaker_factory):
 @pytest.fixture
 def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, ptf_cache_dir):
     subtractor.pars.refset = 'test_refset_ptf'
-    cache_path = os.path.join(ptf_cache_dir, '187/PTF_20100216_075004_11_R_Diff_7XJURH_u-iig7a2.image.fits.json')
+    upstreams = [
+        ptf_ref.image.provenance,
+        ptf_ref.image.sources.provenance,
+        ptf_supernova_images[0].provenance,
+        ptf_supernova_images[0].sources.provenance,
+    ]
+    prov = Provenance(
+        process='subtraction',
+        parameters=subtractor.pars.get_critical_pars(),
+        upstreams=upstreams,
+        code_version=ptf_ref.image.provenance.code_version,
+        is_testing=True,
+    )
+    cache_path = os.path.join(
+        ptf_cache_dir,
+        f'187/PTF_20100216_075004_11_R_Diff_{prov.id[:6]}_u-iig7a2.image.fits.json'
+    )
 
     if ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and ( os.path.isfile(cache_path) ):  # try to load this from cache
         im = copy_from_cache(Image, ptf_cache_dir, cache_path)
         im.upstream_images = [ptf_ref.image, ptf_supernova_images[0]]
         im.ref_image_id = ptf_ref.image.id
-        prov = Provenance(
-            process='subtraction',
-            parameters=subtractor.pars.get_critical_pars(),
-            upstreams=im.get_upstream_provenances(),
-            code_version=ptf_ref.image.provenance.code_version,
-            is_testing=True,
-        )
+
         im.provenance = prov
 
     else:  # cannot find it on cache, need to produce it, using other fixtures
