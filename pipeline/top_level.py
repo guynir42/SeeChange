@@ -14,11 +14,10 @@ from pipeline.subtraction import Subtractor
 from pipeline.detection import Detector
 from pipeline.cutting import Cutter
 from pipeline.measuring import Measurer
-from pipeline.coaddition import CoaddPipeline
 
 from models.base import SmartSession
 from models.provenance import Provenance
-from models.reference import Reference
+from models.refset import RefSet
 from models.exposure import Exposure
 from models.report import Report
 
@@ -446,7 +445,7 @@ class Pipeline:
             # even though you can use it to make the Report provenance (just so you have something to refer to).
             if ref_set_name is not None:
 
-                ref_set = session.scalars(sa.select(Reference).where(Reference.name == ref_set_name)).first()
+                ref_set = session.scalars(sa.select(RefSet).where(RefSet.name == ref_set_name)).first()
                 if ref_set is None:
                     raise ValueError(f'No reference set with name {ref_set_name} found in the database!')
 

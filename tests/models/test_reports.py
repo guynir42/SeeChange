@@ -89,6 +89,7 @@ def test_report_bitflags(decam_exposure, decam_reference, decam_default_calibrat
 def test_measure_runtime_memory(decam_exposure, decam_reference, pipeline_for_tests, decam_default_calibrators):
     # make sure we get a random new provenance, not reuse any of the existing data
     p = pipeline_for_tests
+    p.subtractor.pars.refset = 'test_refset_decam'
     p.pars.save_before_subtraction = True
     p.pars.save_at_finish = False
     p.preprocessor.pars.test_parameter = uuid.uuid4().hex

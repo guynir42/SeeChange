@@ -718,6 +718,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             'mjd',
             'end_mjd',
             'exp_time',
+            'airmass',
             'instrument',
             'telescope',
             'filter',
