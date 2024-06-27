@@ -425,9 +425,11 @@ class RefMaker:
                 )
 
             # If the provenance is not already on the RefSet, add it (or raise, if allow_append=False)
-            if self.ref_prov not in self.ref_set.provenances:
+            if self.ref_prov.id not in [p.id for p in self.ref_set.provenances]:
                 if self.pars.allow_append:
-                    self.ref_set.provenances.append(self.ref_prov)
+                    prov_list = self.ref_set.provenances
+                    prov_list.append(self.ref_prov)
+                    self.ref_set.provenances = prov_list  # not sure if appending directly will trigger an update to DB
                     dbsession.commit()
                 else:
                     raise RuntimeError(
@@ -530,9 +532,10 @@ class RefMaker:
             # load the extraction products of these images using the ex_provs
             for im in images:
                 im.load_products(self.ex_provs, session=dbsession)
-                if im.sources is None or im.psf is None or im.bg is None or im.wcs is None or im.zp is None:
+                prods = {p: getattr(im, p) for p in ['sources', 'psf', 'bg', 'wcs', 'zp']}
+                if any([p is None for p in prods.values()]):
                     raise RuntimeError(
-                        f'Image {im.id} is missing products for coaddition! '
+                        f'Image {im} is missing products {prods} for coaddition! '
                         f'Make sure to produce products using the provenances in ex_provs: '
                         f'{self.ex_provs}'
                     )
