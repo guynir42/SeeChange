@@ -37,7 +37,7 @@ class ParsSubtractor(Parameters):
 
         self.alignment = self.add_par(
             'alignment',
-            {'method:': 'swarp', 'to_index': 'new'},
+            {'method': 'swarp', 'to_index': 'new'},
             dict,
             'How to align the reference image to the new image. This will be ingested by ImageAligner. '
         )

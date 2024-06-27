@@ -1082,9 +1082,6 @@ class DataStore:
                         self.reference = ref
                         break
 
-            # if self.reference is None:
-            #     raise ValueError('No matching reference found for this image!')
-
         return self.reference
 
     def get_subtraction(self, provenance=None, session=None):
