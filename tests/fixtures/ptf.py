@@ -358,8 +358,10 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
             image.save()
             filepath = copy_to_cache(image, cache_dir)
             if image.psf.filepath is None:  # save only PSF objects that haven't been saved yet
+                image.psf.provenance = coadd_image.upstream_images[0].psf.provenance
                 image.psf.save(overwrite=True)
             if image.bg.filepath is None:  # save only Background objects that haven't been saved yet
+                image.bg.provenance = coadd_image.upstream_images[0].bg.provenance
                 image.bg.save(overwrite=True)
             if not parse_env( "LIMIT_CACHE_USAGE" ):
                 copy_to_cache(image.psf, cache_dir)
