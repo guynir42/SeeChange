@@ -579,15 +579,21 @@ class ImageAligner:
 
             # make sure to copy these as new objects into the warped image
             warped_image.sources = source_image.sources.copy()
+            warped_image.sources.data = source_image.sources.data.copy()
             warped_image.sources.image = warped_image
             warped_image.sources.filepath = None
             warped_image.sources.md5sum = None
+
             warped_image.psf = source_image.psf.copy()
+            warped_image.psf.data = source_image.psf.data.copy()
+            warped_image.psf.header = source_image.psf.header.copy()
+            warped_image.psf.info = source_image.psf.info.copy()
             warped_image.psf.image = warped_image
             warped_image.psf.filepath = None
             warped_image.psf.md5sum = None
 
             warped_image.wcs = source_image.wcs.copy()
+            warped_image.wcs._wcs = source_image.wcs._wcs.deepcopy()
             warped_image.wcs.sources = warped_image.sources
             warped_image.wcs.filepath = None
             warped_image.wcs.md5sum = None
