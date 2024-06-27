@@ -118,8 +118,8 @@ def test_making_refsets():
     assert new_ref is None  # still can't find images there
 
     refset2 = maker.ref_set
-    len(refset.provenances) == 1
-    refset2.provenances[0].id == refset.provenances[1].id  # these refsets share the same provenance!
+    assert len(refset.provenances) == 1
+    assert refset2.provenances[0].id == refset.provenances[1].id  # these refsets share the same provenance!
 
     # now try to append with different data parameters:
     maker.pipeline.extractor.pars['threshold'] = 3.14
@@ -138,7 +138,7 @@ def test_making_references(ptf_reference_images):
     try:
         maker = RefMaker(maker={'name': name, 'instruments': ['PTF'], 'min_number': 4, 'max_number': 10})
         add_test_parameters(maker)  # make sure we have a test parameter on everything
-        maker.coadd_pipeline.coadder.pars.test_parameter = uuid.uuid4().hex  # make sure we are not loading an existing image
+        maker.coadd_pipeline.coadder.pars.test_parameter = uuid.uuid4().hex  # do not load an existing image
 
         t0 = time.perf_counter()
         ref = maker.run(ra=188, dec=4.5, filter='R')

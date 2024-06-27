@@ -172,16 +172,6 @@ def test_parameters( test_config ):
         'cutting': { 'cutout_size': 666 },
         'measuring': { 'outlier_sigma': 3.5 }
     }
-    pipelinemodule = {
-        'preprocessing': 'preprocessor',
-        'extraction': 'extractor',
-        'astro_cal': 'astrometor',
-        'photo_cal': 'photometor',
-        'subtraction': 'subtractor',
-        'detection': 'detector',
-        'cutting': 'cutter',
-        'measuring': 'measurer'
-    }
 
     def check_override( new_values_dict, pars ):
         for key, value in new_values_dict.items():

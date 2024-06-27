@@ -414,8 +414,8 @@ def datastore_factory(data_dir, pipeline_factory, request):
                 sub_im.provenance = prov
                 cache_sub_name = sub_im.invent_filepath()
                 cache_name = cache_sub_name + '.image.fits.json'
-                sub_cache_name = os.path.join(cache_dir, cache_name)
-                if os.path.isfile(sub_cache_name):
+                sub_cache_path = os.path.join(cache_dir, cache_name)
+                if os.path.isfile(sub_cache_path):
                     SCLogger.debug('loading subtraction image from cache. ')
                     ds.sub_image = copy_from_cache(Image, cache_dir, cache_name)
 
@@ -504,8 +504,8 @@ def datastore_factory(data_dir, pipeline_factory, request):
                 ds.sub_image.save(verify_md5=False)  # make sure it is also saved to archive
                 if use_cache:
                     output_path = copy_to_cache(ds.sub_image, cache_dir)
-                    if output_path != zp_cache_path:
-                        warnings.warn(f'cache path {sub_cache_name} does not match output path {output_path}')
+                    if output_path != sub_cache_path:
+                        warnings.warn(f'cache path {sub_cache_path} does not match output path {output_path}')
 
             # make sure that the aligned images get into the cache, too
             if (    use_cache and
