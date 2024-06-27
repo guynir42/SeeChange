@@ -578,25 +578,36 @@ class ImageAligner:
                 warped_image.bg = bg
 
             # make sure to copy these as new objects into the warped image
-            warped_image.sources = source_image.sources.copy()
-            warped_image.sources.data = source_image.sources.data.copy()
-            warped_image.sources.image = warped_image
-            warped_image.sources.filepath = None
-            warped_image.sources.md5sum = None
+            if source_image.sources is not None:
+                warped_image.sources = source_image.sources.copy()
+                if source_image.sources.data is not None:
+                    warped_image.sources.data = source_image.sources.data.copy()
 
-            warped_image.psf = source_image.psf.copy()
-            warped_image.psf.data = source_image.psf.data.copy()
-            warped_image.psf.header = source_image.psf.header.copy()
-            warped_image.psf.info = source_image.psf.info.copy()
-            warped_image.psf.image = warped_image
-            warped_image.psf.filepath = None
-            warped_image.psf.md5sum = None
+                warped_image.sources.image = warped_image
+                warped_image.sources.filepath = None
+                warped_image.sources.md5sum = None
 
-            warped_image.wcs = source_image.wcs.copy()
-            warped_image.wcs._wcs = source_image.wcs._wcs.deepcopy()
-            warped_image.wcs.sources = warped_image.sources
-            warped_image.wcs.filepath = None
-            warped_image.wcs.md5sum = None
+            if source_image.psf is not None:
+                warped_image.psf = source_image.psf.copy()
+                if source_image.psf.data is not None:
+                    warped_image.psf.data = source_image.psf.data.copy()
+                if source_image.psf.header is not None:
+                    warped_image.psf.header = source_image.psf.header.copy()
+                if source_image.psf.info is not None:
+                    warped_image.psf.info = source_image.psf.info
+
+                warped_image.psf.image = warped_image
+                warped_image.psf.filepath = None
+                warped_image.psf.md5sum = None
+
+            if warped_image.wcs is not None:
+                warped_image.wcs = source_image.wcs.copy()
+                if warped_image.wcs._wcs is not None:
+                    warped_image.wcs._wcs = source_image.wcs._wcs.deepcopy()
+
+                warped_image.wcs.sources = warped_image.sources
+                warped_image.wcs.filepath = None
+                warped_image.wcs.md5sum = None
 
             warped_image.zp = source_image.zp.copy()
             warped_image.zp.sources = warped_image.sources

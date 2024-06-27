@@ -442,27 +442,35 @@ def test_image_preproc_bitflag( sim_image1 ):
         im.preproc_bitflag |= string_to_bitflag( 'flat, overscan', image_preprocessing_inverse )
         assert im.preproc_bitflag == string_to_bitflag( 'overscan, zero, flat', image_preprocessing_inverse )
 
-        q = ( session.query( Image.filepath )
-              .filter( Image.preproc_bitflag.op('&')(string_to_bitflag('zero', image_preprocessing_inverse) )
-                       != 0 ) )
-        assert (im.filepath,) in q.all()
-        q = ( session.query( Image.filepath )
-              .filter( Image.preproc_bitflag.op('&')(string_to_bitflag('zero,flat', image_preprocessing_inverse) )
-                       !=0 ) )
-        assert (im.filepath,) in q.all()
-        q = ( session.query( Image.filepath )
-              .filter( Image.preproc_bitflag.op('&')(string_to_bitflag('zero, flat', image_preprocessing_inverse ) )
-                       == string_to_bitflag( 'flat, zero', image_preprocessing_inverse ) ) )
-        assert (im.filepath,) in q.all()
-        q = ( session.query( Image.filepath )
-              .filter( Image.preproc_bitflag.op('&')(string_to_bitflag('fringe', image_preprocessing_inverse) )
-                       !=0 ) )
-        assert (im.filepath,) not in q.all()
-        q = ( session.query( Image.filepath )
-              .filter( Image.preproc_bitflag.op('&')(string_to_bitflag('fringe, overscan',
-                                                                       image_preprocessing_inverse) )
-                       == string_to_bitflag( 'overscan, fringe', image_preprocessing_inverse ) ) )
-        assert q.count() == 0
+        images = session.scalars(sa.select(Image).where(
+            Image.preproc_bitflag.op('&')(string_to_bitflag('zero', image_preprocessing_inverse)) != 0
+        )).all
+        assert im.id in [i.id for i in images]
+
+        images = session.scalars(sa.select(Image).where(
+            Image.preproc_bitflag.op('&')(string_to_bitflag('zero,flat', image_preprocessing_inverse)) !=0
+        )).all()
+        assert im.id in [i.id for i in images]
+
+        images = session.scalars(sa.select(Image.filepath).where(
+            Image.preproc_bitflag.op('&')(
+                string_to_bitflag('zero, flat', image_preprocessing_inverse)
+            ) == string_to_bitflag('flat, zero', image_preprocessing_inverse)
+        )).all()
+        assert im.id in [i.id for i in images]
+
+        images = session.scalars(sa.select(Image).where(
+            Image.preproc_bitflag.op('&')(string_to_bitflag('fringe', image_preprocessing_inverse) ) !=0
+        )).all()
+        assert im.id not in [i.id for i in images]
+
+        images = session.scalars(sa.select(Image.filepath).where(
+            Image.id == im.id,  # only find the original image, if any
+            Image.preproc_bitflag.op('&')(
+                string_to_bitflag('fringe, overscan', image_preprocessing_inverse)
+            ) == string_to_bitflag( 'overscan, fringe', image_preprocessing_inverse )
+        )).all()
+        assert len(images) == 0
 
 
 def test_image_from_exposure(sim_exposure1, provenance_base):
