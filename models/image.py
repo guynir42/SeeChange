@@ -1181,7 +1181,7 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
     def coordinates_to_alignment_target(self):
         """Make sure the coordinates (RA,dec, corners and WCS) all match the alignment target image. """
         target = self._get_alignment_target_image()
-        for att in ['ra', 'dec', 'wcs',
+        for att in ['ra', 'dec',
                     'ra_corner_00', 'ra_corner_01', 'ra_corner_10', 'ra_corner_11',
                     'dec_corner_00', 'dec_corner_01', 'dec_corner_10', 'dec_corner_11' ]:
             self.__setattr__(att, getattr(target, att))
