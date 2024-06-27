@@ -428,21 +428,21 @@ class Pipeline:
             is_testing = exp_prov.is_testing
 
             ref_provs = None  # allow multiple reference provenances for each refset
-            ref_set_name = self.subtractor.pars.refset
+            refset_name = self.subtractor.pars.refset
             # If refset is None, we will just fail to produce a subtraction, but everything else works...
             # Note that the upstreams for the subtraction provenance will be wrong, because we don't have
             # any reference provenances to link to. But this is what you get when putting refset=None.
             # Just know that the "output provenance" (e.g., of the Measurements) will never actually exist,
             # even though you can use it to make the Report provenance (just so you have something to refer to).
-            if ref_set_name is not None:
+            if refset_name is not None:
 
-                ref_set = session.scalars(sa.select(RefSet).where(RefSet.name == ref_set_name)).first()
-                if ref_set is None:
-                    raise ValueError(f'No reference set with name {ref_set_name} found in the database!')
+                refset = session.scalars(sa.select(RefSet).where(RefSet.name == refset_name)).first()
+                if refset is None:
+                    raise ValueError(f'No reference set with name {refset_name} found in the database!')
 
-                ref_provs = ref_set.provenances
+                ref_provs = refset.provenances
                 if ref_provs is None or len(ref_provs) == 0:
-                    raise ValueError(f'No provenances found for reference set {ref_set_name}!')
+                    raise ValueError(f'No provenances found for reference set {refset_name}!')
 
             provs['referencing'] = ref_provs  # notice that this is a list, not a single provenance!
             for step in PROCESS_OBJECTS:  # produce the provenance for this step

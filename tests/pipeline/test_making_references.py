@@ -80,7 +80,7 @@ def test_making_refsets():
 
     new_ref = maker.run(ra=0, dec=0, filter='R')
     assert new_ref is None  # cannot find a specific reference here
-    refset = maker.ref_set
+    refset = maker.refset
 
     assert refset is not None  # can produce a reference set without finding a reference
     assert all(isinstance(p, Provenance) for p in maker.im_provs)
@@ -111,7 +111,7 @@ def test_making_refsets():
     new_ref = maker.run(ra=0, dec=0, filter='R')
     assert new_ref is None  # still can't find images there
 
-    refset = maker.ref_set
+    refset = maker.refset
     up_hash2 = refset.upstream_hash
     assert up_hash1 == up_hash2  # the underlying data MUST be the same
     assert len(refset.provenances) == 2
@@ -126,7 +126,7 @@ def test_making_refsets():
     new_ref = maker.run(ra=0, dec=0, filter='R')
     assert new_ref is None  # still can't find images there
 
-    refset2 = maker.ref_set
+    refset2 = maker.refset
     assert len(refset2.provenances) == 1
     assert refset2.provenances[0].id == refset.provenances[1].id  # these ref-sets share the same provenance!
 
@@ -145,14 +145,22 @@ def test_making_references(ptf_reference_images):
     ref5 = None
 
     try:
-        maker = RefMaker(maker={'name': name, 'instruments': ['PTF'], 'min_number': 4, 'max_number': 10})
+        maker = RefMaker(
+            maker={
+                'name': name,
+                'instruments': ['PTF'],
+                'min_number': 4,
+                'max_number': 10,
+                'end_time': '2010-01-01',
+            }
+        )
         add_test_parameters(maker)  # make sure we have a test parameter on everything
         maker.coadd_pipeline.coadder.pars.test_parameter = uuid.uuid4().hex  # do not load an existing image
 
         t0 = time.perf_counter()
         ref = maker.run(ra=188, dec=4.5, filter='R')
         first_time = time.perf_counter() - t0
-        first_refset = maker.ref_set
+        first_refset = maker.refset
         first_image = ref.image
         assert ref is not None
 
@@ -165,7 +173,7 @@ def test_making_references(ptf_reference_images):
         t0 = time.perf_counter()
         ref2 = maker.run(ra=188, dec=4.5, filter='R')
         second_time = time.perf_counter() - t0
-        second_refset = maker.ref_set
+        second_refset = maker.refset
         second_image = ref2.image
         assert second_time < first_time * 0.1  # should be much faster, we are reloading the reference set
         assert ref2.id == ref.id
@@ -177,7 +185,7 @@ def test_making_references(ptf_reference_images):
         t0 = time.perf_counter()
         ref3 = maker.run(ra=188, dec=4.5, filter='R')
         third_time = time.perf_counter() - t0
-        third_refset = maker.ref_set
+        third_refset = maker.refset
         third_image = ref3.image
         assert third_time < first_time * 0.1  # should be faster, we are loading the same reference
         assert third_refset.id != first_refset.id
@@ -189,7 +197,7 @@ def test_making_references(ptf_reference_images):
         t0 = time.perf_counter()
         ref4 = maker.run(ra=188, dec=4.5, filter='R')
         fourth_time = time.perf_counter() - t0
-        fourth_refset = maker.ref_set
+        fourth_refset = maker.refset
         fourth_image = ref4.image
         assert fourth_time < first_time * 0.1  # should be faster, we can still re-use the underlying coadd image
         assert fourth_refset.id != first_refset.id
@@ -202,7 +210,7 @@ def test_making_references(ptf_reference_images):
         t0 = time.perf_counter()
         ref5 = maker.run(ra=188, dec=4.5, filter='R')
         fifth_time = time.perf_counter() - t0
-        fifth_refset = maker.ref_set
+        fifth_refset = maker.refset
         fifth_image = ref5.image
         assert np.log10(fifth_time) == pytest.approx(np.log10(first_time), rel=0.2)  # should take about the same time
         assert ref5.id != ref.id

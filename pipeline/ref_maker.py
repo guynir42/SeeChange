@@ -237,7 +237,7 @@ class RefMaker:
         self.coadd_ex_prov = None  # the provenance used to make the products of the coadd image
         self.ref_upstream_hash = None  # a hash identifying all upstreams of the reference provenance
         self.ref_prov = None  # the provenance of the reference itself
-        self.ref_set = None  # the RefSet object that was found / created
+        self.refset = None  # the RefSet object that was found / created
 
         # these attributes tell us the place in the sky where we want to look for objects (given to run())
         # optionally it also specifies which filter we want the reference to be in
@@ -393,18 +393,18 @@ class RefMaker:
 
             # now load or create a RefSet
             for i in range(5):  # a concurrent merge sort of loop
-                self.ref_set = dbsession.scalars(sa.select(RefSet).where(RefSet.name == self.pars.name)).first()
+                self.refset = dbsession.scalars(sa.select(RefSet).where(RefSet.name == self.pars.name)).first()
 
-                if self.ref_set is not None:
+                if self.refset is not None:
                     break
                 else:  # not found any RefSet with this name
                     try:
-                        self.ref_set = RefSet(
+                        self.refset = RefSet(
                             name=self.pars.name,
                             description=self.pars.description,
                             upstream_hash=self.ref_upstream_hash,
                         )
-                        dbsession.add(self.ref_set)
+                        dbsession.add(self.refset)
                         dbsession.commit()
                     except IntegrityError as e:
                         # there was a violation on unique constraint on the "name" column:
@@ -416,20 +416,20 @@ class RefMaker:
             else:  # if we didn't break out of the loop, there must have been some integrity error
                 raise e
 
-            if self.ref_set is None:
+            if self.refset is None:
                 raise RuntimeError(f'Failed to find or create a RefSet with the name "{self.pars.name}"!')
 
-            if self.ref_set.upstream_hash != self.ref_upstream_hash:
+            if self.refset.upstream_hash != self.ref_upstream_hash:
                 raise RuntimeError(
                     f'Found a RefSet with the name "{self.pars.name}", but it has a different upstream_hash!'
                 )
 
             # If the provenance is not already on the RefSet, add it (or raise, if allow_append=False)
-            if self.ref_prov.id not in [p.id for p in self.ref_set.provenances]:
+            if self.ref_prov.id not in [p.id for p in self.refset.provenances]:
                 if self.pars.allow_append:
-                    prov_list = self.ref_set.provenances
+                    prov_list = self.refset.provenances
                     prov_list.append(self.ref_prov)
-                    self.ref_set.provenances = prov_list  # not sure if appending directly will trigger an update to DB
+                    self.refset.provenances = prov_list  # not sure if appending directly will trigger an update to DB
                     dbsession.commit()
                 else:
                     raise RuntimeError(

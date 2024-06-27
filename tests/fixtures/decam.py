@@ -444,7 +444,7 @@ def decam_reference(decam_ref_datastore, refmaker_factory):
         #     ],
         #     is_testing=True,
         # )
-        prov = maker.ref_set.provenances[0]
+        prov = maker.refset.provenances[0]
         prov = session.merge(prov)
 
         ref = Reference()
@@ -477,17 +477,17 @@ def decam_refset(refmaker_factory):
 
     refmaker.make_refset()
 
-    yield refmaker.ref_set
+    yield refmaker.refset
 
     # delete all the references and the refset
     with SmartSession() as session:
-        refmaker.ref_set = session.merge(refmaker.ref_set)
-        for prov in refmaker.ref_set.provenances:
+        refmaker.refset = session.merge(refmaker.refset)
+        for prov in refmaker.refset.provenances:
             refs = session.scalars(sa.select(Reference).where(Reference.provenance_id == prov.id)).all()
             for ref in refs:
                 session.delete(ref)
 
-        session.delete(refmaker.ref_set)
+        session.delete(refmaker.refset)
 
         session.commit()
 
