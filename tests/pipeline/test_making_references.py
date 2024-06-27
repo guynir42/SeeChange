@@ -10,6 +10,7 @@ import sqlalchemy as sa
 from pipeline.ref_maker import RefMaker
 
 from models.base import SmartSession
+from models.provenance import Provenance
 from models.reference import Reference
 from models.refset import RefSet
 
@@ -64,11 +65,13 @@ def test_finding_references(ptf_ref):
 
 
 def test_making_refsets():
+    # make a new refset with a new name
     name = uuid.uuid4().hex
     maker = RefMaker(maker={'name': name, 'instruments': ['PTF']})
     min_number = maker.pars.min_number
     max_number = maker.pars.max_number
 
+    # we still haven't run the maker, so everything is empty
     assert maker.im_provs is None
     assert maker.ex_provs is None
     assert maker.coadd_im_prov is None
@@ -76,11 +79,17 @@ def test_making_refsets():
     assert maker.ref_upstream_hash is None
 
     new_ref = maker.run(ra=0, dec=0, filter='R')
-    assert new_ref is None
-
+    assert new_ref is None  # cannot find a specific reference here
     refset = maker.ref_set
-    assert refset is not None
+
+    assert refset is not None  # can produce a reference set without finding a reference
+    assert all(isinstance(p, Provenance) for p in maker.im_provs)
+    assert all(isinstance(p, Provenance) for p in maker.ex_provs)
+    assert isinstance(maker.coadd_im_prov, Provenance)
+    assert isinstance(maker.coadd_ex_prov, Provenance)
+
     up_hash1 = refset.upstream_hash
+    assert maker.ref_upstream_hash == up_hash1
     assert isinstance(up_hash1, str)
     assert len(up_hash1) == 20
     assert len(refset.provenances) == 1
@@ -91,7 +100,7 @@ def test_making_refsets():
 
     # now make a change to the maker's parameters (not the data production parameters)
     maker.pars.min_number = min_number + 5
-    maker.pars.allow_append = False  # this should prevent us from appending to the existing refset
+    maker.pars.allow_append = False  # this should prevent us from appending to the existing ref-set
 
     with pytest.raises(
             RuntimeError, match='Found a RefSet with the name .*, but it has a different provenance!'
@@ -111,15 +120,15 @@ def test_making_refsets():
     assert refset.provenances[0].parameters['max_number'] == max_number
     assert refset.provenances[1].parameters['max_number'] == max_number
 
-    # now try to make a new refset with a different name
+    # now try to make a new ref-set with a different name
     name2 = uuid.uuid4().hex
-    maker.name = name2
+    maker.pars.name = name2
     new_ref = maker.run(ra=0, dec=0, filter='R')
     assert new_ref is None  # still can't find images there
 
     refset2 = maker.ref_set
-    assert len(refset.provenances) == 1
-    assert refset2.provenances[0].id == refset.provenances[1].id  # these refsets share the same provenance!
+    assert len(refset2.provenances) == 1
+    assert refset2.provenances[0].id == refset.provenances[1].id  # these ref-sets share the same provenance!
 
     # now try to append with different data parameters:
     maker.pipeline.extractor.pars['threshold'] = 3.14
