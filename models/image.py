@@ -2250,6 +2250,17 @@ class Image(Base, AutoIDMixin, FileOnDiskMixin, SpatiallyIndexed, FourCorners, H
             return self.new_image.psf
         return None
 
+    def get_wcs(self):
+        """Load the WCS object for this image.
+
+        If it is a sub image, it will load the WCS from the new image.
+        """
+        if self.wcs is not None:
+            return self.wcs
+        if self.new_image is not None:
+            return self.new_image.wcs
+        return None
+
     @property
     def data(self):
         """The underlying pixel data array (2D float array). """

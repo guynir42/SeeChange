@@ -985,7 +985,7 @@ class Detector:
         xys = ndimage.center_of_mass(abs(image.data), labels, all_idx)
         x = np.array([xy[1] for xy in xys])
         y = np.array([xy[0] for xy in xys])
-        coords = image.wcs.wcs.pixel_to_world(x, y)
+        coords = image.get_wcs().wcs.pixel_to_world(x, y)
         ra = [c.ra.value for c in coords]
         dec = [c.dec.value for c in coords]
 
