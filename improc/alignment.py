@@ -577,11 +577,24 @@ class ImageAligner:
                     bg.variance = source_image.bg.variance
                 warped_image.bg = bg
 
-            warped_image.psf = source_image.psf
-            warped_image.zp = source_image.zp
-            warped_image.wcs = source_image.wcs
-            # TODO: what about SourceList?
-            # TODO: should these objects be copies of the products, or references to the same objects?
+            # make sure to copy these as new objects into the warped image
+            warped_image.sources = source_image.sources.copy()
+            warped_image.sources.image = warped_image
+            warped_image.sources.filepath = None
+            warped_image.sources.md5sum = None
+            warped_image.psf = source_image.psf.copy()
+            warped_image.psf.image = warped_image
+            warped_image.psf.filepath = None
+            warped_image.psf.md5sum = None
+
+            warped_image.wcs = source_image.wcs.copy()
+            warped_image.wcs.sources = warped_image.sources
+            warped_image.wcs.filepath = None
+            warped_image.wcs.md5sum = None
+
+            warped_image.zp = source_image.zp.copy()
+            warped_image.zp.sources = warped_image.sources
+
         else:  # Do the warp
             if self.pars.method == 'swarp':
                 SCLogger.debug( 'Aligning with swarp' )

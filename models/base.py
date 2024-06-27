@@ -520,6 +520,15 @@ class SeeChangeBase:
             except:
                 raise
 
+    def copy(self):
+        """Make a new instance of this object, with all column-based attributed (shallow) copied. """
+        new = self.__class__()
+        for key in sa.inspect(self).mapper.columns.keys():
+            value = getattr(self, key)
+            setattr(new, key, value)
+
+        return new
+
 
 Base = declarative_base(cls=SeeChangeBase)
 

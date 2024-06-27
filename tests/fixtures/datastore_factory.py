@@ -88,6 +88,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
                 request.getfixturevalue('decam_refset')
 
             refset = session.scalars(sa.select(RefSet).where(RefSet.name == refset_name)).first()
+
             if refset is None:
                 raise ValueError(f'No reference set found with name {refset_name}')
 
@@ -392,7 +393,6 @@ def datastore_factory(data_dir, pipeline_factory, request):
             ref = ds.get_reference(ref_prov, session=session)
             if ref is None:
                 return ds  # if no reference is found, simply return the datastore without the rest of the products
-
 
             if use_cache:  # try to find the subtraction image in the cache
                 prov = Provenance(

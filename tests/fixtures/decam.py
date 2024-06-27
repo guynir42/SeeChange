@@ -466,7 +466,7 @@ def decam_reference(decam_ref_datastore, refmaker_factory):
         with SmartSession() as session:
             ref = session.merge(ref)
             if sa.inspect(ref).persistent:
-                session.delete(ref.provenance)  # should also delete the reference image
+                session.delete(ref)
             session.commit()
 
 
