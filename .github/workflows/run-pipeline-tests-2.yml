@@ -67,6 +67,6 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
 
           shopt -s nullglob
-#          TEST_SUBFOLDER=$(ls tests/pipeline/test_{p..z}*.py) docker compose run runtests
+          # TEST_SUBFOLDER=$(ls tests/pipeline/test_{p..z}*.py) docker compose run runtests
           TEST_SUBFOLDER=tests/pipeline/test_pipeline.py docker compose run runtests
 
