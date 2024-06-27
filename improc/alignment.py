@@ -584,6 +584,7 @@ class ImageAligner:
                     warped_image.sources.data = source_image.sources.data.copy()
 
                 warped_image.sources.image = warped_image
+                warped_image.sources.provenance = source_image.sources.provenance
                 warped_image.sources.filepath = None
                 warped_image.sources.md5sum = None
 
@@ -597,6 +598,7 @@ class ImageAligner:
                     warped_image.psf.info = source_image.psf.info
 
                 warped_image.psf.image = warped_image
+                warped_image.psf.provenance = warped_image.provenance
                 warped_image.psf.filepath = None
                 warped_image.psf.md5sum = None
 
@@ -606,11 +608,13 @@ class ImageAligner:
                     warped_image.wcs._wcs = source_image.wcs._wcs.deepcopy()
 
                 warped_image.wcs.sources = warped_image.sources
+                warped_image.wcs.provenance = source_image.wcs.provenance
                 warped_image.wcs.filepath = None
                 warped_image.wcs.md5sum = None
 
             warped_image.zp = source_image.zp.copy()
             warped_image.zp.sources = warped_image.sources
+            warped_image.zp.provenance = source_image.zp.provenance
 
         else:  # Do the warp
             if self.pars.method == 'swarp':

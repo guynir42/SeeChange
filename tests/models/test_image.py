@@ -444,7 +444,7 @@ def test_image_preproc_bitflag( sim_image1 ):
 
         images = session.scalars(sa.select(Image).where(
             Image.preproc_bitflag.op('&')(string_to_bitflag('zero', image_preprocessing_inverse)) != 0
-        )).all
+        )).all()
         assert im.id in [i.id for i in images]
 
         images = session.scalars(sa.select(Image).where(
