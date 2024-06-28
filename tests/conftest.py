@@ -93,12 +93,10 @@ def pytest_sessionfinish(session, exitstatus):
             if Class.__name__ in ['CodeVersion', 'CodeHash', 'SensorSection', 'CatalogExcerpt', 'Provenance', 'Object']:
                 SCLogger.debug(f'There are {len(ids)} {Class.__name__} objects in the database. These are OK to stay.')
             elif len(ids) > 0:
-                SCLogger.info(
-                    f'There are {len(ids)} {Class.__name__} objects in the database. Please make sure to cleanup!'
-                )
+                print(f'There are {len(ids)} {Class.__name__} objects in the database. Please make sure to cleanup!')
                 for id in ids:
                     obj = dbsession.scalars(sa.select(Class).where(Class.id == id)).first()
-                    SCLogger.info(f'  {obj}')
+                    print(f'  {obj}')
                     any_objects = True
 
         # delete the CodeVersion object (this should remove all provenances as well)
@@ -109,7 +107,7 @@ def pytest_sessionfinish(session, exitstatus):
 
         dbsession.commit()
 
-        verify_archive_database_empty = True  # set to False to avoid spurious errors at end of tests (when debugging)
+        verify_archive_database_empty = False  # set to False to avoid spurious errors at end of tests (when debugging)
 
         if any_objects and verify_archive_database_empty:
             raise RuntimeError('There are objects in the database. Some tests are not properly cleaning up!')

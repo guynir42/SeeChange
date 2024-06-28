@@ -95,7 +95,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
             ref_prov = refset.provenances[0]
 
             ############ preprocessing to create image ############
-            if ds.image is None and use_cache: # check if preprocessed image is in cache
+            if ds.image is None and use_cache:  # check if preprocessed image is in cache
                 cache_name = cache_base_name + '.image.fits.json'
                 cache_path = os.path.join(cache_dir, cache_name)
                 if os.path.isfile(cache_path):
@@ -179,7 +179,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
                         )
 
             ############# extraction to create sources / PSF / BG / WCS / ZP #############
-            if use_cache: # try to get the SourceList, PSF, BG, WCS and ZP from cache
+            if use_cache:  # try to get the SourceList, PSF, BG, WCS and ZP from cache
                 prov = Provenance(
                     code_version=code_version,
                     process='extraction',

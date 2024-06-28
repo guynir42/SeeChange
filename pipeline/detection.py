@@ -47,46 +47,6 @@ class ParsDetector(Parameters):
             critical=True
         )
 
-        self.background_format = self.add_par(
-            'background_format',
-            'map',
-            str,
-            'Format of the background; one of "map", "scalar", or "polynomial".',
-            critical=True
-        )
-
-        self.background_order = self.add_par(
-            'background_order',
-            2,
-            int,
-            'Order of the polynomial background. Ignored unless background is "polynomial".',
-            critical=True
-        )
-
-        self.background_method = self.add_par(
-            'background_method',
-            'sep',
-            str,
-            'Method to use for background subtraction; currently only "sep" is supported.',
-            critical=True
-        )
-
-        self.background_box_size = self.add_par(
-            'background_box_size',
-            128,
-            int,
-            'Size of the box to use for background estimation in sep.',
-            critical=True
-        )
-
-        self.background_filt_size = self.add_par(
-            'background_filt_size',
-            3,
-            int,
-            'Size of the filter to use for background estimation in sep.',
-            critical=True
-        )
-
         self.apers = self.add_par(
             'apers',
             [1.0, 2.0, 3.0, 5.0],
@@ -161,6 +121,12 @@ class ParsDetector(Parameters):
 
     def get_process_name(self):
         return 'detection'
+
+    def require_siblings(self):
+        if self.pars.subtraction:
+            return False
+        else:
+            return True
 
 
 class Detector:

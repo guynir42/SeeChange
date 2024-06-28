@@ -9,6 +9,7 @@ from numpy.fft import fft2, ifft2, fftshift
 from models.image import Image
 from models.source_list import SourceList
 from models.psf import PSF
+from models.background import Background
 from models.world_coordinates import WorldCoordinates
 from models.zero_point import ZeroPoint
 
@@ -493,6 +494,7 @@ def test_coadded_reference(ptf_ref):
     assert ref_image.type == 'ComSci'
     assert isinstance(ref_image.sources, SourceList)
     assert isinstance(ref_image.psf, PSF)
+    assert isinstance(ref_image.bg, Background)
     assert isinstance(ref_image.wcs, WorldCoordinates)
     assert isinstance(ref_image.zp, ZeroPoint)
 

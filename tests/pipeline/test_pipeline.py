@@ -558,75 +558,81 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
     p = pipeline_for_tests
     p.subtractor.pars.refset = 'test_refset_decam'
 
-    obj_to_process_name = {
-        'preprocessor': 'preprocessing',
-        'extractor': 'detection',
-        'backgrounder': 'backgrounding',
-        'astrometor': 'astro_cal',
-        'photometor': 'photo_cal',
-        'subtractor': 'subtraction',
-        'detector': 'detection',
-        'cutter': 'cutting',
-        'measurer': 'measuring',
-    }
-    for process, objects in PROCESS_OBJECTS.items():
-        if isinstance(objects, str):
-            objects = [objects]
-        elif isinstance(objects, dict):
-            objects = list(set(objects.values()))  # e.g., "extractor", "astrometor", "photometor"
+    try:
+        obj_to_process_name = {
+            'preprocessor': 'preprocessing',
+            'extractor': 'detection',
+            'backgrounder': 'backgrounding',
+            'astrometor': 'astro_cal',
+            'photometor': 'photo_cal',
+            'subtractor': 'subtraction',
+            'detector': 'detection',
+            'cutter': 'cutting',
+            'measurer': 'measuring',
+        }
+        for process, objects in PROCESS_OBJECTS.items():
+            if isinstance(objects, str):
+                objects = [objects]
+            elif isinstance(objects, dict):
+                objects = list(set(objects.values()))  # e.g., "extractor", "astrometor", "photometor"
 
-        # first reset all warnings and errors
-        for obj in objects:
-            for _, objects2 in PROCESS_OBJECTS.items():
-                if isinstance(objects2, str):
-                    objects2 = [objects2]
-                elif isinstance(objects2, dict):
-                    objects2 = list(set(objects2.values()))  # e.g., "extractor", "astrometor", "photometor"
-                for obj2 in objects2:
-                    getattr(p, obj2).pars.inject_exceptions = False
-                    getattr(p, obj2).pars.inject_warnings = False
+            # first reset all warnings and errors
+            for obj in objects:
+                for _, objects2 in PROCESS_OBJECTS.items():
+                    if isinstance(objects2, str):
+                        objects2 = [objects2]
+                    elif isinstance(objects2, dict):
+                        objects2 = list(set(objects2.values()))  # e.g., "extractor", "astrometor", "photometor"
+                    for obj2 in objects2:
+                        getattr(p, obj2).pars.inject_exceptions = False
+                        getattr(p, obj2).pars.inject_warnings = False
 
-            # set the warning:
-            getattr(p, obj).pars.inject_warnings = True
+                # set the warning:
+                getattr(p, obj).pars.inject_warnings = True
 
-            # run the pipeline
-            ds = p.run(decam_datastore)
-            expected = (f"{process}: <class 'UserWarning'> Warning injected by pipeline parameters "
-                        f"in process '{obj_to_process_name[obj]}'")
-            assert expected in ds.report.warnings
-
-            # these are used to find the report later on
-            exp_id = ds.exposure_id
-            sec_id = ds.section_id
-            prov_id = ds.report.provenance_id
-
-            # set the error instead
-            getattr(p, obj).pars.inject_warnings = False
-            getattr(p, obj).pars.inject_exceptions = True
-            # run the pipeline again, this time with an exception
-
-            with pytest.raises(
-                    RuntimeError,
-                    match=f"Exception injected by pipeline parameters in process '{obj_to_process_name[obj]}'"
-            ):
+                # run the pipeline
                 ds = p.run(decam_datastore)
-                ds.reraise()
+                expected = (f"{process}: <class 'UserWarning'> Warning injected by pipeline parameters "
+                            f"in process '{obj_to_process_name[obj]}'")
+                assert expected in ds.report.warnings
 
-            # fetch the report object
-            with SmartSession() as session:
-                reports = session.scalars(
-                    sa.select(Report).where(
-                        Report.exposure_id == exp_id,
-                        Report.section_id == sec_id,
-                        Report.provenance_id == prov_id
-                    ).order_by(Report.start_time.desc())
-                ).all()
-                report = reports[0]  # the last report is the one we just generated
-                assert len(reports) - 1 == report.num_prev_reports
-                assert not report.success
-                assert report.error_step == process
-                assert report.error_type == 'RuntimeError'
-                assert 'Exception injected by pipeline parameters' in report.error_message
+                # these are used to find the report later on
+                exp_id = ds.exposure_id
+                sec_id = ds.section_id
+                prov_id = ds.report.provenance_id
+
+                # set the error instead
+                getattr(p, obj).pars.inject_warnings = False
+                getattr(p, obj).pars.inject_exceptions = True
+                # run the pipeline again, this time with an exception
+
+                with pytest.raises(
+                        RuntimeError,
+                        match=f"Exception injected by pipeline parameters in process '{obj_to_process_name[obj]}'"
+                ):
+                    ds = p.run(decam_datastore)
+                    ds.reraise()
+
+                # fetch the report object
+                with SmartSession() as session:
+                    reports = session.scalars(
+                        sa.select(Report).where(
+                            Report.exposure_id == exp_id,
+                            Report.section_id == sec_id,
+                            Report.provenance_id == prov_id
+                        ).order_by(Report.start_time.desc())
+                    ).all()
+                    report = reports[0]  # the last report is the one we just generated
+                    assert len(reports) - 1 == report.num_prev_reports
+                    assert not report.success
+                    assert report.error_step == process
+                    assert report.error_type == 'RuntimeError'
+                    assert 'Exception injected by pipeline parameters' in report.error_message
+
+    finally:
+        if 'ds' in locals():
+            ds.read_exception()
+            ds.delete_everything()
 
 
 def test_multiprocessing_make_provenances_and_exposure(decam_exposure, decam_reference, pipeline_for_tests):

@@ -293,7 +293,14 @@ class Measurer:
                     if m.bkg_mean != 0 and m.bkg_std > 0.1:
                         norm_data = (c.sub_nandata - m.bkg_mean) / m.bkg_std  # normalize
                     else:
-                        warnings.warn(f'Background mean= {m.bkg_mean}, std= {m.bkg_std}, normalization skipped!')
+                        # only provide this warning if the offset is within the image
+                        # otherwise, this measurement is never going to pass any cuts
+                        # and we don't want to spam the logs with this warning
+                        if (
+                                abs(m.offset_x) < m.cutouts.sub_data.shape[1] and
+                                abs(m.offset_y) < m.cutouts.sub_data.shape[0]
+                        ):
+                            warnings.warn(f'Background mean= {m.bkg_mean}, std= {m.bkg_std}, normalization skipped!')
                         norm_data = c.sub_nandata  # no good background measurement, do not normalize!
 
                     positives = np.sum(norm_data > self.pars.outlier_sigma)
