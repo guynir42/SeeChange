@@ -68,4 +68,4 @@ jobs:
 
           shopt -s nullglob
           # TEST_SUBFOLDER=$(ls tests/pipeline/test_{a..o}*.py) docker compose run runtests
-          TEST_SUBFOLDER=$(ls tests/pipeline/test_{m..m}*.py) docker compose run runtests
+          TEST_SUBFOLDER=$(ls tests/pipeline/test_{e..m}*.py) docker compose run runtests
