@@ -212,7 +212,7 @@ referencing:
     allow_append: true  # can we add different image load criteria to an existing reference set with this name?
     start_time: null  # only grab images after this time
     end_time: null  # only grab images before this time
-    instrument: null  # only grab images from this instrument
+    instrument: null  # only grab images from this instrument (if list, will make cross-instrument references)
     filter: null  # only grab images with this filter
     project: null  # only grab images with this project
     min_airmass: null  # only grab images with airmass above this

@@ -20,7 +20,7 @@ from models.decam import DECam
 
 import util.radec
 from util.logger import SCLogger
-from util.util import parse_env
+from util.util import env_as_bool
 
 
 def test_decam_exposure(decam_filename):
@@ -119,7 +119,7 @@ def test_image_from_decam_exposure(decam_filename, provenance_base, data_dir):
 # guidance for how to do things, do *not* write code that mucks about
 # with the _frame member of one of those objects; that's internal state
 # not intended for external consumption.
-@pytest.mark.skipif( parse_env('SKIP_NOIRLAB_DOWNLOADS'), reason="SKIP_NOIRLAB_DOWNLOADS is set" )
+@pytest.mark.skipif( env_as_bool('SKIP_NOIRLAB_DOWNLOADS'), reason="SKIP_NOIRLAB_DOWNLOADS is set" )
 def test_decam_search_noirlab( decam_reduced_origin_exposures ):
     origloglevel = SCLogger.get().getEffectiveLevel()
     try:
@@ -162,7 +162,7 @@ def test_decam_search_noirlab( decam_reduced_origin_exposures ):
         SCLogger.setLevel( origloglevel )
 
 
-@pytest.mark.skipif( parse_env('SKIP_NOIRLAB_DOWNLOADS'), reason="SKIP_NOIRLAB_DOWNLOADS is set" )
+@pytest.mark.skipif( env_as_bool('SKIP_NOIRLAB_DOWNLOADS'), reason="SKIP_NOIRLAB_DOWNLOADS is set" )
 def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_dir ):
     assert all( [ row.proc_type == 'instcal' for i, row in decam_reduced_origin_exposures._frame.iterrows() ] )
     try:
@@ -209,7 +209,7 @@ def test_decam_download_origin_exposure( decam_reduced_origin_exposures, cache_d
                     os.unlink( path )
 
 
-@pytest.mark.skipif( parse_env('SKIP_NOIRLAB_DOWNLOADS'), reason="SKIP_NOIRLAB_DOWNLOADS is set" )
+@pytest.mark.skipif( env_as_bool('SKIP_NOIRLAB_DOWNLOADS'), reason="SKIP_NOIRLAB_DOWNLOADS is set" )
 def test_decam_download_and_commit_exposure(
         code_version, decam_raw_origin_exposures, cache_dir, data_dir, test_config, archive
 ):
@@ -278,7 +278,7 @@ def test_decam_download_and_commit_exposure(
                         os.unlink(d['exposure'])
 
 
-@pytest.mark.skipif( parse_env('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
+@pytest.mark.skipif( env_as_bool('RUN_SLOW_TESTS') is None, reason="Set RUN_SLOW_TESTS to run this test" )
 def test_get_default_calibrators( decam_default_calibrators ):
     sections, filters = decam_default_calibrators
     decam = get_instrument_instance( 'DECam' )

@@ -30,7 +30,7 @@ from improc.alignment import ImageAligner
 from util.retrydownload import retry_download
 from util.logger import SCLogger
 from util.cache import copy_to_cache, copy_list_to_cache, copy_from_cache, copy_list_from_cache
-from util.util import parse_env
+from util.util import env_as_bool
 
 
 @pytest.fixture(scope='session')
@@ -50,7 +50,7 @@ def ptf_bad_pixel_map(download_url, data_dir, ptf_cache_dir):
     data_dir = os.path.join(data_dir, 'PTF_calibrators')
     data_path = os.path.join(data_dir, filename)
 
-    if parse_env( "LIMIT_CACHE_USAGE" ):
+    if env_as_bool( "LIMIT_CACHE_USAGE" ):
         if not os.path.isfile( data_path ):
             os.makedirs( os.path.dirname( data_path ), exist_ok=True )
             retry_download( url + filename, data_path )
@@ -109,7 +109,7 @@ def ptf_downloader(provenance_preprocessing, download_url, data_dir, ptf_cache_d
         # url = f'https://portal.nersc.gov/project/m2218/pipeline/test_images/{filename}'
         url = os.path.join(download_url, 'PTF/10cwm', filename)
 
-        if parse_env( "LIMIT_CACHE_USAGE" ):
+        if env_as_bool( "LIMIT_CACHE_USAGE" ):
             retry_download( url, destination )
             if not os.path.isfile( destination ):
                 raise FileNotFoundError( f"Can't read {destination}.  It should have been downloaded!" )
@@ -210,7 +210,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, ptf_cache_di
     def factory(start_date='2009-04-04', end_date='2013-03-03', max_images=None):
         # see if any of the cache names were saved to a manifest file
         cache_names = {}
-        if (   ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and
+        if (   ( not env_as_bool( "LIMIT_CACHE_USAGE" ) ) and
                ( os.path.isfile(os.path.join(ptf_cache_dir, 'manifest.txt')) )
             ):
             with open(os.path.join(ptf_cache_dir, 'manifest.txt')) as f:
@@ -249,7 +249,7 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, ptf_cache_di
                     bad_pixel_map=ptf_bad_pixel_map,
                 )
 
-                if (    ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and
+                if (    ( not env_as_bool( "LIMIT_CACHE_USAGE" ) ) and
                         ( hasattr(ds, 'cache_base_name') ) and ( ds.cache_base_name is not None )
                     ):
                     cache_name = ds.cache_base_name
@@ -322,7 +322,7 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
     cache_dir = os.path.join(ptf_cache_dir, 'aligned_images')
 
     # try to load from cache
-    if (    ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and
+    if (    ( not env_as_bool( "LIMIT_CACHE_USAGE" ) ) and
             ( os.path.isfile(os.path.join(cache_dir, 'manifest.txt')) )
         ):
         with open(os.path.join(cache_dir, 'manifest.txt')) as f:
@@ -363,7 +363,7 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
             if image.bg.filepath is None:  # save only Background objects that haven't been saved yet
                 image.bg.provenance = coadd_image.upstream_images[0].bg.provenance
                 image.bg.save(overwrite=True)
-            if not parse_env( "LIMIT_CACHE_USAGE" ):
+            if not env_as_bool( "LIMIT_CACHE_USAGE" ):
                 copy_to_cache(image.psf, cache_dir)
                 copy_to_cache(image.bg, cache_dir)
                 copy_to_cache(image.zp, cache_dir, filepath=filepath[:-len('.image.fits.json')]+'.zp.json')
@@ -371,7 +371,7 @@ def ptf_aligned_images(request, ptf_cache_dir, data_dir, code_version):
             psf_paths.append(image.psf.filepath)
             bg_paths.append(image.bg.filepath)
 
-        if not parse_env( "LIMIT_CACHE_USAGE" ):
+        if not env_as_bool( "LIMIT_CACHE_USAGE" ):
             os.makedirs(cache_dir, exist_ok=True)
             with open(os.path.join(cache_dir, 'manifest.txt'), 'w') as f:
                 for filename, psf_path, bg_path in zip(filenames, psf_paths, bg_paths):
@@ -449,7 +449,7 @@ def ptf_ref(
     ]
     filenames = [os.path.join(ptf_cache_dir, cache_base_name) + f'.{ext}.json' for ext in extensions]
 
-    if ( not parse_env( "LIMIT_CACHE_USAGE" ) and
+    if ( not env_as_bool( "LIMIT_CACHE_USAGE" ) and
          all([os.path.isfile(filename) for filename in filenames])
     ):  # can load from cache
         # get the image:
@@ -499,7 +499,7 @@ def ptf_ref(
         pipe.datastore.save_and_commit()
         coadd_image = pipe.datastore.image
 
-        if not parse_env( "LIMIT_CACHE_USAGE" ):
+        if not env_as_bool( "LIMIT_CACHE_USAGE" ):
             # save all products into cache:
             copy_to_cache(pipe.datastore.image, ptf_cache_dir)
             copy_to_cache(pipe.datastore.sources, ptf_cache_dir)
@@ -603,7 +603,7 @@ def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, ptf_cache_dir):
         f'187/PTF_20100216_075004_11_R_Diff_{prov.id[:6]}_u-iig7a2.image.fits.json'
     )
 
-    if ( not parse_env( "LIMIT_CACHE_USAGE" ) ) and ( os.path.isfile(cache_path) ):  # try to load this from cache
+    if ( not env_as_bool( "LIMIT_CACHE_USAGE" ) ) and ( os.path.isfile(cache_path) ):  # try to load this from cache
         im = copy_from_cache(Image, ptf_cache_dir, cache_path)
         im.upstream_images = [ptf_ref.image, ptf_supernova_images[0]]
         im.ref_image_id = ptf_ref.image.id
@@ -614,7 +614,7 @@ def ptf_subtraction1(ptf_ref, ptf_supernova_images, subtractor, ptf_cache_dir):
         ds = subtractor.run(ptf_supernova_images[0])
         ds.sub_image.save()
 
-        if not parse_env( "LIMIT_CACHE_USAGE" ) :
+        if not env_as_bool( "LIMIT_CACHE_USAGE" ) :
             copy_to_cache(ds.sub_image, ptf_cache_dir)
         im = ds.sub_image
 

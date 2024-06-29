@@ -13,7 +13,7 @@ from models.base import SmartSession, CODE_ROOT
 from models.image import Image
 from models.world_coordinates import WorldCoordinates
 
-from util.util import parse_env
+from util.util import env_as_bool
 
 
 def test_solve_wcs_scamp_failures( ztf_gaia_dr3_excerpt, ztf_datastore_uncommitted, astrometor ):
@@ -50,7 +50,7 @@ def test_solve_wcs_scamp( ztf_gaia_dr3_excerpt, ztf_datastore_uncommitted, astro
     ds = ztf_datastore_uncommitted
 
     # Make True for visual testing purposes
-    if parse_env('INTERACTIVE'):
+    if env_as_bool('INTERACTIVE'):
         basename = os.path.join(CODE_ROOT, 'tests/plots')
         catexp.ds9_regfile( os.path.join(basename, 'catexp.reg'), radius=4 )
         ds.sources.ds9_regfile( os.path.join(basename, 'sources.reg'), radius=3 )

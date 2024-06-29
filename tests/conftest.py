@@ -23,7 +23,7 @@ from models.exposure import Exposure
 from models.object import Object
 
 from util.archive import Archive
-from util.util import remove_empty_folders, parse_env
+from util.util import remove_empty_folders, env_as_bool
 from util.retrydownload import retry_download
 from util.logger import SCLogger
 
@@ -187,13 +187,13 @@ def blocking_plots():
      - It is set to a True value: make the plots, but stop the test execution until the figure is closed.
 
     If a test only makes plots and does not test functionality, it should be marked with
-    @pytest.mark.skipif( not parse_env('INTERACTIVE'), reason='Set INTERACTIVE to run this test' )
+    @pytest.mark.skipif( not env_as_bool('INTERACTIVE'), reason='Set INTERACTIVE to run this test' )
 
     If a test makes a diagnostic plot, that is only ever used to visually inspect the results,
     then it should be surrounded by an if blocking_plots: statement. It will only run in interactive mode.
 
     If a test makes a plot that should be saved to disk, it should either have the skipif mentioned above,
-    or have an if parse_env('INTERACTIVE'): statement surrounding the plot itself.
+    or have an if env_as_bool('INTERACTIVE'): statement surrounding the plot itself.
     You may want to add plt.show(block=blocking_plots) to allow the figure to stick around in interactive mode,
     on top of saving the figure at the end of the test.
     """
@@ -204,7 +204,7 @@ def blocking_plots():
     if not os.path.isdir(os.path.join(CODE_ROOT, 'tests/plots')):
         os.makedirs(os.path.join(CODE_ROOT, 'tests/plots'))
 
-    inter = parse_env('INTERACTIVE')
+    inter = env_as_bool('INTERACTIVE')
     if isinstance(inter, str):
         inter = inter.lower() in ('true', '1', 'on', 'yes')
 

@@ -1,11 +1,8 @@
-import pathlib
 import collections.abc
 
-import sys
 import os
 import pathlib
 import git
-from collections import defaultdict
 import numpy as np
 from datetime import datetime
 
@@ -13,10 +10,8 @@ import sqlalchemy as sa
 
 from astropy.io import fits
 from astropy.time import Time
-from astropy import units as u
-from astropy.coordinates import SkyCoord
 
-from models.base import SmartSession, safe_mkdir
+from models.base import safe_mkdir
 
 
 def ensure_file_does_not_exist( filepath, delete=False ):
@@ -400,6 +395,6 @@ def parse_bool(text):
         raise ValueError(f'Cannot parse boolean value from "{text}"')
 
 
-def parse_env(varname):
+def env_as_bool(varname):
     """Parse an environmental variable as a boolean."""
     return parse_bool(os.getenv(varname))

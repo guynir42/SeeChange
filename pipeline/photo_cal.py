@@ -13,7 +13,7 @@ from pipeline.data_store import DataStore
 
 from util.exceptions import BadMatchException
 from util.logger import SCLogger
-from util.util import parse_env
+from util.util import env_as_bool
 
 # TODO: Make max_catalog_mag and mag_range_catalog defaults be supplied
 #  by the instrument, since there are going to be different sane defaults
@@ -243,7 +243,7 @@ class PhotCalibrator:
 
         try:
             t_start = time.perf_counter()
-            if parse_env('SEECHANGE_TRACEMALLOC'):
+            if env_as_bool('SEECHANGE_TRACEMALLOC'):
                 import tracemalloc
                 tracemalloc.reset_peak()  # start accounting for the peak memory usage from here
 
@@ -306,7 +306,7 @@ class PhotCalibrator:
                 ds.image.lim_mag_estimate = ds.zp.zp - 2.5 * np.log10(5.0 * ds.image.bkg_rms_estimate)
 
                 ds.runtimes['photo_cal'] = time.perf_counter() - t_start
-                if parse_env('SEECHANGE_TRACEMALLOC'):
+                if env_as_bool('SEECHANGE_TRACEMALLOC'):
                     import tracemalloc
                     ds.memory_usages['photo_cal'] = tracemalloc.get_traced_memory()[1] / 1024 ** 2  # in MB
 

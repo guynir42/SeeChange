@@ -23,7 +23,7 @@ from pipeline.data_store import DataStore
 
 from util.logger import SCLogger
 from util.cache import copy_to_cache, copy_list_to_cache, copy_from_cache, copy_list_from_cache
-from util.util import parse_env
+from util.util import env_as_bool
 
 from improc.bitmask_tools import make_saturated_flag
 
@@ -61,7 +61,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
     ):
         code_version = args[0].provenance.code_version
         ds = DataStore(*args)  # make a new datastore
-        use_cache = cache_dir is not None and cache_base_name is not None and not parse_env( "LIMIT_CACHE_USAGE" )
+        use_cache = cache_dir is not None and cache_base_name is not None and not env_as_bool( "LIMIT_CACHE_USAGE" )
 
         if use_cache:
             ds.cache_base_name = os.path.join(cache_dir, cache_base_name)  # save this for testing purposes
@@ -386,7 +386,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
             ds.save_and_commit(session=session)
 
             # make a new copy of the image to cache, including the estimates for lim_mag, fwhm, etc.
-            if not parse_env("LIMIT_CACHE_USAGE"):
+            if not env_as_bool("LIMIT_CACHE_USAGE"):
                 output_path = copy_to_cache(ds.image, cache_dir)
 
             # must provide the reference provenance explicitly since we didn't build a prov_tree

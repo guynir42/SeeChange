@@ -77,8 +77,11 @@ class ParsRefMaker(Parameters):
             'instruments',
             None,
             (None, list),
-            'Only use images from these instruments. If None, will not limit the instruments. '
+            'Only use images from these instruments. If None, will use all instruments. '
             'If given as a list, will use any of the instruments in the list. '
+            'In both these cases, cross-instrument references will be made. '
+            'To make sure single-instrument references are made, make a different refset '
+            'with a single item on this list, one for each instrument. '
             'This does not have a default value, but you MUST supply a list with at least one instrument '
             'in order to get a reference provenance and create a reference set. ',
             critical=True,
@@ -126,8 +129,7 @@ class ParsRefMaker(Parameters):
             'max_number',
             None,
             (None, int),
-            'Construct a reference only if there are at most this many images that pass all other criteria. '
-            'If None, will not limit the maximal number of images. ',
+            'If there are more than this many images, pick the ones with the highest "quality". ',
             critical=True,
         )
 
@@ -199,7 +201,7 @@ class RefMaker:
         TODO: what about multiple instruments that go into the coaddition? we'd need multiple pipeline objects
          in order to have difference parameter sets for preprocessing/extraction for each instrument.
         The maker also contains a coadd_pipeline object, that has two roles: one is to build the provenances of the
-        coadd image and the products of that image (extraction on the coadd) and also it needs to actually
+        coadd image and the products of that image (extraction on the coadd) and the second is to actually
         do the work of coadding the chosen images.
         Pass kwargs into this object using kwargs['coaddition'].
         The choice of which images are loaded into the reference coadd is determined by the parameters object of the
@@ -261,9 +263,6 @@ class RefMaker:
         self.ex_provs = []
 
         for inst in self.pars.instruments:
-            # TODO: this assumes references are built up from regular images,
-            #  each Image using a single Exposure. If in some weird future we'd
-            #  like to build a reference from coadded images, this will fail.
             load_exposure = Exposure.make_provenance(inst)
             pars = self.pipeline.preprocessor.pars.get_critical_pars()
             preprocessing = Provenance(
@@ -335,6 +334,7 @@ class RefMaker:
         self.dec = None
         self.target = None
         self.section_id = None
+        self.filter = None
 
         args, kwargs, session = parse_session(*args, **kwargs)  # first pick out any sessions
 
@@ -375,6 +375,9 @@ class RefMaker:
 
         else:
             raise ValueError('Invalid number of arguments given to RefMaker.parse_arguments()')
+
+        if self.filter is None:
+            raise ValueError('No filter given to RefMaker.parse_arguments()!')
 
         return session
 
@@ -499,6 +502,8 @@ class RefMaker:
                     section_id=self.section_id,  # can be None!
                     filter=self.pars.filters,  # can be None!
                     project=self.pars.project,  # can be None!
+                    min_dateobs=self.pars.start_time,
+                    max_dateobs=self.pars.end_time,
                     seeing_quality_factor=self.pars.seeing_quality_factor,
                     provenance_ids=prov.id,
                 )

@@ -23,7 +23,7 @@ from models.report import Report
 
 from util.config import Config
 from util.logger import SCLogger
-from util.util import parse_env
+from util.util import env_as_bool
 
 # describes the pipeline objects that are used to produce each step of the pipeline
 # if multiple objects are used in one step, replace the string with a sub-dictionary,
@@ -283,7 +283,7 @@ class Pipeline:
             else:
                 SCLogger.info(f"Pipeline starting with args {args}, kwargs {kwargs}")
 
-            if parse_env('SEECHANGE_TRACEMALLOC'):
+            if env_as_bool('SEECHANGE_TRACEMALLOC'):
                 # ref: https://docs.python.org/3/library/tracemalloc.html#record-the-current-and-peak-size-of-all-traced-memory-blocks
                 import tracemalloc
                 tracemalloc.start()  # trace the size of memory that is being used

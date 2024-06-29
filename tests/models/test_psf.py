@@ -1,8 +1,6 @@
 import pytest
 import io
-import os
 import psutil
-import gc
 import time
 import uuid
 import random
@@ -23,7 +21,7 @@ from util.logger import SCLogger
 from models.base import SmartSession, FileOnDiskMixin, CODE_ROOT, get_archive_object
 from models.psf import PSF
 
-from util.util import parse_env
+from util.util import env_as_bool
 
 
 class PSFPaletteMaker:
@@ -393,7 +391,7 @@ def test_free( decam_datastore ):
     assert origmem.rss - freemem.rss > 60 * 1024 * 1024
 
 
-@pytest.mark.skipif( parse_env('RUN_SLOW_TESTS'), reason="Set RUN_SLOW_TESTS to run this test" )
+@pytest.mark.skipif( env_as_bool('RUN_SLOW_TESTS'), reason="Set RUN_SLOW_TESTS to run this test" )
 def test_psfex_rendering( psf_palette ): # round_psf_palette ):
     # psf_palette = round_psf_palette
     psf = psf_palette.psf
