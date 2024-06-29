@@ -6,6 +6,8 @@ from scipy import ndimage
 
 from improc.tools import sigma_clipping
 
+from tests.conftest import SKIP_WARNING_TESTS
+
 
 def test_subtraction_data_products(ptf_ref, ptf_supernova_images, subtractor):
     assert len(ptf_supernova_images) == 2
@@ -81,13 +83,14 @@ def test_subtraction_ptf_zogy(ptf_ref, ptf_supernova_images, subtractor):
 
 
 def test_warnings_and_exceptions(decam_datastore, decam_reference, subtractor, decam_default_calibrators):
-    subtractor.pars.inject_warnings = 1
-    subtractor.pars.refset = 'test_refset_decam'
+    if not SKIP_WARNING_TESTS:
+        subtractor.pars.inject_warnings = 1
+        subtractor.pars.refset = 'test_refset_decam'
 
-    with pytest.warns(UserWarning) as record:
-        subtractor.run(decam_datastore)
-    assert len(record) > 0
-    assert any("Warning injected by pipeline parameters in process 'subtraction'." in str(w.message) for w in record)
+        with pytest.warns(UserWarning) as record:
+            subtractor.run(decam_datastore)
+        assert len(record) > 0
+        assert any("Warning injected by pipeline parameters in process 'subtraction'." in str(w.message) for w in record)
 
     subtractor.pars.inject_warnings = 0
     subtractor.pars.inject_exceptions = 1

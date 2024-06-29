@@ -17,9 +17,9 @@ from models.cutouts import Cutouts
 from models.measurements import Measurements
 from models.report import Report
 
-from util.logger import SCLogger
-
 from pipeline.top_level import Pipeline
+
+from tests.conftest import SKIP_WARNING_TESTS
 
 
 def check_datastore_and_database_have_everything(exp_id, sec_id, ref_id, session, ds):
@@ -587,14 +587,15 @@ def test_inject_warnings_errors(decam_datastore, decam_reference, pipeline_for_t
                         getattr(p, obj2).pars.inject_exceptions = False
                         getattr(p, obj2).pars.inject_warnings = False
 
-                # set the warning:
-                getattr(p, obj).pars.inject_warnings = True
+                if not SKIP_WARNING_TESTS:
+                    # set the warning:
+                    getattr(p, obj).pars.inject_warnings = True
 
-                # run the pipeline
-                ds = p.run(decam_datastore)
-                expected = (f"{process}: <class 'UserWarning'> Warning injected by pipeline parameters "
-                            f"in process '{obj_to_process_name[obj]}'")
-                assert expected in ds.report.warnings
+                    # run the pipeline
+                    ds = p.run(decam_datastore)
+                    expected = (f"{process}: <class 'UserWarning'> Warning injected by pipeline parameters "
+                                f"in process '{obj_to_process_name[obj]}'")
+                    assert expected in ds.report.warnings
 
                 # these are used to find the report later on
                 exp_id = ds.exposure_id

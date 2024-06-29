@@ -39,6 +39,8 @@ pytest_plugins = [
 
 ARCHIVE_PATH = None
 
+SKIP_WARNING_TESTS = False
+
 # We may want to turn this on only for tests, as it may add a lot of runtime/memory overhead
 # ref: https://www.mail-archive.com/python-list@python.org/msg443129.html
 # os.environ["SEECHANGE_TRACEMALLOC"] = "1"
@@ -49,8 +51,9 @@ ARCHIVE_PATH = None
 def pytest_sessionstart(session):
     # Will be executed before the first test
 
-    # this is only to make the warnings into errors, so it is easier to track them down...
-    # warnings.filterwarnings('error', append=True)  # comment this out in regular usage
+    if False:  # this is only to make the warnings into errors, so it is easier to track them down...
+        warnings.filterwarnings('error', append=True)  # comment this out in regular usage
+        SKIP_WARNING_TESTS = True
 
     setup_warning_filters()  # load the list of warnings that are to be ignored (not just in tests)
     # below are additional warnings that are ignored only during tests:
