@@ -331,5 +331,3 @@ def refmaker_factory(test_config, pipeline_factory, coadd_pipeline_factory):
         return maker
 
     return make_refmaker
-
-
