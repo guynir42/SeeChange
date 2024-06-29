@@ -298,8 +298,8 @@ class Measurer:
                         # otherwise, this measurement is never going to pass any cuts
                         # and we don't want to spam the logs with this warning
                         if (
-                                abs(m.offset_x) < m.cutouts.sub_data.shape[1] and
-                                abs(m.offset_y) < m.cutouts.sub_data.shape[0]
+                                abs(m.offset_x) < m.sub_data.shape[1] and
+                                abs(m.offset_y) < m.sub_data.shape[0]
                         ):
                             warnings.warn(f'Background mean= {m.bkg_mean}, std= {m.bkg_std}, normalization skipped!')
                         norm_data = m.sub_nandata  # no good background measurement, do not normalize!
