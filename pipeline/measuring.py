@@ -340,27 +340,29 @@ class Measurer:
                             m.disqualifier_scores[k] = v.item()
 
                     measurements_list.append(m)
+            else:
+                [setattr(m, 'cutouts', cutouts) for m in measurements_list]  # update with newest cutouts
 
-                saved_measurements = []
-                for m in measurements_list:
-                    # regardless of wether we created these now, or loaded from DB,
-                    # the bitflag should be updated based on the most recent data
-                    m._upstream_bitflag = 0
-                    m._upstream_bitflag |= m.cutouts.bitflag
+            saved_measurements = []
+            for m in measurements_list:
+                # regardless of wether we created these now, or loaded from DB,
+                # the bitflag should be updated based on the most recent data
+                m._upstream_bitflag = 0
+                m._upstream_bitflag |= m.cutouts.bitflag
 
-                    ignore_bits = 0
-                    for badness in self.pars.bad_flag_exclude:
-                        ignore_bits |= 2 ** BadnessConverter.convert(badness)
+                ignore_bits = 0
+                for badness in self.pars.bad_flag_exclude:
+                    ignore_bits |= 2 ** BadnessConverter.convert(badness)
 
-                    m.disqualifier_scores['bad_flag'] = int(np.bitwise_and(
-                        np.array(m.bitflag).astype('uint64'),
-                        ~np.array(ignore_bits).astype('uint64'),
-                    ))
+                m.disqualifier_scores['bad_flag'] = int(np.bitwise_and(
+                    np.array(m.bitflag).astype('uint64'),
+                    ~np.array(ignore_bits).astype('uint64'),
+                ))
 
-                    threshold_comparison = self.compare_measurement_to_thresholds(m)
-                    if threshold_comparison != "delete":  # all disqualifiers are below threshold
-                        m.is_bad = threshold_comparison == "bad"
-                        saved_measurements.append(m)
+                threshold_comparison = self.compare_measurement_to_thresholds(m)
+                if threshold_comparison != "delete":  # all disqualifiers are below threshold
+                    m.is_bad = threshold_comparison == "bad"
+                    saved_measurements.append(m)
 
                 # add the resulting measurements to the data store
                 ds.all_measurements = measurements_list  # debugging only
