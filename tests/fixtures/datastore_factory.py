@@ -422,21 +422,14 @@ def datastore_factory(data_dir, pipeline_factory, request):
                     ds.sub_image.provenance = prov
                     ds.sub_image.upstream_images.append(ref.image)
                     ds.sub_image.ref_image_id = ref.image_id
+                    ds.sub_image.ref_image = ref.image
                     ds.sub_image.new_image = ds.image
                     ds.sub_image.save(verify_md5=False)  # make sure it is also saved to archive
 
                     # try to load the aligned images from cache
                     prov_aligned_ref = Provenance(
                         code_version=code_version,
-                        parameters={
-                            'method': 'swarp',
-                            'to_index': 'new',
-                            'max_arcsec_residual': 0.2,
-                            'crossid_radius': 2.0,
-                            'max_sources_to_use': 2000,
-                            'min_frac_matched': 0.1,
-                            'min_matched': 10,
-                        },
+                        parameters=prov.parameters['alignment'],
                         upstreams=[
                             ds.image.provenance,
                             ds.sources.provenance,  # this also includes the PSF's provenance
@@ -458,7 +451,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
 
                     prov_aligned_new = Provenance(
                         code_version=code_version,
-                        parameters=prov_aligned_ref.parameters,
+                        parameters=prov.parameters['alignment'],
                         upstreams=[
                             ds.image.provenance,
                             ds.sources.provenance,  # this also includes provs for PSF, BG, WCS, ZP
@@ -472,8 +465,8 @@ def datastore_factory(data_dir, pipeline_factory, request):
                     f = f[:-6] + prov_aligned_new.id[:6]
                     filename_aligned_new = f
 
-                    cache_name_ref = filename_aligned_ref + '.fits.json'
-                    cache_name_new = filename_aligned_new + '.fits.json'
+                    cache_name_ref = filename_aligned_ref + '.image.fits.json'
+                    cache_name_new = filename_aligned_new + '.image.fits.json'
                     if (
                             os.path.isfile(os.path.join(cache_dir, cache_name_ref)) and
                             os.path.isfile(os.path.join(cache_dir, cache_name_new))
@@ -481,8 +474,9 @@ def datastore_factory(data_dir, pipeline_factory, request):
                         SCLogger.debug('loading aligned reference image from cache. ')
                         image_aligned_ref = copy_from_cache(Image, cache_dir, cache_name)
                         image_aligned_ref.provenance = prov_aligned_ref
-                        image_aligned_ref.info['original_image_id'] = ds.ref_image_id
+                        image_aligned_ref.info['original_image_id'] = ds.ref_image.id
                         image_aligned_ref.info['original_image_filepath'] = ds.ref_image.filepath
+                        image_aligned_ref.info['alignment_parameters'] = prov.parameters['alignment']
                         image_aligned_ref.save(verify_md5=False, no_archive=True)
                         # TODO: should we also load the aligned image's sources, PSF, and ZP?
 
@@ -491,6 +485,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
                         image_aligned_new.provenance = prov_aligned_new
                         image_aligned_new.info['original_image_id'] = ds.image_id
                         image_aligned_new.info['original_image_filepath'] = ds.image.filepath
+                        image_aligned_new.info['alignment_parameters'] = prov.parameters['alignment']
                         image_aligned_new.save(verify_md5=False, no_archive=True)
                         # TODO: should we also load the aligned image's sources, PSF, and ZP?
 
@@ -507,15 +502,10 @@ def datastore_factory(data_dir, pipeline_factory, request):
                     if output_path != sub_cache_path:
                         warnings.warn(f'cache path {sub_cache_path} does not match output path {output_path}')
 
-            # make sure that the aligned images get into the cache, too
-            if (    use_cache and
-                    'cache_name_ref' in locals() and
-                    os.path.isfile(os.path.join(cache_dir, cache_name_ref)) and
-                    'cache_name_new' in locals() and
-                    os.path.isfile(os.path.join(cache_dir, cache_name_new))
-            ):
-                for im in ds.sub_image.aligned_images:
-                    copy_to_cache(im, cache_dir)
+            # save the aligned images to cache
+            for im in ds.sub_image.aligned_images:
+                im.save(no_archive=True)
+                copy_to_cache(im, cache_dir)
 
             ############ detecting to create a source list ############
             prov = Provenance(
