@@ -559,7 +559,6 @@ def datastore_factory(data_dir, pipeline_factory, request):
                 ds.cutouts = copy_from_cache(Cutouts, cache_dir, cache_name)
                 ds.cutouts.provenance = prov
                 ds.cutouts.sources = ds.detections
-                ds.cutouts = Cutouts.load_list(os.path.join(ds.cutouts[0].local_path, ds.cutouts[0].filepath))
                 ds.cutouts.load_all_co_data()  # sources must be set first
                 ds.cutouts.save()  # make sure to save to archive as well
             else:  # cannot find cutouts on cache
