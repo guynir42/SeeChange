@@ -62,6 +62,12 @@ def datastore_factory(data_dir, pipeline_factory, request):
         code_version = args[0].provenance.code_version
         ds = DataStore(*args)  # make a new datastore
         use_cache = cache_dir is not None and cache_base_name is not None and not env_as_bool( "LIMIT_CACHE_USAGE" )
+        
+        if cache_base_name is not None: 
+            cache_name = cache_base_name + '.image.fits.json'
+            image_cache_path = os.path.join(cache_dir, cache_name)
+        else:
+            image_cache_path = None
 
         if use_cache:
             ds.cache_base_name = os.path.join(cache_dir, cache_base_name)  # save this for testing purposes
@@ -96,9 +102,7 @@ def datastore_factory(data_dir, pipeline_factory, request):
 
             ############ preprocessing to create image ############
             if ds.image is None and use_cache:  # check if preprocessed image is in cache
-                cache_name = cache_base_name + '.image.fits.json'
-                cache_path = os.path.join(cache_dir, cache_name)
-                if os.path.isfile(cache_path):
+                if os.path.isfile(image_cache_path):
                     SCLogger.debug('loading image from cache. ')
                     ds.image = copy_from_cache(Image, cache_dir, cache_name)
                     # assign the correct exposure to the object loaded from cache
@@ -111,8 +115,8 @@ def datastore_factory(data_dir, pipeline_factory, request):
                     # Copy the original image from the cache if requested
                     if save_original_image:
                         ds.path_to_original_image = ds.image.get_fullpath()[0] + '.image.fits.original'
-                        cache_path = os.path.join(cache_dir, ds.image.filepath + '.image.fits.original')
-                        shutil.copy2( cache_path, ds.path_to_original_image )
+                        image_cache_path_original = os.path.join(cache_dir, ds.image.filepath + '.image.fits.original')
+                        shutil.copy2( image_cache_path_original, ds.path_to_original_image )
 
                     upstreams = [ds.exposure.provenance] if ds.exposure is not None else []  # images without exposure
                     prov = Provenance(
@@ -157,14 +161,16 @@ def datastore_factory(data_dir, pipeline_factory, request):
                 ds.image.flags |= (mask * 2 ** BitFlagConverter.convert('saturated')).astype(np.uint16)
 
                 ds.image.save()
-                if use_cache:
+                # even if cache_base_name is None, we still need to make the manifest file, so we will get it next time!
+                if not env_as_bool( "LIMIT_CACHE_USAGE" ) and os.path.isdir(cache_dir):
                     output_path = copy_to_cache(ds.image, cache_dir)
 
-                    if output_path != cache_path:
-                        warnings.warn(f'cache path {cache_path} does not match output path {output_path}')
+                    if image_cache_path is not None and output_path != image_cache_path:
+                        warnings.warn(f'cache path {image_cache_path} does not match output path {output_path}')
                     else:
                         ds.cache_base_name = output_path
                         SCLogger.debug(f'Saving image to cache at: {output_path}')
+                        use_cache = True  # the two other conditions are true to even get to this part...
 
                 # In test_astro_cal, there's a routine that needs the original
                 # image before being processed through the rest of what this

@@ -249,8 +249,9 @@ def ptf_images_factory(ptf_urls, ptf_downloader, datastore_factory, ptf_cache_di
                     bad_pixel_map=ptf_bad_pixel_map,
                 )
 
-                if (    ( not env_as_bool( "LIMIT_CACHE_USAGE" ) ) and
-                        ( hasattr(ds, 'cache_base_name') ) and ( ds.cache_base_name is not None )
+                if (
+                        not env_as_bool( "LIMIT_CACHE_USAGE" ) and
+                        hasattr(ds, 'cache_base_name') and ds.cache_base_name is not None
                 ):
                     cache_name = ds.cache_base_name
                     if cache_name.startswith(ptf_cache_dir):
