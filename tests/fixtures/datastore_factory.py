@@ -508,10 +508,10 @@ def datastore_factory(data_dir, pipeline_factory, request):
                     if output_path != sub_cache_path:
                         warnings.warn(f'cache path {sub_cache_path} does not match output path {output_path}')
 
-            # save the aligned images to cache
-            for im in ds.sub_image.aligned_images:
-                im.save(no_archive=True)
-                copy_to_cache(im, cache_dir)
+            if use_cache:  # save the aligned images to cache
+                for im in ds.sub_image.aligned_images:
+                    im.save(no_archive=True)
+                    copy_to_cache(im, cache_dir)
 
             ############ detecting to create a source list ############
             prov = Provenance(
