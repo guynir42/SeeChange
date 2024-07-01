@@ -292,7 +292,7 @@ def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_ca
         assert results2 == results3
 
         # filter by MJD and observation date
-        value = 55000.0
+        value = 58000.0
         stmt = Image.query_images(min_mjd=value)
         results1 = session.scalars(stmt).all()
         assert all(im.mjd >= value for im in results1)
@@ -311,7 +311,7 @@ def test_image_query(ptf_ref, decam_reference, decam_datastore, decam_default_ca
         assert len(results3) == 0
 
         # filter by observation date
-        t = Time(55000.0, format='mjd').datetime
+        t = Time(58000.0, format='mjd').datetime
         stmt = Image.query_images(min_dateobs=t)
         results4 = session.scalars(stmt).all()
         assert all(im.observation_time >= t for im in results4)

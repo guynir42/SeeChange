@@ -50,6 +50,7 @@ SKIP_WARNING_TESTS = False
 # (session is the pytest session, not the SQLAlchemy session)
 def pytest_sessionstart(session):
     # Will be executed before the first test
+    global SKIP_WARNING_TESTS
 
     if False:  # this is only to make the warnings into errors, so it is easier to track them down...
         warnings.filterwarnings('error', append=True)  # comment this out in regular usage

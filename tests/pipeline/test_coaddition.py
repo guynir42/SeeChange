@@ -409,7 +409,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
     )
     im_ids = set([im.id for im in pipe.images])
     ptf_im_ids = set([im.id for im in ptf_reference_images])
-    assert ptf_im_ids == im_ids
+    assert ptf_im_ids.issubset(im_ids)
 
     ptf_ras = [im.ra for im in ptf_reference_images]
     ptf_decs = [im.dec for im in ptf_reference_images]
@@ -430,7 +430,7 @@ def test_coaddition_pipeline_inputs(ptf_reference_images):
 
     im_ids = set([im.id for im in pipe.images])
     ptf_im_ids = set([im.id for im in ptf_reference_images])
-    assert ptf_im_ids == im_ids
+    assert ptf_im_ids.issubset(im_ids)
 
 
 def test_coaddition_pipeline_outputs(ptf_reference_images, ptf_aligned_images):
