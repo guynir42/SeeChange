@@ -161,7 +161,13 @@ class Subtractor:
                 The corrected translient score, converted to S/N units assuming a chi2 distribution.
         """
         new_image_data = new_image.data
+        if new_image.bg is not None:
+            new_image_data = new_image.data_bgsub
+
         ref_image_data = ref_image.data
+        if ref_image.bg is not None:
+            ref_image_data = ref_image.data_bgsub
+
         new_image_psf = new_image.psf.get_clip()
         ref_image_psf = ref_image.psf.get_clip()
         new_image_noise = new_image.bkg_rms_estimate
@@ -171,6 +177,7 @@ class Subtractor:
         # TODO: consider adding an estimate for the astrometric uncertainty dx, dy
 
         new_image_data = self.inpainter.run(new_image_data, new_image.flags, new_image.weight)
+        ref_image_data = self.inpainter.run(ref_image_data, ref_image.flags, ref_image.weight)
 
         output = zogy_subtract(
             ref_image_data,
