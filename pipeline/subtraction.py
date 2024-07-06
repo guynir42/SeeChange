@@ -71,10 +71,16 @@ class ParsSubtractor(Parameters):
     def __setattr__(self, key, value):
         # make sure the pad_value in this dictionary is always the same value (as a critical parameter it should be)
         if key == 'subtiling':
+            if value is None:
+                value = {}
             if 'pad_value' in value:
                 pad_value = value['pad_value']
-                if pad_value is None or pad_value == 'nan' or np.isnan(pad_value):
-                    value['pad_value'] = np.nan
+                if (
+                        pad_value is None or
+                        (isinstance(pad_value, str) and pad_value.lower() == 'nan') or
+                        (isinstance(pad_value, np.number) and np.isnan(pad_value))
+                ):
+                    value['pad_value'] = 'nan'
 
         super().__setattr__(key, value)
 
@@ -205,21 +211,28 @@ class Subtractor:
             ref_tile_data, _ = jigsaw.cut(ref_image_data, **self.pars.subtiling)  # corners should be the same!
 
             tile_shape = ref_tile_data.shape[1:]
-            centers = [(c[0] + tile_shape[1] // 2, c[1] + tile_shape[2] // 2) for c in corners]  # x,y in flipped order!
+            centers = [(c[0] + tile_shape[0] // 2, c[1] + tile_shape[1] // 2) for c in corners]  # x,y in flipped order!
 
             # find the PSF clip in the center of each tile
-            new_tile_psfs = [new_image.psf.get_clip(c) for c in centers]
-            ref_tile_psfs = [ref_image.psf.get_clip(c) for c in centers]
+            new_tile_psfs = [new_image.psf.get_clip(*c) for c in centers]
+            ref_tile_psfs = [ref_image.psf.get_clip(*c) for c in centers]
 
             # get noise arrays, find their median internally in zogy_subtract
-            new_tile_noises, _ = jigsaw.cut(new_image_noise, **self.pars.subtiling)
-            ref_tile_noises, _ = jigsaw.cut(ref_image_noise, **self.pars.subtiling)
+            if isinstance(new_image_noise, np.ndarray):
+                new_tile_noises, _ = jigsaw.cut(new_image_noise, **self.pars.subtiling)
+            else:
+                new_tile_noises = [new_image_noise] * len(corners)
+
+            if isinstance(ref_image_noise, np.ndarray):
+                ref_tile_noises, _ = jigsaw.cut(ref_image_noise, **self.pars.subtiling)
+            else:
+                ref_tile_noises = [ref_image_noise] * len(corners)
 
             # flux ZPs are assumed uniform across the image...
 
             # loop over the tiles and make the subtractions
-            outputs = [{}] * len(corners)
-            for i, out in enumerate(outputs):
+            outputs = []
+            for i in range(len(corners)):
                 out = zogy_subtract(
                     ref_tile_data[i],
                     new_tile_data[i],
@@ -230,6 +243,7 @@ class Subtractor:
                     ref_image_flux_zp,
                     new_image_flux_zp,
                 )
+                outputs.append(out)
 
             output = {}
             tiled_output = {}
@@ -246,7 +260,12 @@ class Subtractor:
                     tiled_output[key][i] = value
 
             for key, value in tiled_output.items():  # for each type of array, e.g., sub_image, score, etc.
-                output[key] = jigsaw.stitch(value, corners, new_image.data.shape)
+                output[key] = jigsaw.stitch(
+                    value,
+                    new_image.data.shape,
+                    corners,
+                    overlap=self.pars.subtiling.get('overlap')
+                )
 
         else:  # do not use subtiling
             output = zogy_subtract(
