@@ -13,6 +13,7 @@ from models.refset import RefSet
 from improc.zogy import zogy_subtract, zogy_add_weights_flags
 from improc.inpainting import Inpainter
 from improc.alignment import ImageAligner
+from improc import jigsaw
 from improc.tools import sigma_clipping
 
 from util.util import env_as_bool
@@ -50,12 +51,32 @@ class ParsSubtractor(Parameters):
             critical=True
         )
 
+        self.subtiling = self.add_par(
+            'subtiling',
+            {},
+            dict,
+            'Subtiling parameters. '
+            'Set the dictionary keys: "cut_size", "overlap" and "pad_value" '
+            'as the inputs to the jigsaw.cut() function. ',
+            critical=True
+        )
+
         self._enforce_no_new_attrs = True
 
         self.override(kwargs)
 
     def get_process_name(self):
         return 'subtraction'
+
+    def __setattr__(self, key, value):
+        # make sure the pad_value in this dictionary is always the same value (as a critical parameter it should be)
+        if key == 'subtiling':
+            if 'pad_value' in value:
+                pad_value = value['pad_value']
+                if pad_value is None or pad_value == 'nan' or np.isnan(pad_value):
+                    value['pad_value'] = np.nan
+
+        super().__setattr__(key, value)
 
 
 class Subtractor:
@@ -179,22 +200,73 @@ class Subtractor:
         new_image_data = self.inpainter.run(new_image_data, new_image.flags, new_image.weight)
         ref_image_data = self.inpainter.run(ref_image_data, ref_image.flags, ref_image.weight)
 
-        output = zogy_subtract(
-            ref_image_data,
-            new_image_data,
-            ref_image_psf,
-            new_image_psf,
-            ref_image_noise,
-            new_image_noise,
-            ref_image_flux_zp,
-            new_image_flux_zp,
-        )
+        if self.pars.subtiling:
+            new_tile_data, corners = jigsaw.cut(new_image_data, **self.pars.subtiling)
+            ref_tile_data, _ = jigsaw.cut(ref_image_data, **self.pars.subtiling)  # corners should be the same!
+
+            tile_shape = ref_tile_data.shape[1:]
+            centers = [(c[0] + tile_shape[1] // 2, c[1] + tile_shape[2] // 2) for c in corners]  # x,y in flipped order!
+
+            # find the PSF clip in the center of each tile
+            new_tile_psfs = [new_image.psf.get_clip(c) for c in centers]
+            ref_tile_psfs = [ref_image.psf.get_clip(c) for c in centers]
+
+            # get noise arrays, find their median internally in zogy_subtract
+            new_tile_noises, _ = jigsaw.cut(new_image_noise, **self.pars.subtiling)
+            ref_tile_noises, _ = jigsaw.cut(ref_image_noise, **self.pars.subtiling)
+
+            # flux ZPs are assumed uniform across the image...
+
+            # loop over the tiles and make the subtractions
+            outputs = [{}] * len(corners)
+            for i, out in enumerate(outputs):
+                out = zogy_subtract(
+                    ref_tile_data[i],
+                    new_tile_data[i],
+                    ref_tile_psfs[i],
+                    new_tile_psfs[i],
+                    ref_tile_noises[i],
+                    new_tile_noises[i],
+                    ref_image_flux_zp,
+                    new_image_flux_zp,
+                )
+
+            output = {}
+            tiled_output = {}
+            mid_index = len(outputs) // 2
+            for i, out in enumerate(outputs):
+                for key, value in out.items():
+                    if key == 'zero_point' and i == mid_index:
+                        output[key] = value
+                    if key == 'sub_psf' and i == mid_index:  # grab the central PSF as representative
+                        output[key] = value  # the output PSF is smaller than if we don't tile!
+
+                    if key not in tiled_output:
+                        tiled_output[key] = np.zeros((len(corners), *tile_shape))
+                    tiled_output[key][i] = value
+
+            for key, value in tiled_output.items():  # for each type of array, e.g., sub_image, score, etc.
+                output[key] = jigsaw.stitch(value, corners, new_image.data.shape)
+
+        else:  # do not use subtiling
+            output = zogy_subtract(
+                ref_image_data,
+                new_image_data,
+                ref_image_psf,
+                new_image_psf,
+                ref_image_noise,
+                new_image_noise,
+                ref_image_flux_zp,
+                new_image_flux_zp,
+            )
+
         # rename for compatibility
         output['outim'] = output.pop('sub_image')
         output['zogy_score_uncorrected'] = output.pop('score')
         output['score'] = output.pop('score_corr')
         output['alpha_err'] = output.pop('alpha_std')
 
+        # expand the weight and flag images by the larger PSF width
         outwt, outfl = zogy_add_weights_flags(
             ref_image.weight,
             new_image.weight,
