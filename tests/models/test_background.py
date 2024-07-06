@@ -84,8 +84,9 @@ def test_save_load_backgrounds(decam_raw_image, code_version):
 
         t0 = time.perf_counter()
         b2.save()
-        print(f'Background save time: {time.perf_counter() - t0:.3f} s')
-        print(f'Background file size: {os.path.getsize(b2.get_fullpath()) / 1024 ** 2:.3f} MB')
+        # print(f'Background save time: {time.perf_counter() - t0:.3f} s')
+        # print(f'Background file size: {os.path.getsize(b2.get_fullpath()) / 1024 ** 2:.3f} MB')
+
         # check the filename contains the provenance hash
         assert prov.id[:6] in b2.get_fullpath()
 
